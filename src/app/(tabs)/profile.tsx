@@ -1,0 +1,117 @@
+import { router } from 'expo-router';
+import { Alert, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Avatar, Button, Card, ChipGroup, KV, Note, Row, Section, Tag } from '@/components/ui';
+import { AVAILABILITY, audienceLabel, fieldLabel, goalLabel, statusLabel, venueById } from '@/data/options';
+import { dataSource } from '@/data/source';
+import type { AvailabilityId } from '@/data/types';
+import { doorState } from '@/lib/match';
+import { fmtWindow } from '@/lib/time';
+import { useApp } from '@/state/AppState';
+import { C, R, S, T } from '@/theme';
+
+export default function ProfileTab() {
+  const app = useApp();
+  const { prefs, profile } = app;
+  const active = app.doors.filter((d) => ['live', 'upcoming'].includes(doorState(d, app.now)));
+  const past = app.doors.filter((d) => !active.includes(d));
+
+  const toggleAvail = (id: AvailabilityId) =>
+    app.setPrefs({ availability: prefs.availability.includes(id) ? prefs.availability.filter((x) => x !== id) : [...prefs.availability, id] });
+
+  return (
+    <ScrollView style={{ backgroundColor: C.bg }} contentContainerStyle={{ padding: S.lg, gap: S.xl, paddingBottom: S.xxl }}>
+      <View style={{ flexDirection: 'row', gap: S.md, alignItems: 'center' }}>
+        <Avatar name={profile.name || '?'} size={60} />
+        <View style={{ flex: 1 }}>
+          <Text style={T.title}>{profile.name || 'Your profile'}</Text>
+          <Text style={T.muted}>{statusLabel(profile.status)}{profile.org ? ` · ${profile.org}` : ''}</Text>
+        </View>
+      </View>
+      {profile.intro ? <Text style={T.body}>{profile.intro}</Text> : null}
+
+      <Card>
+        <View style={styles.switchRow}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={T.label}>Show me in nearby discovery</Text>
+            <Text style={T.small}>{prefs.discoverable ? 'People who match can find your profile.' : 'You’re hidden. You can still browse and send requests.'}</Text>
+          </View>
+          <Switch value={prefs.discoverable} onValueChange={(v) => app.setPrefs({ discoverable: v })} trackColor={{ true: C.accent, false: C.line2 }} accessibilityLabel="Show me in nearby discovery" />
+        </View>
+        <View style={styles.divider} />
+        <Text style={T.label}>When I’m usually free</Text>
+        <ChipGroup options={AVAILABILITY} selected={prefs.availability} onToggle={toggleAvail} />
+      </Card>
+
+      <Section title="Open Door" right={<Button label="Offer one" small icon="add" onPress={() => router.push('/open-door')} />}>
+        <Text style={T.muted}>Offer a short, in-person chat at a public place and time you choose. Only people you pick can see where.</Text>
+        {active.map((d) => (
+          <Card key={d.id}>
+            <Row style={{ justifyContent: 'space-between' }}>
+              <Text style={T.h3}>{venueById(d.venueId).name}</Text>
+              <Tag label={doorState(d, app.now) === 'live' ? 'Open now' : 'Coming up'} tone={doorState(d, app.now) === 'live' ? 'ok' : 'warn'} />
+            </Row>
+            <Text style={T.small}>{fmtWindow(d.start, d.end)} · {d.lengthMin} min each</Text>
+            <Text style={T.small}>Visible to: {d.audience.map(audienceLabel).join(', ')}</Text>
+            <Row>
+              <Button label="Edit" variant="secondary" small onPress={() => router.push({ pathname: '/open-door', params: { id: d.id } })} />
+              <Button label="End now" variant="secondary" small onPress={() => app.endDoor(d.id)} />
+            </Row>
+          </Card>
+        ))}
+        {past.length ? <Text style={T.small}>{past.length} past session{past.length > 1 ? 's' : ''} ended or expired automatically.</Text> : null}
+      </Section>
+
+      <Section title="Preferences" right={<Button label="Edit" variant="secondary" small onPress={() => router.push({ pathname: '/onboarding', params: { edit: 'prefs' } })} />}>
+        <View style={{ gap: S.sm }}>
+          <KV k="Field" v={fieldLabel(prefs.field)} />
+          <KV k="Looking for" v={prefs.goals.map((g) => (g === 'other' && prefs.goalOther ? prefs.goalOther : goalLabel(g))).join(', ') || 'Not set'} />
+          <KV k="Interests" v={prefs.interests.join(', ') || 'Not set'} />
+          <KV k="Skills" v={prefs.skills.join(', ') || 'Not set'} />
+          <KV k="Travel" v={`Up to ${prefs.travelMi} mi`} />
+          <KV k="Here to" v={{ seeking: 'Find connections', offering: 'Offer help', both: 'Both' }[prefs.mode]} />
+          <KV k="Sharing" v={prefs.shareMode === 'area' ? 'Approximate area' : 'Public meeting place only'} />
+        </View>
+      </Section>
+
+      <Section title="Profile" right={<Button label="Edit" variant="secondary" small onPress={() => router.push({ pathname: '/onboarding', params: { edit: 'profile' } })} />}>
+        <View style={{ gap: S.sm }}>
+          <KV k="Name" v={profile.name || 'Not set'} />
+          <KV k="Status" v={statusLabel(profile.status)} />
+          <KV k="Organization" v={profile.org || 'Not set'} />
+        </View>
+      </Section>
+
+      <Section title="Privacy">
+        <Note icon="lock-closed-outline">
+          Location is used once, while the app is open, to center your map. It’s never tracked in the background. Other people see an approximate area at most, never your position.
+        </Note>
+        {app.blocked.length ? (
+          app.blocked.map((id) => (
+            <Row key={id} style={{ justifyContent: 'space-between' }}>
+              <Text style={T.body}>{dataSource.getPerson(id)?.name ?? id}</Text>
+              <Button label="Unblock" variant="quiet" small onPress={() => app.unblock(id)} />
+            </Row>
+          ))
+        ) : (
+          <Text style={T.small}>You haven’t blocked anyone.</Text>
+        )}
+      </Section>
+
+      <Button
+        label="Start the demo over"
+        variant="danger"
+        onPress={() =>
+          Alert.alert('Start over?', 'This clears your preferences, profile, requests and Open Doors on this phone.', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Start over', style: 'destructive', onPress: async () => { await app.reset(); router.replace('/onboarding'); } },
+          ])
+        }
+      />
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: S.md },
+  divider: { height: 1, backgroundColor: C.line, marginVertical: S.xs, borderRadius: R.sm },
+});
