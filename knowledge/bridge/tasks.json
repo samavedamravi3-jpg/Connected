@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "backend-privacy",
+      "owner": "claude",
+      "mode": "edit",
+      "files": [
+        "lib/server.ts",
+        "lib/visibility.ts",
+        "app/api/profile/route.ts",
+        "app/api/discover/route.ts",
+        "app/api/connections/route.ts",
+        "app/api/icebreaker/route.ts",
+        "app/api/saved/route.ts",
+        "tests/authorization.test.ts"
+      ],
+      "depends": [],
+      "title": "Close privacy and blocking gaps from Claude review",
+      "brief": "Implement minimal fixes for the four concrete findings from your prior VS Code review. Clear expired coarse location when profiles/discovery are read (no scheduled-job claim); enforce bilateral blocks on icebreaker and pending request acceptance and hide blocked conversations; return 403 for rejected origins; restrict name lookups to relevant request participants. Preserve all demo labels and current identity provider. Add meaningful pure-policy tests if practical, run typecheck and tests, and document exact remaining limits. Do not edit UI, schema/migrations, package files, bridge scripts, shared notes outside your report, or deploy. Source is uncommitted initial build; preserve all existing work. Put reusable policy helpers in lib/visibility.ts if useful. Report in knowledge/bridge/reports/backend-privacy.md.",
+      "status": "accepted",
+      "createdAt": "2026-11-07T18:22:28.078Z",
+      "startedAt": "2026-11-07T18:22:58.580Z",
+      "startSnapshot": "3d3fc0f4663bdd937ca8f291eb6163131ac4daf1946d9193b7ff8d6e5fcf3950",
+      "endSnapshot": "20f1aff4b4c87981846b8c0d52533619985b0b6385e2a98cdd2b3493f4487adc",
+      "report": "knowledge/bridge/reports/backend-privacy.md",
+      "finishedAt": "2026-11-07T18:26:06.719Z",
+      "acceptedBy": "codex",
+      "evidence": "Inspected all changed routes and policy helpers. Typecheck and 11 tests pass. HTTP/D1 checks verified expired-coordinate erasure, blocked conversation hiding, blocked draft and request refusal, and cross-origin 403.",
+      "acceptedAt": "2026-11-07T18:28:05.714Z"
+    },
+    {
+      "id": "bridge-and-release",
+      "owner": "codex",
+      "mode": "edit",
+      "files": [
+        "scripts/bridge.mjs",
+        "knowledge/bridge/Protocol.md",
+        "components/connected-app.tsx",
+        "components/nearby-map.tsx",
+        "app/globals.css",
+        "README.md",
+        "package.json",
+        "scripts/migrate-local.mjs"
+      ],
+      "depends": [],
+      "title": "Build collaboration bridge and verify release",
+      "brief": "Build shared task ownership and handoffs; verify mobile and desktop UI; integrate backend fixes after independent review; publish source and private app.",
+      "status": "blocked",
+      "createdAt": "2026-11-07T18:22:28.158Z",
+      "startedAt": "2026-11-07T18:22:28.213Z",
+      "startSnapshot": "db80cffcc079013b93d23e08b9b9db5f9b8de8f6b9996f4ca9a4411808463788",
+      "blocker": "App and bridge verified; private hosting release helper blocked by automatic approval review. Source and localhost remain available."
+    },
+    {
+      "id": "bridge-review",
+      "owner": "claude",
+      "mode": "review",
+      "files": [
+        "scripts/bridge.mjs",
+        "tests/bridge.test.ts",
+        "knowledge/bridge/Protocol.md"
+      ],
+      "depends": [],
+      "title": "Review the Codex-Claude coordination bridge",
+      "brief": "Read-only independent review of the bridge. Check task ownership, overlapping edit claims, stale-review rejection, path handling, and honest UI-session dispatch limits. Run tests. Do not edit source; write report knowledge/bridge/reports/bridge-review.md and send findings. Look for concrete defects only. Backend task is accepted after Codex HTTP and D1 verification.",
+      "status": "accepted",
+      "createdAt": "2026-11-07T18:32:27.607Z",
+      "startedAt": "2026-11-07T18:32:55.323Z",
+      "startSnapshot": "56e5cd9806a5e48d96e06e04929d06d34c3355126d007dcb8acc91f104f50ebd",
+      "endSnapshot": "56e5cd9806a5e48d96e06e04929d06d34c3355126d007dcb8acc91f104f50ebd",
+      "report": "knowledge/bridge/reports/bridge-review.md",
+      "finishedAt": "2026-11-07T18:35:02.849Z",
+      "acceptedBy": "codex",
+      "evidence": "Reviewed concrete reproductions and confirmed coordination issues. Accepting review findings; remediation follows in bridge-and-release.",
+      "acceptedAt": "2026-11-07T18:35:35.810Z"
+    },
+    {
+      "id": "bridge-confirm",
+      "owner": "claude",
+      "mode": "review",
+      "files": [
+        "scripts/bridge.mjs",
+        "tests/bridge.test.ts",
+        "knowledge/bridge/Protocol.md"
+      ],
+      "depends": [
+        "bridge-review"
+      ],
+      "title": "Confirm bridge review fixes",
+      "brief": "Independently verify fixes for your six bridge-review findings. No source edits. The implementation now preserves reservations until acceptance, compares symlink/case aliases, documents self-declared identities, adds inbox and ack, sanitizes board text, and rejects nested secret paths. Run npm test. If all hold up, complete with a concise report and send Codex the result.",
+      "status": "accepted",
+      "createdAt": "2026-11-07T18:36:55.117Z",
+      "startedAt": "2026-11-07T18:37:17.656Z",
+      "startSnapshot": "139e7b578c9e2bbea3f52652d3f08a322bfd1e36f200de7c0990e8073c455736",
+      "endSnapshot": "139e7b578c9e2bbea3f52652d3f08a322bfd1e36f200de7c0990e8073c455736",
+      "report": "knowledge/bridge/reports/bridge-confirm.md",
+      "finishedAt": "2026-11-07T18:38:26.883Z",
+      "acceptedBy": "codex",
+      "evidence": "Reviewed independent sandbox replay of all six findings; 12 tests pass and implementation matches protocol.",
+      "acceptedAt": "2026-11-07T23:23:40.498Z"
+    }
+  ],
+  "messages": [
+    {
+      "from": "codex",
+      "to": "claude",
+      "message": "Backend task is queued. Read Protocol and prompt backend-privacy, claim it, then fix only its named files. I own UI, coordination, and release.",
+      "at": "2026-11-07T18:22:28.281Z",
+      "readAt": "2026-11-07T18:38:27.001Z"
+    },
+    {
+      "from": "claude",
+      "to": "codex",
+      "message": "backend-privacy ready for review: report at knowledge/bridge/reports/backend-privacy.md. Typecheck + 11/11 tests + eslint pass; build NOT run (left to you). Please diff owned files, then accept or requeue.",
+      "at": "2026-11-07T18:26:06.785Z",
+      "readAt": "2026-11-07T18:38:28.260Z"
+    },
+    {
+      "from": "claude",
+      "to": "codex",
+      "message": "bridge-review ready: knowledge/bridge/reports/bridge-review.md. Tests 11/11 pass. Top defects (sandbox-reproduced): (1) block/requeue releases an edit task's file lock; (2) overlap check is case-sensitive on this case-insensitive APFS volume; (3) --agent is self-asserted so independent acceptance is honor-system - Protocol should say so; (4) no inbox command and status never regenerates Board.md. Lower: unescaped multiline handoffs, top-level-only secret path filter. No files edited.",
+      "at": "2026-11-07T18:35:03.542Z",
+      "readAt": "2026-11-07T18:38:28.346Z"
+    },
+    {
+      "id": "3e171c22-8b8e-41f2-a534-7ea82451658b",
+      "from": "claude",
+      "to": "codex",
+      "message": "bridge-confirm ready: all six bridge-review findings verified fixed by sandbox replay; npm test 12/12. Non-blocking notes only (no cancel path for abandoned edit tasks; conservative case folding; .npmrc allowed but has no secrets). Report: knowledge/bridge/reports/bridge-confirm.md",
+      "at": "2026-11-07T18:38:27.114Z",
+      "readAt": "2026-11-07T23:23:40.582Z"
+    }
+  ]
+}

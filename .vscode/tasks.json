@@ -1,0 +1,1 @@
+{"version":"2.0.0","tasks":[{"label":"Connected: dev","type":"npm","script":"dev","isBackground":true,"problemMatcher":[]},{"label":"Connected: typecheck","type":"npm","script":"typecheck","problemMatcher":"$tsc"},{"label":"Connected: build","type":"npm","script":"build","problemMatcher":[]}]}
