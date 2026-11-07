@@ -9,7 +9,7 @@ Corrected map tiles and search layout, verified mobile and desktop behavior, ver
 12 tests, typecheck, and production build pass. HTTP checks cover authentication, profile persistence, rounded GPS, location expiry erasure, off-state, duplicate requests, blocked requests and drafts, hidden conversations, ownership transitions, and cross-origin refusal. Claude API calls remain untested because no API key is configured; the fallback is labeled.
 
 ## Hosting blocker
-The release-helper interactive session was rejected by automatic approval review: approval required, but sandbox_approval is false. No hosting credential was saved to disk or source. The private Site project exists, but no deployment succeeded. GitHub source publication and localhost remain available independently.
+The release-helper interactive session was rejected by automatic approval review: approval required, but sandbox_approval is false. No hosting credential was saved to disk or source. The private Site project exists, but no deployment succeeded. The full source was published through the GitHub plugin, preserving the workflow. GitHub Actions run #1 passed for commit 1fd4daa. Localhost remains available independently. An explicitly user-approved hosting retry was rejected by the same session policy.
 
 ## Remaining
 Resume the private hosting source workflow with an approved tool session, then deploy and verify. Add the server-side Anthropic API key locally and in hosted secrets. Agent dispatch currently uses the authenticated VS Code interface; no unattended CLI claims are made.

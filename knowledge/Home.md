@@ -12,6 +12,7 @@ A mobile-friendly networking app for people starting with zero connections. Find
 - [[Decisions]] — what we decided and why
 - [[Team Board]] — ownership and next steps
 - [[Demo Script]] — a short presentation walkthrough
+- [[Claude API Setup]] — activate Claude inside the app
 - [[Build Status]] — verified work and remaining setup
 
 Source lives one folder above this vault. Read `../CLAUDE.md` before coding. This vault is committed alongside the app so teammates and coding agents share the same context.

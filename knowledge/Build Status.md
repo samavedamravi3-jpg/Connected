@@ -13,7 +13,8 @@ Onboarding, map and filters, labeled NYC demo/live modes, persistent profiles, c
 - Desktop and 390-pixel mobile layout verified; no horizontal overflow.
 - Real Claude Code session completed backend fixes, an independent bridge review, and verification of six bridge fixes.
 - Project vault is registered and open in Obsidian. VS Code trusts only Connected.
-- Private GitHub repository exists. Tested source is ready to push. Private hosting publication is blocked by automatic approval review of the release-helper session.
+- Source is published to the private GitHub repository. GitHub Actions run #1 passed for commit `1fd4daa`: https://github.com/samavedamravi3-jpg/Connected/actions/runs/42425635840.
+- Private hosting remains blocked: the release-helper session was rejected by automatic approval review even after explicit user approval. The deployment archive is prepared locally; no deployed URL is claimed.
 
 ## Remaining setup
 - Claude inside the app needs a server-side Anthropic API key; none is configured. The existing Claude Code session works independently of that key.
