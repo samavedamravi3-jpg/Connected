@@ -42,8 +42,34 @@ Checks: `npm run typecheck`, `npx expo lint`, `npx expo-doctor`.
 - Map: the phone's built-in map (Apple Maps on iOS, Google Maps on Android) via `react-native-maps`, in a muted style. No API key is needed in Expo Go. Android store builds need a free Google Maps key in the `react-native-maps` config plugin.
 - Location: one foreground fix with `expo-location` after you allow it. There are no watchers and no background location (disabled in `app.json`).
 
-## Data
+## Data: demo mode and real accounts
 
-All people and events are **demo data** (`src/data/demo.ts`), clearly labeled in the app. Demo pins sit at rounded neighborhood points, never anyone's live location. To connect a backend, implement the `DataSource` interface in `src/data/source.ts`. Screens only talk to `dataSource`.
+- **Sample mode** ("Look around with a sample profile"): everything stays on the phone. People and events are labeled demo data (`src/data/demo.ts`), and replies are simulated.
+- **Real accounts** ("Get started" → sign up with an email code, or "I already have an account"): the app uses the Connected backend in the repo root (`/api/v1`, Cloudflare Worker + D1).
+  - Profiles, discovery, requests, chat, Open Doors, saved events, blocks, reports and photos are all stored on the server.
+  - The session token lives in the iOS Keychain (`expo-secure-store`).
 
-App state (preferences, profile, requests, Open Doors, saved events) is stored on the device with AsyncStorage (`src/state/AppState.tsx`).
+Screens only talk to `dataSource` (`src/data/source.ts`) and `useApp()` (`src/state/AppState.tsx`). Both switch between demo and live automatically, and `src/data/api.ts` is the HTTP client.
+
+## Run it against the real backend (same Wi-Fi)
+
+1. In the **repo root**: `npm ci`, `npm run build`, `npm run db:local` (first time), then `npm run dev:lan`. This serves the API on port 5175 to your network.
+2. In **mobile/**: `npm ci`, then `npx expo start`. Scan the QR code with the iPhone camera (Expo Go).
+3. The app finds the backend on the same computer automatically. With no email service configured locally, the sign-in screen shows your code with a **Use it** button.
+
+To use a deployed backend instead, put `EXPO_PUBLIC_API_URL=https://…` in `mobile/.env.local` (see `.env.example`) and restart Expo.
+
+## Push alerts
+
+New requests, acceptances and messages send push alerts once the app is linked to an Expo (EAS) project. To link it, run `npx eas-cli@latest init` in mobile/; this writes `extra.eas.projectId`.
+
+- Android needs a development build for remote push.
+- On iPhone, test with your build.
+- Without push, the Inbox still refreshes every 20 seconds, and an open chat every 4 seconds.
+
+## Privacy rules the backend enforces
+
+- Location is snapped to a neighborhood center (never your address). It's stored only if you chose "Let people find me", and expires an hour after you last opened the app.
+- Challenges, the people you're looking for, travel distance and free-text goals stay private. Others see your name, status, organization, field, interests, skills, languages and what you offer.
+- Blocks work in both directions. A report also blocks. You can delete your account in Profile.
+- An Open Door's exact venue is only sent to people in the audience you chose.

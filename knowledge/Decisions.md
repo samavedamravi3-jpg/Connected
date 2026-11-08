@@ -19,4 +19,11 @@
 - The approach coach is optional and collapsed in the person sheet so the main action (introduction and request) stays near the top.
 - The default AI model stays `claude-sonnet-5-5` (existing configured default); replies are plain text, clipped at a sentence.
 - Codex ran out of credits; the owner directed Claude to finish the UI and publish through a feature branch and pull request (`claude/mobile-app`), not directly to `main`.
+- **Front end = Kartik's Expo app** (owner's choice, 2026-11-08). It's imported into `mobile/` and kept close to his design. The web app stays as a backup.
+- **Sign-in = email one-time codes** (owner's choice). It works in Expo Go with no Apple developer account. Codes are only shown on screen for local/LAN dev servers.
+- **Hosting = the owner's own Cloudflare account** (Workers + D1), via `npm run deploy:cloudflare`.
+- The mobile API uses separate tables from the web app, so the web flows that were already verified are untouched.
+- Discovery shows a neighborhood center for one hour after the app is opened. That matches the original one-hour, approximate, opt-in rule while the app keeps the person visible during use.
+- Open Door venues are enforced by audience on the server, not only in the app.
+- Photos are stored in D1 (300 KB cap) at unguessable URLs instead of R2, so no extra storage service is needed for the hackathon.
 

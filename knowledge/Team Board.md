@@ -11,13 +11,16 @@
 - [x] Shared knowledge vault and agent instructions
 - [x] Installable mobile app and phone-first layout ([[Mobile App]])
 - [x] Approach coach and discovery-distance preferences
+- [x] Native app (Kartik's Expo design) connected to the real backend ([[Mobile API]])
 
 ## Next ownership slots
 | Area | Suggested task | Owner |
 | --- | --- | --- |
 | Backend | Production event feed, pagination, request limits | Unassigned |
 | AI | Key saved locally; set hosted secret; review coach replies with real profiles | Unassigned |
-| Mobile | Test install and sign-in on a real iPhone and Android phone | Unassigned |
+| Mobile | Two-phone test in Expo Go: sign-up, request, accept, chat, block | Unassigned |
+| Ops | `wrangler login`, `npm run deploy:cloudflare`, add Resend key | Owner |
+| Push | `eas init` in `mobile/`, development build for Android | Unassigned |
 | Community | Recruit consenting mentors for a live demo | Unassigned |
 | Product | Test the first-conversation flow with 3 attendees | Unassigned |
 | Demo | Pitch and walkthrough | Unassigned |

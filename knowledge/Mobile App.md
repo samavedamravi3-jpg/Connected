@@ -1,5 +1,8 @@
 # Mobile App
 
+> [!NOTE]
+> The main phone app is now the native Expo app in `mobile/`; see [[Mobile API]]. This note covers the installable **web** version, which stays available as a backup.
+
 Connected installs as a **web app** (PWA): it gets its own home-screen icon, opens full screen with no browser bar, and shows a friendly page when offline. There's no App Store build. See [[Decisions]] (2026-11-08) for why.
 
 ## Install it

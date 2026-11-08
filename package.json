@@ -17,7 +17,8 @@
     "db:local": "node scripts/migrate-local.mjs",
     "bridge": "node scripts/bridge.mjs",
     "smoke:mobile": "node scripts/smoke-mobile-api.mjs",
-    "dev:lan": "node node_modules/vinext/dist/cli.js dev --port 5175 --host 0.0.0.0"
+    "dev:lan": "node node_modules/vinext/dist/cli.js dev --port 5175 --host 0.0.0.0",
+    "deploy:cloudflare": "node scripts/deploy-cloudflare.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

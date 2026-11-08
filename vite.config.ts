@@ -20,12 +20,14 @@ const managedLinux = readExecutionProfile() === "managed-linux";
 const localBindingConfig = {
   main: "./worker/index.ts",
   compatibility_flags: ["nodejs_compat"],
+  // Your own Cloudflare deploy (scripts/deploy-cloudflare.mjs) passes the real D1 database via env;
+  // local dev and Sites hosting keep the placeholder.
   d1_databases: d1
     ? [
         {
           binding: d1,
-          database_name: "site-creator-d1",
-          database_id: SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
+          database_name: process.env.CLOUDFLARE_D1_NAME || "site-creator-d1",
+          database_id: process.env.CLOUDFLARE_D1_ID || SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
         },
       ]
     : [],
