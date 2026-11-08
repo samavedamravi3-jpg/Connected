@@ -5,7 +5,7 @@ import {getDb} from '@/db';
 import {profiles} from '@/db/schema';
 import {identity,errorResponse,sameOrigin,resolveTarget,consumeAiQuota} from '@/lib/server';
 import {parseSearchCenter} from '@/lib/visibility';
-import {callClaude,fallbackNote,templateIcebreaker,ICEBREAKER_SYSTEM} from '@/lib/ai';
+import {callClaude,fallbackNote,templateIcebreaker,plainClip,ICEBREAKER_SYSTEM} from "@/lib/ai";
 
 // latitude/longitude: the caller's search area. Required for live people (radius check); demo people are exempt.
 export async function POST(req:Request){try{
@@ -24,5 +24,5 @@ export async function POST(req:Request){try{
   if(!await consumeAiQuota(db,u.userId))return template('quota');
   const result=await callClaude({apiKey:env.ANTHROPIC_API_KEY,model:env.ANTHROPIC_MODEL,system:ICEBREAKER_SYSTEM,maxTokens:2000,messages:[{role:'user',content:JSON.stringify({sender:{name:profile.name,goal:profile.goal},recipient:{name:person.name,help:person.help}})}]});
   if(!result.ok)return template(result.reason);
-  return Response.json({text:result.text.slice(0,500),source:'claude'});
+  return Response.json({text:plainClip(result.text,500),source:"claude"});
 }catch(e){return errorResponse(e);}}

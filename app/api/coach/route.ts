@@ -5,7 +5,7 @@ import {getDb} from '@/db';
 import {profiles} from '@/db/schema';
 import {identity,errorResponse,sameOrigin,resolveTarget,consumeAiQuota} from '@/lib/server';
 import {parseSearchCenter,withProfileDefaults} from '@/lib/visibility';
-import {callClaude,coachContext,coachMessagesSchema,buildCoachMessages,templateCoach,fallbackNote,COACH_SYSTEM,COACH_REPLY_MAX} from '@/lib/ai';
+import {callClaude,coachContext,coachMessagesSchema,buildCoachMessages,templateCoach,fallbackNote,COACH_SYSTEM,COACH_REPLY_MAX,plainClip} from '@/lib/ai';
 
 /** Whether the in-app coach can use Claude. Never returns the key or model. */
 export async function GET(){return Response.json({configured:!!env.ANTHROPIC_API_KEY});}
@@ -30,5 +30,5 @@ export async function POST(req:Request){try{
   if(!await consumeAiQuota(db,u.userId))return template('quota');
   const result=await callClaude({apiKey:env.ANTHROPIC_API_KEY,model:env.ANTHROPIC_MODEL,system:COACH_SYSTEM,maxTokens:4000,messages:buildCoachMessages(context,body.messages)});
   if(!result.ok)return template(result.reason);
-  return Response.json({text:result.text.slice(0,COACH_REPLY_MAX),source:'claude',note:target.sample?'Coaching for a fictional demo profile.':undefined});
+  return Response.json({text:plainClip(result.text,COACH_REPLY_MAX),source:'claude',note:target.sample?'Coaching for a fictional demo profile.':undefined});
 }catch(e){return errorResponse(e);}}

@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import vinext from "vinext";
 import { defineConfig } from "vite";
 import hostingConfig from "./.openai/hosting.json";
@@ -37,8 +39,20 @@ const localBindingConfig = {
     : [],
 };
 
+// MapLibre's web worker must be served byte-for-byte: Vite's dev transform injects its browser client into
+// the module, which crashes inside a worker ("window is not defined"). Copy the installed, self-contained
+// worker into public/ (gitignored) so dev and production serve it raw at /vendor/maplibre-gl-worker.mjs.
+function copyMaplibreWorker() {
+  const from = path.resolve("node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs");
+  const to = path.resolve("public/vendor/maplibre-gl-worker.mjs");
+  if (!fs.existsSync(from)) return;
+  fs.mkdirSync(path.dirname(to), { recursive: true });
+  fs.copyFileSync(from, to);
+}
+
 export default defineConfig(async ({ command }) => {
   configureToolEnvironment(process.cwd());
+  copyMaplibreWorker();
 
   // Wrangler snapshots its log path while the Cloudflare plugin is imported.
   const { cloudflare } = await import("@cloudflare/vite-plugin");

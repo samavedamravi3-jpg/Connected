@@ -17,6 +17,11 @@ import {
 } from "@/lib/network";
 import FlatMap from "./flat-map";
 import "maplibre-gl/dist/maplibre-gl.css";
+// MapLibre finds its worker relative to its own module, which breaks under Vite ("Worker failed to load").
+// vite.config.ts copies the installed worker to public/vendor so it is served untransformed.
+const maplibreWorkerUrl = "/vendor/maplibre-gl-worker.mjs";
+const isPhone = () =>
+  typeof window !== "undefined" && window.matchMedia("(max-width: 740px)").matches;
 export type MapItem =
   | { kind: "person"; item: Person }
   | { kind: "event"; item: LocalEvent }
@@ -51,12 +56,17 @@ export default function NearbyMap(props: Props) {
       .then((GL) => {
         if (disposed || !node.current) return;
         try {
+          GL.setWorkerUrl(maplibreWorkerUrl);
+          const phone = isPhone();
+          if (phone) setTilted(false);
           const m = new GL.Map({
             container: node.current,
             center: [center[1], center[0]],
             zoom: 13.8,
-            pitch: 45,
-            bearing: -18,
+            // Flat, north-up on phones: easier to read and to scroll past.
+            pitch: phone ? 0 : 45,
+            bearing: phone ? 0 : -18,
+            cooperativeGestures: phone,
             maxPitch: 60,
             attributionControl: { compact: true },
             style: {

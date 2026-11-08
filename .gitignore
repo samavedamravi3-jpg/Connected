@@ -49,3 +49,4 @@ yarn-error.log*
 
 # Local browser-automation output
 /.playwright-mcp/
+/public/vendor/

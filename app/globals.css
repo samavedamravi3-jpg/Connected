@@ -2507,3 +2507,395 @@ textarea::placeholder {
     padding: 10px 12px;
   }
 }
+
+/* ==========================================================================
+   Mobile app layer (installable web app)
+   Last in the file so it wins. Goals: readable text (≥ 11px, inputs 16px so
+   iOS doesn't zoom), 40px+ touch targets, notch-safe bars, and the useful
+   things (search, map, people) on the first screen.
+   ========================================================================== */
+
+/* MapLibre's stylesheet sets .maplibregl-map{position:relative}, which beat
+   .map-canvas{position:absolute} and collapsed the map to 0px height. */
+.map-shell .map-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+/* One place picker (replaces the old duplicate city row). */
+.place-picker {
+  position: relative;
+  display: flex;
+}
+.place-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  min-width: 260px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid #ebe5ef;
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgb(45 34 56 / 0.14);
+  display: grid;
+  gap: 2px;
+}
+.place-menu button {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  align-items: center;
+  column-gap: 8px;
+  text-align: left;
+  padding: 10px 12px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font: 600 14px "DM Sans", sans-serif;
+  color: #2d2238;
+  cursor: pointer;
+}
+.place-menu button:hover,
+.place-menu button[aria-checked="true"] {
+  background: #f4effa;
+}
+.place-menu small {
+  grid-column: 2;
+  font-weight: 400;
+  font-size: 12px;
+  color: #776c80;
+}
+
+/* Install banner */
+.install-banner {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  z-index: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 10px 12px;
+  background: #fff;
+  border: 1px solid #ebe5ef;
+  border-radius: 16px;
+  box-shadow: 0 12px 32px rgb(45 34 56 / 0.16);
+  max-width: 520px;
+  margin: 0 auto;
+}
+.install-banner img {
+  border-radius: 9px;
+  flex: none;
+}
+.install-banner div {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.install-banner b {
+  font-size: 14px;
+  color: #2d2238;
+}
+.install-banner span {
+  font-size: 12px;
+  color: #6f6479;
+}
+.install-banner span svg {
+  vertical-align: -2px;
+}
+@media (min-width: 741px) {
+  .install-banner {
+    bottom: 20px;
+    left: auto;
+    right: 20px;
+    width: 400px;
+  }
+}
+
+@media (max-width: 740px) {
+  /* Notch-safe app chrome */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 500;
+    height: auto;
+    min-height: 56px;
+    padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right)) 0
+      max(16px, env(safe-area-inset-left));
+    background: #fffdfbf2;
+    backdrop-filter: blur(10px);
+  }
+  .sidebar {
+    height: calc(64px + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .workspace {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+  main {
+    padding: 14px max(16px, env(safe-area-inset-left)) 10px;
+  }
+  .nav-item {
+    font-size: 11px;
+    min-height: 52px;
+  }
+  .nav-item svg {
+    width: 21px;
+    height: 21px;
+  }
+  .discovery-button {
+    font-size: 12px;
+    min-height: 36px;
+  }
+  .header-actions > .small {
+    min-height: 36px;
+    min-width: 36px;
+    justify-content: center;
+  }
+  .toast {
+    bottom: calc(80px + env(safe-area-inset-bottom));
+    font-size: 13px;
+  }
+
+  /* Explore opens on search + map, not a marketing hero. */
+  main[data-page="explore"] .page-heading {
+    display: none;
+  }
+  .page-heading {
+    margin-bottom: 16px;
+  }
+  .eyebrow {
+    font-size: 11px;
+  }
+  h1 {
+    font-size: 26px;
+  }
+  h1 + p {
+    font-size: 14px;
+    max-width: none;
+  }
+
+  /* Search + place + filters */
+  .search-row {
+    margin-bottom: 12px;
+  }
+  .search-field {
+    height: 48px;
+  }
+  .search-field input {
+    font-size: 16px;
+  }
+  .place-picker {
+    flex: 1;
+  }
+  .place-picker .location-button {
+    width: 100%;
+  }
+  .location-button,
+  .filter-button {
+    height: 42px;
+    min-height: 42px;
+    font-size: 14px;
+  }
+  .place-menu {
+    min-width: min(300px, calc(100vw - 32px));
+  }
+  .filters-panel label,
+  .filters-panel .check-label {
+    font-size: 13px;
+  }
+  .filters-panel select {
+    font-size: 16px;
+    min-height: 40px;
+  }
+
+  /* Tabs scroll sideways instead of squeezing */
+  .view-toolbar {
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    gap: 6px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .tabs button {
+    flex: none;
+    font-size: 14px;
+    padding: 9px 14px;
+    min-height: 40px;
+  }
+  .mode-switch {
+    margin-left: 0;
+    width: 100%;
+    display: flex;
+  }
+  .mode-switch button {
+    flex: 1;
+    font-size: 13px;
+    padding: 9px 10px;
+    min-height: 38px;
+  }
+
+  /* Map: compact, flat, no desktop-only controls */
+  .map-shell {
+    height: 300px;
+    min-height: 300px;
+  }
+  .map-view-tools,
+  .map-note {
+    display: none;
+  }
+  .map-360 .map-controls {
+    top: auto;
+    bottom: 16px;
+  }
+  .map-location,
+  .map-legend span {
+    font-size: 12px;
+  }
+
+  /* Results */
+  .results-heading h2 {
+    font-size: 18px;
+  }
+  .results-heading p,
+  .demo-label {
+    font-size: 13px;
+  }
+  .person-title h3 {
+    font-size: 16px;
+  }
+  .person-title p,
+  .person-title b,
+  .person-meta,
+  .help-tags > span {
+    font-size: 13px;
+  }
+  .text-button {
+    font-size: 14px;
+    min-height: 40px;
+  }
+  .event-card h3,
+  .hotspot-card h3 {
+    font-size: 15px;
+  }
+  .results-footnote,
+  .page-footer {
+    font-size: 12px;
+  }
+
+  /* Dialogs become bottom sheets with readable text */
+  .modal-backdrop {
+    padding: 0;
+    align-items: flex-end;
+  }
+  .modal {
+    width: 100%;
+    max-height: calc(100dvh - env(safe-area-inset-top) - 12px);
+    border-radius: 20px 20px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .onboarding-form .eyebrow {
+    font-size: 11px;
+  }
+  .onboarding-form > p {
+    font-size: 14px;
+  }
+  .choice-grid button {
+    font-size: 13px;
+    min-height: 44px;
+  }
+  .detail-actions .primary {
+    font-size: 14px;
+  }
+  .map-view-tools button,
+  .coach-bubble small,
+  .coach .coach-privacy {
+    font-size: 12px;
+  }
+  .coach-bubble p,
+  .coach-prompts button {
+    font-size: 14px;
+  }
+  .coach .coach-input input {
+    font-size: 16px;
+  }
+
+  /* Connections */
+  .connections-page .section-title h2 {
+    font-size: 18px;
+  }
+  .connection-card h3 {
+    font-size: 15px;
+  }
+  .connection-card p,
+  .connection-card small {
+    font-size: 13px;
+  }
+}
+
+/* Installed app: no browser chrome, so keep content clear of the status bar. */
+@media (display-mode: standalone) {
+  body {
+    overscroll-behavior-y: none;
+  }
+}
+
+/* Collapsible approach coach inside the person sheet */
+.coach-toggle {
+  margin: 16px 0 4px;
+  border: 1px solid #ebe5ef;
+  border-radius: 14px;
+  background: #fbf8fd;
+}
+.coach-toggle > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 14px;
+  font: 600 14px "DM Sans", sans-serif;
+  color: #68517d;
+  cursor: pointer;
+}
+.coach-toggle > summary::-webkit-details-marker {
+  display: none;
+}
+.coach-toggle > summary::after {
+  content: "+";
+  margin-left: auto;
+  font-size: 18px;
+  color: #8c68a9;
+}
+.coach-toggle[open] > summary::after {
+  content: "–";
+}
+.coach-toggle[open] > .coach {
+  margin: 0 8px 8px;
+}
+@media (max-width: 740px) {
+  .detail-meta,
+  .detail .demo-label,
+  .detail h4 {
+    font-size: 13px;
+  }
+  .privacy-card p,
+  .detail > p,
+  .detail label {
+    font-size: 14px;
+  }
+  .detail .small-text {
+    font-size: 13px;
+  }
+}

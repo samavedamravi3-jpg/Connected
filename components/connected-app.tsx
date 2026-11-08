@@ -180,6 +180,20 @@ export default function ConnectedApp() {
     [demo, setDemo] = useState(true),
     [gps, setGps] = useState<[number, number] | null>(null);
   const [city, setCity] = useState<"Charlotte" | "NYC">("Charlotte");
+  const [placeMenu, setPlaceMenu] = useState(false);
+  useEffect(() => {
+    if (!placeMenu) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent ? e.key === "Escape" : !(e.target as Element).closest?.(".place-picker"))
+        setPlaceMenu(false);
+    };
+    document.addEventListener("keydown", close);
+    document.addEventListener("pointerdown", close);
+    return () => {
+      document.removeEventListener("keydown", close);
+      document.removeEventListener("pointerdown", close);
+    };
+  }, [placeMenu]);
   const [people, setPeople] = useState<Person[]>(demoPeopleFor("Charlotte")),
     [events, setEvents] = useState<LocalEvent[]>(upcomingCharlotteEvents()),
     [selected, setSelected] = useState<MapItem | null>(null),
@@ -665,7 +679,7 @@ export default function ConnectedApp() {
             </button>
           </div>
         </header>
-        <main>
+        <main data-page={page}>
           <section className="page-heading">
             <div>
               <div className="eyebrow">
@@ -787,7 +801,7 @@ export default function ConnectedApp() {
                   <Search size={19} />
                   <input
                     aria-label="Search people, companies, or events"
-                    placeholder="People, companies, events… what’s your next move?"
+                    placeholder="Search people, companies, events"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                   />
@@ -801,15 +815,57 @@ export default function ConnectedApp() {
                     </button>
                   )}
                 </label>
-                <button className="location-button" onClick={locate}>
-                  <MapPin size={16} />
-                  {gps && center === gps
-                    ? "My location"
-                    : city === "Charlotte"
-                      ? "Charlotte, NC"
-                      : "New York, NY"}
-                  <ChevronDown size={15} />
-                </button>
+                <div className="place-picker">
+                  <button
+                    className="location-button"
+                    aria-haspopup="menu"
+                    aria-expanded={placeMenu}
+                    onClick={() => setPlaceMenu((v) => !v)}
+                  >
+                    <MapPin size={16} />
+                    {gps && center === gps
+                      ? "My location"
+                      : city === "Charlotte"
+                        ? "Charlotte, NC"
+                        : "New York · sample"}
+                    <ChevronDown size={15} />
+                  </button>
+                  {placeMenu && (
+                    <div className="place-menu" role="menu">
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setPlaceMenu(false);
+                          locate();
+                        }}
+                      >
+                        <LocateFixed size={15} /> Use my location
+                        <small>Approximate · never shared unless you turn on discovery</small>
+                      </button>
+                      {(
+                        [
+                          ["Charlotte", "Charlotte, NC", "Real local events"],
+                          ["NYC", "New York", "Sample city"],
+                        ] as const
+                      ).map(([id, label, note]) => (
+                        <button
+                          key={id}
+                          role="menuitemradio"
+                          aria-checked={city === id && !(gps && center === gps)}
+                          onClick={() => {
+                            setPlaceMenu(false);
+                            setCity(id);
+                            setCenter(id === "Charlotte" ? CHARLOTTE : NYC);
+                            setSelected(null);
+                          }}
+                        >
+                          <MapPin size={15} /> {label}
+                          <small>{note}</small>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <button
                   className={`button filter-button ${filters ? "selected" : ""}`}
                   onClick={() => setFilters(!filters)}
@@ -884,30 +940,6 @@ export default function ConnectedApp() {
                   </button>
                 </div>
               )}
-              <div className="city-picker">
-                <MapPin size={16} />
-                <label>
-                  Explore{" "}
-                  <select
-                    aria-label="Explore city"
-                    value={city}
-                    onChange={(e) => {
-                      const c = e.target.value as "Charlotte" | "NYC";
-                      setCity(c);
-                      setCenter(c === "Charlotte" ? CHARLOTTE : NYC);
-                      setSelected(null);
-                    }}
-                  >
-                    <option value="Charlotte">Charlotte, NC</option>
-                    <option value="NYC">New York · sample city</option>
-                  </select>
-                </label>
-                <span>
-                  {city === "Charlotte"
-                    ? "Real local events. New possibilities."
-                    : "The original Connected demo."}
-                </span>
-              </div>
               <div className="view-toolbar">
                 <div
                   className="tabs"
@@ -1283,16 +1315,6 @@ export default function ConnectedApp() {
               </div>
               <h4>Looking for</h4>
               <p>{selected.item.goal}</p>
-              <ApproachCoach
-                key={selected.item.id}
-                person={selected.item}
-                center={center}
-                needAccount={needAccount}
-                onDraft={(text) => {
-                  setMessage(text);
-                  setAiNote("Added from your coach. Edit before sending.");
-                }}
-              />
               <label>
                 Your introduction
                 <textarea
@@ -1334,6 +1356,22 @@ export default function ConnectedApp() {
                   <Bookmark size={18} />
                 </button>
               </div>
+              {/* Optional help, collapsed so the main action stays near the top on phones. */}
+              <details className="coach-toggle">
+                <summary>
+                  <Sparkles size={15} /> Nervous? Practice with your approach coach
+                </summary>
+                <ApproachCoach
+                  key={selected.item.id}
+                  person={selected.item}
+                  center={center}
+                  needAccount={needAccount}
+                  onDraft={(text) => {
+                    setMessage(text);
+                    setAiNote("Added from your coach. Edit before sending.");
+                  }}
+                />
+              </details>
               <button
                 className="text-button muted small-text"
                 onClick={async () => {

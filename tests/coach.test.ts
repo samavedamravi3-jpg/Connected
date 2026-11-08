@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {coachMessagesSchema,coachContext,buildCoachMessages,callClaude,templateCoach,templateIcebreaker,fallbackNote,COACH_SYSTEM,DEFAULT_MODEL,AI_DAILY_LIMIT,COACH_REPLY_MAX} from '../lib/ai.ts';
+import {coachMessagesSchema,coachContext,buildCoachMessages,callClaude,templateCoach,templateIcebreaker,fallbackNote,COACH_SYSTEM,DEFAULT_MODEL,AI_DAILY_LIMIT,COACH_REPLY_MAX,plainClip} from '../lib/ai.ts';
 
 const sender={name:'Ana Diaz',goal:'Land my first design internship.',meetingStyle:'Online',experience:'Student',availability:'This week',photoUrl:'https://cdn.example.com/a.jpg',socials:{linkedin:'https://www.linkedin.com/in/ana'},latitude:40.74,longitude:-73.99,id:'user-secret-id',email:'ana@example.com'};
 const target={id:'user-target-id',name:'Maya Chen',role:'Product Designer',company:'DoorDash',help:['Portfolio feedback','Career switch'],goal:'Meet ambitious builders',photoUrl:'data:image/png;base64,AAAA',socials:{github:'https://github.com/maya'},lat:40.7442,lng:-73.9906,visibilityKm:4.8};
@@ -90,4 +90,13 @@ test('template guidance is labeled, useful and uses only supplied details',()=>{
   for(const r of ['missing-key','quota','timeout','upstream','refusal','empty'] as const)assert.match(fallbackNote(r),/template guidance/);
   assert.equal(templateIcebreaker(sender,target),"Hi Maya! I'm Ana Diaz. I'm hoping to Land my first design internship. I noticed you offer portfolio feedback — would you be open to a 10-minute chat?");
   assert.equal(AI_DAILY_LIMIT,20);
+});
+
+test('model text is shown as plain text and clipped at a sentence, never mid-word',()=>{
+  assert.equal(plainClip('**1. Open** with __specifics__.\n## Next\n- one\n* two',200),'1. Open with specifics.\nNext\n• one\n• two');
+  const long='First sentence is here. Second sentence is also here. Third one gets cut off somewhere in the middle';
+  assert.equal(plainClip(long,60),'First sentence is here. Second sentence is also here.');
+  assert.equal(plainClip('word '.repeat(40),23),'word word word word…','falls back to the last whole word');
+  assert.ok(plainClip('x'.repeat(2000),1200).length<=1201);
+  assert.equal(plainClip('Short.',500),'Short.');
 });

@@ -1,0 +1,18 @@
+{
+  "id": "/",
+  "name": "Connected",
+  "short_name": "Connected",
+  "description": "Meet nearby people who have offered to help you take your next step.",
+  "start_url": "/?source=app",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fffdfb",
+  "theme_color": "#7959ac",
+  "categories": ["social", "lifestyle", "productivity"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
