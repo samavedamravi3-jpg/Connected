@@ -98,8 +98,13 @@ export function rowToPerson(r: ProfileRow): Person {
   };
 }
 
-export function myRow(userId: string, profile: Profile, prefs: Prefs, here: { coord: LatLng; label: string } | null): ProfileRow {
-  return {
+type AreaCols = 'area_name' | 'area_lat' | 'area_lng';
+/** Your row to save. The area columns are left out when there's no fresh position yet, so the saved area is kept. */
+export type MyRow = Omit<ProfileRow, AreaCols> & Partial<Pick<ProfileRow, AreaCols>>;
+
+export function myRow(userId: string, profile: Profile, prefs: Prefs, here: { coord: LatLng; label: string } | null): MyRow {
+  const keepArea = prefs.shareMode === 'area' && !here;
+  const row: MyRow = {
     id: userId,
     first_name: profile.name.trim().slice(0, 60),
     last_name: profile.lastName.trim().slice(0, 60),
@@ -127,6 +132,12 @@ export function myRow(userId: string, profile: Profile, prefs: Prefs, here: { co
     area_lat: prefs.shareMode === 'area' && here ? Math.round(here.coord.latitude * 100) / 100 : null,
     area_lng: prefs.shareMode === 'area' && here ? Math.round(here.coord.longitude * 100) / 100 : null,
   };
+  if (keepArea) {
+    delete row.area_name;
+    delete row.area_lat;
+    delete row.area_lng;
+  }
+  return row;
 }
 
 /** Turn your stored row back into app preferences and profile (used after signing in). */
@@ -147,7 +158,7 @@ export async function loadMyRow(userId: string): Promise<ProfileRow | null> {
   return (data as ProfileRow | null) ?? null;
 }
 
-export async function saveMyRow(row: ProfileRow): Promise<void> {
+export async function saveMyRow(row: MyRow): Promise<void> {
   const { error } = await db().from('profiles').upsert(row);
   if (error) throw error;
 }

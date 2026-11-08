@@ -24,7 +24,7 @@ export function nodeAnchor(strength: Strength, selected: boolean) {
  * A person as a node in your network. Solid purple = strong match, purple ring = good match,
  * quiet gray = other. Selected nodes grow and show a small name-and-role card above.
  */
-export function NodePin({ name, role, uri, strength, selected, door }: { name: string; role: string; uri?: string | null; strength: Strength; selected: boolean; door: boolean }) {
+export function NodePin({ name, role, uri, strength, selected, door, real }: { name: string; role: string; uri?: string | null; strength: Strength; selected: boolean; door: boolean; real?: boolean }) {
   const size = NODE[strength] + (selected ? 6 : 0);
   const solid = strength === 'strong' || selected;
   const ring = selected ? C.accent : strength === 'some' ? '#B9B4C8' : C.accent;
@@ -41,6 +41,7 @@ export function NodePin({ name, role, uri, strength, selected, door }: { name: s
       ) : (
         <Text style={[styles.initials, { fontSize: size * 0.34, color: solid ? C.white : strength === 'some' ? C.ink3 : C.accent }]}>{initials(name)}</Text>
       )}
+      {real ? <View style={styles.real} accessibilityLabel="Connected member" /> : null}
       {door ? (
         <View style={styles.door}>
           <Ionicons name="enter" size={9} color={C.white} />
@@ -54,7 +55,7 @@ export function NodePin({ name, role, uri, strength, selected, door }: { name: s
   return (
     <View collapsable={false} style={{ width: WIDTH, alignItems: 'center' }}>
       <View style={styles.card}>
-        <Text style={styles.cardName} numberOfLines={1}>{name}</Text>
+        <Text style={styles.cardName} numberOfLines={1}>{name}{real ? '  ·  Member' : ''}</Text>
         <Text style={styles.cardRole} numberOfLines={1}>{role}</Text>
       </View>
       <View style={styles.cardTip} />
@@ -89,6 +90,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   initials: { fontWeight: '700', letterSpacing: 0.3 },
+  real: { position: 'absolute', right: -2, bottom: -2, width: 13, height: 13, borderRadius: 7, backgroundColor: '#1FB860', borderWidth: 2, borderColor: C.white },
   door: { position: 'absolute', right: -4, top: -4, width: 16, height: 16, borderRadius: 8, backgroundColor: C.blue, borderWidth: 2, borderColor: C.white, alignItems: 'center', justifyContent: 'center' },
   card: {
     height: CARD_H,

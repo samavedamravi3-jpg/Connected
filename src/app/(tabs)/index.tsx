@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
-import { Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MapView, { Circle, Marker, Polygon, Polyline, type MapStyleElement, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheet } from '@/components/BottomSheet';
@@ -16,6 +16,7 @@ import type { LatLng, NearbyPerson } from '@/data/types';
 import { activeFilterCount, applyFilters, defaultFilters, isFreeToday, type Filters } from '@/lib/filters';
 import { approxDistance, deltaForMiles, distanceMi, travelTime } from '@/lib/geo';
 import { canSeeDoor, doorActive, matchPoints, matchScore, matchStrength } from '@/lib/match';
+import { ALERT_RADIUS_MI, enableNearbyAlerts, peopleWithin, useNearbyAlerts } from '@/lib/nearbyAlerts';
 import { useLiveLocation, type Fix } from '@/lib/useLiveLocation';
 import { useApp } from '@/state/AppState';
 import { C, R, S, T, shadow } from '@/theme';
@@ -96,6 +97,9 @@ export default function MapScreen() {
   const [showHotspots, setShowHotspots] = useState(true);
   const [hotspotId, setHotspotId] = useState<string | null>(null);
   const [settledPinsKey, setSettledPinsKey] = useState('');
+  const [realOnly, setRealOnly] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [hideShareCard, setHideShareCard] = useState(false);
 
   useEffect(() => {
     followingRef.current = following;
@@ -162,7 +166,13 @@ export default function MapScreen() {
       if (alive) setLoaded({ center: searchCenter, people: ps });
     });
     return () => { alive = false; };
-  }, [searchCenter, sessionId, showDemo]);
+  }, [searchCenter, sessionId, showDemo, refreshTick]);
+  // Real members move and sign up, so refresh the map every 45 seconds while signed in.
+  useEffect(() => {
+    if (!sessionId) return;
+    const t = setInterval(() => setRefreshTick((n) => n + 1), 45_000);
+    return () => clearInterval(t);
+  }, [sessionId]);
   const loading = loaded?.center !== searchCenter;
   const pool = useMemo(() => loaded?.people ?? [], [loaded]);
 
@@ -173,10 +183,38 @@ export default function MapScreen() {
   const placeLabel = me ? (loc.place ?? 'Your location') : areaName;
 
   const people = useMemo(() => {
-    return applyFilters(pool, filters, blocked)
+    return applyFilters(realOnly ? pool.filter((p) => !p.isDemo) : pool, filters, blocked)
       .map((p) => ({ ...p, distanceMi: distanceMi(origin, p.coord), strength: matchStrength(p, prefs) }))
       .sort((a, b) => matchScore(b, prefs) - matchScore(a, prefs) || a.distanceMi - b.distanceMi);
-  }, [pool, filters, blocked, prefs, origin]);
+  }, [pool, filters, blocked, prefs, origin, realOnly]);
+  const realCount = people.filter((p) => !p.isDemo).length;
+
+  // "Someone is nearby" alerts: real members within 1 mile of your live position, while the map is open.
+  const alertPool = useMemo(() => pool.filter((p) => !blocked.includes(p.id)), [pool, blocked]);
+  const liveMe = live && loc.fix ? loc.fix.coord : null;
+  useNearbyAlerts(app.nearbyAlerts, liveMe, alertPool);
+  const closeBy = liveMe ? peopleWithin(liveMe, alertPool).length : 0;
+  const toggleAlerts = async () => {
+    if (app.nearbyAlerts) return app.setNearbyAlerts(false);
+    const ok = await enableNearbyAlerts();
+    if (!ok) {
+      Alert.alert('Notifications are off', 'Allow notifications for this app in Settings to get nearby alerts.', [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Open Settings', onPress: () => Linking.openSettings() },
+      ]);
+      return;
+    }
+    app.setNearbyAlerts(true);
+    Alert.alert('Nearby alerts on', `You'll get a notification when a Connected member is within ${ALERT_RADIUS_MI} mile, while the map is open with live location on.`);
+  };
+  const shareCard =
+    !hideShareCard && app.backendEnabled
+      ? !app.session
+        ? 'signin'
+        : prefs.shareMode === 'public' || !prefs.discoverable
+          ? 'hidden'
+          : null
+      : null;
   const selected = people.find((p) => p.id === selectedId);
   const doorVisible = useCallback((p: NearbyPerson) => !!p.door && doorActive(p.door) && canSeeDoor(p.door, p, prefs, profile), [prefs, profile]);
 
@@ -193,7 +231,7 @@ export default function MapScreen() {
   }, [people, selected]);
 
   // Custom markers re-render while they change, then stop tracking for smooth panning.
-  const pinsKey = `${people.map((p) => p.id + p.strength).join(',')}|${selectedId ?? ''}|${showHotspots}|${hotspotId ?? ''}`;
+  const pinsKey = `${people.map((p) => p.id + p.strength + p.coord.latitude + p.coord.longitude).join(',')}|${selectedId ?? ''}|${showHotspots}|${hotspotId ?? ''}`;
   const hotspot = HOTSPOTS.find((h) => h.id === hotspotId);
   const peopleIn = (h: Hotspot) => people.filter((p) => distanceMi(h.center, p.coord) <= h.radiusMi).length;
   const trackPins = settledPinsKey !== pinsKey;
@@ -365,7 +403,7 @@ export default function MapScreen() {
               onPress={() => select(p)}
               accessibilityLabel={`${p.name}, ${p.role}, ${p.strength === 'strong' ? 'strong match, ' : ''}${approxDistance(p.distanceMi)} ${fromLabel}`}
             >
-              <NodePin name={p.name} role={p.role} uri={p.photo} strength={p.strength} selected={on} door={doorVisible(p)} />
+              <NodePin name={p.name} role={p.role} uri={p.photo} strength={p.strength} selected={on} door={doorVisible(p)} real={!p.isDemo} />
             </Marker>
           );
         })}
@@ -397,7 +435,9 @@ export default function MapScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                 {me && loc.watching ? <View style={styles.locDot} /> : null}
                 <Text style={styles.sub} numberOfLines={1}>
-                  {loading ? 'Loading your network…' : `${strongCount} strong match${strongCount === 1 ? '' : 'es'} · ${people.length} people`}
+                  {loading
+                    ? 'Loading your network…'
+                    : `${strongCount} strong · ${realCount} real member${realCount === 1 ? '' : 's'}${people.length > realCount ? ` · ${people.length - realCount} demo` : ''}`}
                 </Text>
               </View>
             </View>
@@ -419,11 +459,43 @@ export default function MapScreen() {
               onPress={() => setFilters((f) => ({ ...f, fields: f.fields.length === 1 && f.fields[0] === prefs.field ? [] : [prefs.field!] }))}
             />
           ) : null}
+          <Chip label={`Real people${realCount ? ` (${realCount})` : ''}`} selected={realOnly} onPress={() => setRealOnly((v) => !v)} />
           <Chip label="Free today" selected={filters.availability === 'today'} onPress={() => setFilters((f) => ({ ...f, availability: f.availability === 'today' ? 'any' : 'today' }))} />
           {quickGoals.map((g) => (
             <Chip key={g.id} label={g.label} selected={filters.goals.includes(g.id)} onPress={() => setFilters((f) => ({ ...f, goals: f.goals.includes(g.id) ? f.goals.filter((x) => x !== g.id) : [...f.goals, g.id] }))} />
           ))}
         </ScrollView>
+
+        {shareCard ? (
+          <View style={[styles.shareCard, shadow]}>
+            <View style={styles.shareIcon}><Ionicons name={shareCard === 'signin' ? 'people' : 'eye-off'} size={18} color={C.accent} /></View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={styles.shareTitle}>{shareCard === 'signin' ? 'See real people near you' : 'You’re not on the map'}</Text>
+              <Text style={styles.shareBody}>
+                {shareCard === 'signin'
+                  ? 'Sign in so you and other members show up on each other’s maps.'
+                  : 'Other members can’t see you until you share your rough area (about 1 km, never your address).'}
+              </Text>
+              <Pressable
+                onPress={() => (shareCard === 'signin' ? router.push('/auth') : app.setPrefs({ shareMode: 'area', discoverable: true }))}
+                accessibilityRole="button"
+                style={styles.shareBtn}
+              >
+                <Text style={styles.shareBtnText}>{shareCard === 'signin' ? 'Sign in' : 'Show my rough area'}</Text>
+              </Pressable>
+            </View>
+            <Pressable onPress={() => setHideShareCard(true)} accessibilityRole="button" accessibilityLabel="Dismiss" hitSlop={10}>
+              <Ionicons name="close" size={18} color={C.ink3} />
+            </Pressable>
+          </View>
+        ) : null}
+
+        {app.nearbyAlerts && closeBy ? (
+          <View style={[styles.nearPill, shadow]} accessibilityLiveRegion="polite">
+            <View style={styles.nearDot} />
+            <Text style={styles.nearText}>{closeBy} member{closeBy === 1 ? '' : 's'} within {ALERT_RADIUS_MI} mile</Text>
+          </View>
+        ) : null}
 
         {moved ? (
           <Pressable
@@ -445,6 +517,8 @@ export default function MapScreen() {
         <ControlButton icon={following ? 'locate' : 'locate-outline'} active={following} label={following ? 'Following your location' : 'Center on my location'} onPress={recenter} />
         <View style={styles.controlDivider} />
         <ControlButton icon="git-network-outline" active={showLines} label={showLines ? 'Hide connection lines' : 'Show connection lines'} onPress={() => setShowLines((v) => !v)} />
+        <View style={styles.controlDivider} />
+        <ControlButton icon={app.nearbyAlerts ? 'notifications' : 'notifications-outline'} active={app.nearbyAlerts} label={app.nearbyAlerts ? 'Turn off nearby alerts' : 'Alert me when someone is within 1 mile'} onPress={toggleAlerts} />
         <View style={styles.controlDivider} />
         <ControlButton icon={showHotspots ? 'flame' : 'flame-outline'} active={showHotspots} label={showHotspots ? 'Hide hotspots' : 'Show hotspots'} onPress={() => { setShowHotspots((v) => !v); setHotspotId(null); }} />
         <View style={styles.controlDivider} />
@@ -719,6 +793,15 @@ const styles = StyleSheet.create({
   quick: { gap: S.sm, paddingHorizontal: S.md },
   searchHere: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.bg, paddingHorizontal: S.lg, minHeight: 38, borderRadius: R.pill, borderWidth: 1, borderColor: C.line },
   searchHereText: { color: C.accent, fontWeight: '700', fontSize: 14 },
+  shareCard: { flexDirection: 'row', alignItems: 'flex-start', gap: S.md, backgroundColor: C.bg, borderRadius: R.lg, padding: S.md, marginTop: S.sm, borderWidth: 1, borderColor: C.line },
+  shareIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
+  shareTitle: { fontSize: 14, fontWeight: '800', color: C.ink },
+  shareBody: { fontSize: 12, color: C.ink2, lineHeight: 17 },
+  shareBtn: { alignSelf: 'flex-start', marginTop: 6, backgroundColor: C.accent, paddingHorizontal: 12, paddingVertical: 6, borderRadius: R.pill },
+  shareBtnText: { color: C.white, fontWeight: '700', fontSize: 13 },
+  nearPill: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.bg, paddingHorizontal: S.md, minHeight: 32, borderRadius: R.pill, marginTop: S.sm, borderWidth: 1, borderColor: C.line },
+  nearDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#1FB860' },
+  nearText: { fontSize: 13, fontWeight: '700', color: C.ink },
   askBtn: { backgroundColor: C.accent },
   looks: { position: 'absolute', right: S.md + 56, width: 236, backgroundColor: C.bg, borderRadius: 16, borderWidth: 1, borderColor: C.line, padding: 6, gap: 2 },
   lookRow: { flexDirection: 'row', alignItems: 'center', gap: S.sm, padding: 8, borderRadius: 12 },

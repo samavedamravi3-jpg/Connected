@@ -85,7 +85,15 @@ export type CommunityEvent = {
   end: number;
   cost: string;
   description: string;
-  isDemo: true;
+  /** False for real events pulled live from Meetup / Devpost. */
+  isDemo: boolean;
+  /** Photo from the event listing (live events only). */
+  image?: string;
+  /** Link to the original listing. */
+  url?: string;
+  /** Where a live event came from, e.g. "Meetup" or "Devpost". */
+  source?: string;
+  online?: boolean;
 };
 
 export type RequestStatus = 'requested' | 'accepted' | 'declined' | 'cancelled';

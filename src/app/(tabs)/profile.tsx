@@ -5,6 +5,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 're
 import { Avatar, Button, Card, ChipGroup, KV, Note, Row, Section, Tag } from '@/components/ui';
 import { AVAILABILITY, MEET_MODES, audienceLabel, challengeLabel, dietLabel, fieldLabel, foodLabel, goalLabel, statusLabel, traitLabel, venueById } from '@/data/options';
 import { dataSource } from '@/data/source';
+import { enableNearbyAlerts } from '@/lib/nearbyAlerts';
 import type { AvailabilityId } from '@/data/types';
 import { doorState, fullName } from '@/lib/match';
 import { pickProfilePhoto, removeProfilePhoto } from '@/lib/photo';
@@ -126,6 +127,39 @@ export default function ProfileTab() {
             <Text style={T.small}>{prefs.discoverable ? 'People who match can find your profile.' : 'You’re hidden. You can still browse and send requests.'}</Text>
           </View>
           <Switch value={prefs.discoverable} onValueChange={(v) => app.setPrefs({ discoverable: v })} trackColor={{ true: C.accent, false: C.line2 }} accessibilityLabel="Show me in nearby discovery" />
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.switchRow}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={T.label}>Show my rough area on the map</Text>
+            <Text style={T.small}>{prefs.shareMode === 'area' ? 'Members see you near your neighborhood (about 1 km), never your exact spot.' : 'Off: you appear in search, but not on anyone’s map.'}</Text>
+          </View>
+          <Switch value={prefs.shareMode === 'area'} onValueChange={(v) => app.setPrefs({ shareMode: v ? 'area' : 'public' })} trackColor={{ true: C.accent, false: C.line2 }} accessibilityLabel="Show my rough area on the map" />
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.switchRow}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={T.label}>Nearby alerts</Text>
+            <Text style={T.small}>Get a notification when a member is within 1 mile. Only while the map is open; no background tracking.</Text>
+          </View>
+          <Switch
+            value={app.nearbyAlerts}
+            onValueChange={async (v) => {
+              if (!v) return app.setNearbyAlerts(false);
+              if (await enableNearbyAlerts()) app.setNearbyAlerts(true);
+              else Alert.alert('Notifications are off', 'Allow notifications for this app in Settings to get nearby alerts.');
+            }}
+            trackColor={{ true: C.accent, false: C.line2 }}
+            accessibilityLabel="Nearby alerts"
+          />
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.switchRow}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={T.label}>Show demo events</Text>
+            <Text style={T.small}>Events load live from Meetup and Devpost. Turn this on to mix in sample events.</Text>
+          </View>
+          <Switch value={app.showDemoEvents} onValueChange={app.setShowDemoEvents} trackColor={{ true: C.accent, false: C.line2 }} accessibilityLabel="Show demo events" />
         </View>
         <View style={styles.divider} />
         <Text style={T.label}>When I’m usually free</Text>

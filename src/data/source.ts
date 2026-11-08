@@ -5,10 +5,12 @@
  */
 import { fetchNearby, fetchPeopleByIds, fetchVisible } from '@/lib/backend';
 import { distanceMi } from '@/lib/geo';
+import { fetchLiveEvents, getLiveEvent } from '@/lib/liveEvents';
 import { buildDemoEvents, buildDemoPeople } from './demo';
 import { CHALLENGES, FIELDS, FOODS } from './options';
 import type { CommunityEvent, LatLng, NearbyPerson, Person } from './types';
 
+export type EventsResult = { events: CommunityEvent[]; liveCount: number; errors: string[]; fetchedAt: number };
 export type SearchHit = { person: Person; score: number; matched: string[] };
 
 export interface DataSource {
@@ -22,7 +24,8 @@ export interface DataSource {
   getPerson(id: string): Person | undefined;
   /** Like getPerson, but loads a real person from the backend when needed. */
   fetchPerson(id: string): Promise<Person | undefined>;
-  listEvents(): Promise<CommunityEvent[]>;
+  /** Real live events (Meetup, Devpost) plus demo events when `withDemo` is on. */
+  listEvents(opts?: { withDemo?: boolean; force?: boolean }): Promise<EventsResult>;
   getEvent(id: string): CommunityEvent | undefined;
 }
 
@@ -126,8 +129,15 @@ export const dataSource: DataSource = {
     if (p) rememberPeople([p]);
     return p;
   },
-  async listEvents() {
-    return events.filter((e) => e.end > Date.now());
+  async listEvents(opts) {
+    const live = await fetchLiveEvents(opts?.force);
+    const demo = opts?.withDemo ? events.filter((e) => e.end > Date.now()) : [];
+    return {
+      events: [...live.events, ...demo].sort((a, b) => a.start - b.start),
+      liveCount: live.events.length,
+      errors: live.errors,
+      fetchedAt: live.fetchedAt,
+    };
   },
-  getEvent: (id) => events.find((e) => e.id === id),
+  getEvent: (id) => getLiveEvent(id) ?? events.find((e) => e.id === id),
 };

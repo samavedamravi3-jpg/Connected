@@ -24,16 +24,20 @@ export type AppData = {
   blocked: string[];
   /** Show the built-in demo people alongside real users. */
   showDemo: boolean;
+  /** Mix the built-in sample events in with real live events. */
+  showDemoEvents: boolean;
+  /** Notify me (while the app is open) when a real member is within 1 mile. */
+  nearbyAlerts: boolean;
 };
 
 export const emptyPrefs: Prefs = {
   field: null, fromField: null, challenges: [], wantTraits: [], languages: ['English'], meetMode: 'either', foods: [], diet: [],
-  interests: [], skills: [], goals: [], goalOther: '', travelMi: 5, mode: 'seeking', shareMode: 'public', discoverable: true, availability: ['week'],
+  interests: [], skills: [], goals: [], goalOther: '', travelMi: 5, mode: 'seeking', shareMode: 'area', discoverable: true, availability: ['week'],
 };
 const emptyProfile: Profile = { name: '', lastName: '', status: null, org: '', intro: '', offer: '', photoUri: null };
 
 const fresh = (): AppData => ({
-  onboarded: false, prefs: emptyPrefs, profile: emptyProfile, requests: [], messages: {}, incoming: DEMO_INCOMING, doors: [], savedEvents: [], blocked: [], showDemo: true,
+  onboarded: false, prefs: emptyPrefs, profile: emptyProfile, requests: [], messages: {}, incoming: DEMO_INCOMING, doors: [], savedEvents: [], blocked: [], showDemo: true, showDemoEvents: false, nearbyAlerts: false,
 });
 
 export const SAMPLE: Pick<AppData, 'prefs' | 'profile'> = {
@@ -72,6 +76,8 @@ type Ctx = Omit<AppData, 'requests' | 'messages'> & {
   setPrefs: (p: Partial<Prefs>) => void;
   setProfile: (p: Partial<Profile>) => void;
   setShowDemoPeople: (v: boolean) => void;
+  setShowDemoEvents: (v: boolean) => void;
+  setNearbyAlerts: (v: boolean) => void;
   finishOnboarding: () => void;
   loadSample: () => void;
   sendRequest: (personId: string, message: string) => Promise<void>;
@@ -297,6 +303,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setPrefs,
       setProfile,
       setShowDemoPeople: (v) => setData((d) => ({ ...d, showDemo: v })),
+      setShowDemoEvents: (v) => setData((d) => ({ ...d, showDemoEvents: v })),
+      setNearbyAlerts: (v) => setData((d) => ({ ...d, nearbyAlerts: v })),
       finishOnboarding: () => setData((d) => ({ ...d, onboarded: true })),
       loadSample: () => setData((d) => ({ ...d, ...SAMPLE, onboarded: true })),
       sendRequest: async (personId, message) => {

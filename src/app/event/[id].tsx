@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import type { ComponentProps } from 'react';
-import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui';
 import { EVENT_STYLE } from '@/data/eventVisuals';
@@ -36,15 +36,24 @@ export default function EventScreen() {
   const tiles: { icon: IconName; label: string; value: string; sub?: string }[] = [
     { icon: 'calendar', label: 'Date', value: multiDay ? `${dayLabel(e.start)} – ${dayLabel(e.end)}` : dayLabel(e.start), sub: new Date(e.start).toLocaleDateString([], { month: 'long', day: 'numeric' }) },
     { icon: 'time', label: 'Time', value: fmtTime(e.start), sub: multiDay ? 'Multi-day' : `until ${fmtTime(e.end)}` },
-    { icon: 'location', label: 'Where', value: e.areaName, sub: `${approxDistance(distanceMi(origin, e.coord)).replace('about ', '')} ${from}` },
-    { icon: 'pricetag', label: 'Cost', value: e.cost, sub: free ? 'No ticket needed' : 'Pay at the door' },
+    e.online
+      ? { icon: 'globe-outline', label: 'Where', value: 'Online', sub: 'Join from anywhere' }
+      : { icon: 'location', label: 'Where', value: e.areaName, sub: `${approxDistance(distanceMi(origin, e.coord)).replace('about ', '')} ${from}` },
+    { icon: 'pricetag', label: 'Cost', value: e.cost, sub: e.url ? 'RSVP on the listing' : free ? 'No ticket needed' : 'Pay at the door' },
   ];
 
   return (
     <ScrollView style={{ backgroundColor: C.bg }} contentContainerStyle={{ paddingBottom: insets.bottom + S.xxl }}>
       <Stack.Screen options={{ headerShown: false }} />
       <LinearGradient colors={st.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.hero, { paddingTop: insets.top + S.sm }]}>
-        <Ionicons name={st.icon} size={220} color="rgba(255,255,255,0.12)" style={styles.watermark} />
+        {e.image ? (
+          <>
+            <Image source={{ uri: e.image }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityLabel={`Photo for ${e.title}`} />
+            <LinearGradient colors={['rgba(20,14,40,0.35)', 'rgba(20,14,40,0.1)', 'rgba(20,14,40,0.9)']} style={StyleSheet.absoluteFill} />
+          </>
+        ) : (
+          <Ionicons name={st.icon} size={220} color="rgba(255,255,255,0.12)" style={styles.watermark} />
+        )}
         <View style={styles.heroBar}>
           <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back" style={styles.heroBtn} hitSlop={6}>
             <Ionicons name="chevron-back" size={22} color={C.white} />
@@ -58,8 +67,14 @@ export default function EventScreen() {
             <Ionicons name={st.icon} size={12} color={C.white} />
             <Text style={styles.kindText}>{st.label}{e.field ? ` · ${fieldLabel(e.field)}` : ''}</Text>
           </View>
+          {e.source ? (
+            <View style={[styles.kindPill, { backgroundColor: 'rgba(31,184,96,0.9)' }]}>
+              <View style={styles.liveDot} />
+              <Text style={styles.kindText}>Live · {e.source}</Text>
+            </View>
+          ) : null}
           <Text style={styles.title} accessibilityRole="header">{e.title}</Text>
-          <Text style={styles.heroMeta}>{dayLabel(e.start)} · {fmtTime(e.start)} · {e.areaName}</Text>
+          <Text style={styles.heroMeta}>{dayLabel(e.start)} · {fmtTime(e.start)} · {e.online ? 'Online' : e.areaName}</Text>
         </View>
       </LinearGradient>
 
@@ -90,20 +105,25 @@ export default function EventScreen() {
           </View>
         </View>
 
-        <Pressable onPress={() => Linking.openURL(directions)} accessibilityRole="button" style={({ pressed }) => [styles.venue, pressed && { backgroundColor: C.bg2 }]}>
-          <Ionicons name="navigate-circle" size={28} color={st.solid} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.hostName} numberOfLines={1}>{e.venue}</Text>
-            <Text style={T.small}>Get directions</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={C.ink3} />
-        </Pressable>
+        {!e.online ? (
+          <Pressable onPress={() => Linking.openURL(directions)} accessibilityRole="button" style={({ pressed }) => [styles.venue, pressed && { backgroundColor: C.bg2 }]}>
+            <Ionicons name="navigate-circle" size={28} color={st.solid} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.hostName} numberOfLines={1}>{e.venue}</Text>
+              <Text style={T.small}>Get directions</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={C.ink3} />
+          </Pressable>
+        ) : null}
 
         <View style={{ gap: S.sm }}>
-          <Button label={saved ? 'Saved to my plans' : 'Save to my plans'} icon={saved ? 'bookmark' : 'bookmark-outline'} variant={saved ? 'secondary' : 'primary'} onPress={() => app.toggleSavedEvent(e.id)} />
+          {e.url ? <Button label={`Open on ${e.source ?? 'the web'}`} icon="open-outline" onPress={() => Linking.openURL(e.url!)} /> : null}
+          <Button label={saved ? 'Saved to my plans' : 'Save to my plans'} icon={saved ? 'bookmark' : 'bookmark-outline'} variant={saved || e.url ? 'secondary' : 'primary'} onPress={() => app.toggleSavedEvent(e.id)} />
           <Button label="Find people in this field nearby" variant="secondary" icon="people-outline" onPress={() => router.navigate('/')} />
         </View>
-        <Text style={[T.small, { textAlign: 'center' }]}>Demo event · Saving is private. Connected never shows who is going.</Text>
+        <Text style={[T.small, { textAlign: 'center' }]}>
+          {e.source ? `Real event listed on ${e.source}. Details can change, so check the listing before you go.` : 'Demo event.'} Saving is private.
+        </Text>
       </View>
     </ScrollView>
   );
@@ -116,6 +136,7 @@ const styles = StyleSheet.create({
   heroBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' },
   kindPill: { flexDirection: 'row', alignSelf: 'flex-start', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.22)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: R.pill },
   kindText: { color: C.white, fontSize: 12, fontWeight: '800' },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.white },
   title: { color: C.white, fontSize: 28, fontWeight: '800', letterSpacing: -0.5, lineHeight: 32 },
   heroMeta: { color: 'rgba(255,255,255,0.9)', fontSize: 15, fontWeight: '600' },
   body: { padding: S.lg, gap: S.xl, marginTop: -S.lg, backgroundColor: C.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
