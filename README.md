@@ -39,7 +39,7 @@ Checks: `npm run typecheck`, `npx expo lint`, `npx expo-doctor`.
 
 ## Map and location
 
-- Tiles: free CARTO basemap built on OpenStreetMap data, with attribution on the map. No API key is needed in Expo Go. Store builds that use Google Maps on Android need a key in the `react-native-maps` config plugin.
+- Map: the phone's built-in map (Apple Maps on iOS, Google Maps on Android) via `react-native-maps`, in a muted style. No API key is needed in Expo Go. Android store builds need a free Google Maps key in the `react-native-maps` config plugin.
 - Location: one foreground fix with `expo-location` after you allow it. There are no watchers and no background location (disabled in `app.json`).
 
 ## Data
