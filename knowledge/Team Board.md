@@ -9,12 +9,15 @@
 - [x] Event creation
 - [x] Server-side Claude integration and honest fallback
 - [x] Shared knowledge vault and agent instructions
+- [x] Installable mobile app and phone-first layout ([[Mobile App]])
+- [x] Approach coach and discovery-distance preferences
 
 ## Next ownership slots
 | Area | Suggested task | Owner |
 | --- | --- | --- |
 | Backend | Production event feed, pagination, request limits | Unassigned |
-| AI | Configure key, validate drafts with real profiles | Unassigned |
+| AI | Key saved locally; set hosted secret; review coach replies with real profiles | Unassigned |
+| Mobile | Test install and sign-in on a real iPhone and Android phone | Unassigned |
 | Community | Recruit consenting mentors for a live demo | Unassigned |
 | Product | Test the first-conversation flow with 3 attendees | Unassigned |
 | Demo | Pitch and walkthrough | Unassigned |

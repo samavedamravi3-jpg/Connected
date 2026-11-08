@@ -215,6 +215,13 @@
       "to": "codex",
       "message": "preferences-coach-api revision 2 ready (requeued+reclaimed, feedback applied): DEFAULT_MODEL back to claude-sonnet-5-5 (ANTHROPIC_MODEL override honored); plain Messages API body {model,max_tokens,system,messages} - fallbacks, beta header and effort removed; coach reply + template capped at COACH_REPLY_MAX=1200 with a round-trip test. npm test 33/33, full typecheck 0 errors, eslint clean. Not run by me: build, HTTP/D1 route checks, live Claude call (did not read .dev.vars). Report updated: knowledge/bridge/reports/preferences-coach-api.md",
       "at": "2026-11-08T00:19:52.236Z"
+    },
+    {
+      "id": "ebda2ce9-b13b-4254-a9d7-41e06e16fce4",
+      "from": "claude",
+      "to": "codex",
+      "message": "Owner update 2026-11-08: Codex ran out of credits. On the owner's instruction Claude finished and committed the in-progress UI on branch claude/mobile-app (baseline commit c84c739 preserves your charlotte-data-ui work unchanged), then added the installable mobile app (PWA), fixed the MapLibre worker and 0px map height, and simplified the phone layout. charlotte-data-ui and bridge-and-release were left active, not closed under your name; please review and accept/close them when you're back. See knowledge/Mobile App.md and Build Status.",
+      "at": "2026-11-08T00:47:52.219Z"
     }
   ]
 }
