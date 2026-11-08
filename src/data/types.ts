@@ -63,8 +63,11 @@ export type Person = {
   photo?: string;
   door?: OpenDoor;
   /** Demo only: how the simulated reply goes. */
-  demoResponse: 'accept' | 'decline';
-  isDemo: true;
+  demoResponse?: 'accept' | 'decline';
+  /** True for built-in demo profiles; false for real people from the backend. */
+  isDemo: boolean;
+  /** Real users who share "public places only" have no area; `coord` is then a placeholder. */
+  areaHidden?: boolean;
 };
 
 export type NearbyPerson = Person & { distanceMi: number };
@@ -94,6 +97,10 @@ export type ConnectionRequest = {
   createdAt: number;
   updatedAt: number;
   respondAt: number;
+  /** Stored in the backend (real person) rather than simulated on the phone. */
+  remote?: boolean;
+  /** For remote requests: the other person sent it to you. */
+  incoming?: boolean;
 };
 export type Message = { id: string; from: 'me' | 'them'; text: string; at: number; demo?: boolean };
 

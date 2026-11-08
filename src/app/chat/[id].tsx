@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MeetSpots } from '@/components/MeetSpots';
 import { Button, IconButton, Note } from '@/components/ui';
@@ -17,13 +17,27 @@ export default function Chat() {
   const insets = useSafeAreaInsets();
   const [text, setText] = useState(draft ?? '');
   const [picking, setPicking] = useState(false);
+  const [sending, setSending] = useState(false);
   const req = app.requests.find((r) => r.id === id);
   const p = req ? dataSource.getPerson(req.personId) : undefined;
   const msgs = app.messages[id] ?? [];
 
-  if (!req || !p) return <Text style={[T.body, { padding: S.lg }]}>Conversation not found.</Text>;
+  if (!req || !p) return <Text style={[T.body, { padding: S.lg }]}>{app.session ? 'Loading conversation…' : 'Conversation not found.'}</Text>;
   const canWrite = req.status === 'accepted';
   const first = firstName(p.name);
+  const send = async () => {
+    const body = text.trim();
+    if (!body || sending) return;
+    setSending(true);
+    try {
+      await app.sendMessage(req.id, body);
+      setText('');
+    } catch (e) {
+      Alert.alert('Message not sent', e instanceof Error ? e.message : 'Check your connection and try again.');
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: C.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
@@ -34,7 +48,9 @@ export default function Chat() {
         contentContainerStyle={{ padding: S.lg, gap: S.md }}
         ListHeaderComponent={
           <Note icon="shield-checkmark-outline">
-            Meet somewhere public, like a library or café. Messages in this demo stay on your phone, and {first}&apos;s replies are simulated.
+            {req.remote
+              ? `Meet somewhere public, like a library or café, and tell a friend where you'll be. Only you and ${first} can see this chat.`
+              : `Meet somewhere public, like a library or café. ${first} is a demo profile, so messages stay on your phone and replies are simulated.`}
           </Note>
         }
         renderItem={({ item }) => {
@@ -58,7 +74,7 @@ export default function Chat() {
           </Pressable>
           <View style={styles.composer}>
             <TextInput value={text} onChangeText={setText} placeholder={`Message ${first}`} placeholderTextColor={C.ink3} style={styles.input} multiline accessibilityLabel="Message" />
-            <Button label="Send" small disabled={!text.trim()} onPress={() => { app.sendMessage(req.id, text.trim()); setText(''); }} />
+            <Button label={sending ? '…' : 'Send'} small disabled={!text.trim() || sending} onPress={send} />
           </View>
         </View>
       ) : (

@@ -111,13 +111,16 @@ export default function MapScreen() {
   const loc = useLiveLocation(live, onFix);
 
   // Everyone opted in within the pool radius of the search center; filtering happens locally.
+  // Reloads when you sign in/out or toggle demo people, so real people appear right away.
+  const sessionId = app.session?.userId ?? '';
+  const showDemo = app.showDemo;
   useEffect(() => {
     let alive = true;
     dataSource.listNearbyPeople(searchCenter, POOL_RADIUS_MI).then((ps) => {
       if (alive) setLoaded({ center: searchCenter, people: ps });
     });
     return () => { alive = false; };
-  }, [searchCenter]);
+  }, [searchCenter, sessionId, showDemo]);
   const loading = loaded?.center !== searchCenter;
   const pool = useMemo(() => loaded?.people ?? [], [loaded]);
 
@@ -557,7 +560,7 @@ export default function MapScreen() {
                   </Pressable>
                 );
               })}
-              <Text style={[T.small, { textAlign: 'center', paddingVertical: S.md }]}>Demo profiles · shown at their neighborhood, never a live location</Text>
+              <Text style={[T.small, { textAlign: 'center', paddingVertical: S.md }]}>Shown at their neighborhood, never a live location · demo profiles are marked</Text>
             </View>
           ) : loading ? null : (
             <View style={styles.empty}>

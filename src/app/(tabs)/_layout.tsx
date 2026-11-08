@@ -15,7 +15,10 @@ export default function TabLayout() {
   }
   if (!onboarded) return <Redirect href="/onboarding" />;
 
-  const waiting = incoming.filter((i) => i.state === 'new').length + requests.filter((r) => r.status === 'accepted' && r.updatedAt > now - 60 * 60_000).length;
+  const waiting =
+    incoming.filter((i) => i.state === 'new').length +
+    requests.filter((r) => r.incoming && r.status === 'requested').length +
+    requests.filter((r) => !r.incoming && r.status === 'accepted' && r.updatedAt > now - 60 * 60_000).length;
 
   return (
     <Tabs

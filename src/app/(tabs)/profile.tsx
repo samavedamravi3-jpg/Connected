@@ -49,6 +49,54 @@ export default function ProfileTab() {
       </View>
       {profile.intro ? <Text style={T.body}>{profile.intro}</Text> : null}
 
+      {app.backendEnabled ? (
+        <Card>
+          {app.session ? (
+            <>
+              <View style={styles.switchRow}>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={T.label}>Signed in</Text>
+                  <Text style={T.small} numberOfLines={1}>{app.session.email}</Text>
+                </View>
+                <Button
+                  label="Sign out"
+                  variant="secondary"
+                  small
+                  onPress={() =>
+                    Alert.alert('Sign out?', 'You won’t receive requests on this phone until you sign in again.', [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Sign out', style: 'destructive', onPress: () => { app.signOut(); } },
+                    ])
+                  }
+                />
+              </View>
+              <Text style={T.small}>
+                {prefs.shareMode === 'area'
+                  ? 'Your profile is saved to your account. People see your neighborhood on the map, never your exact location.'
+                  : 'Your profile is saved to your account. You chose public places only, so you appear in search but not on the map.'}
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={T.label}>Create an account</Text>
+              <Text style={T.small}>Save your profile so real people nearby can find you, and send real requests and messages.</Text>
+              <View style={{ flexDirection: 'row', gap: S.sm }}>
+                <Button label="Create account" small onPress={() => router.push({ pathname: '/onboarding', params: { edit: 'account' } })} style={{ flex: 1 }} />
+                <Button label="Sign in" small variant="secondary" onPress={() => router.push('/auth')} style={{ flex: 1 }} />
+              </View>
+            </>
+          )}
+          <View style={styles.divider} />
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={T.label}>Show demo people</Text>
+              <Text style={T.small}>Built-in sample profiles, marked &quot;Demo&quot;. Turn off once real people are on.</Text>
+            </View>
+            <Switch value={app.showDemo} onValueChange={app.setShowDemoPeople} trackColor={{ true: C.accent, false: C.line2 }} accessibilityLabel="Show demo people" />
+          </View>
+        </Card>
+      ) : null}
+
       <Card>
         <View style={styles.switchRow}>
           <View style={{ flex: 1, gap: 2 }}>

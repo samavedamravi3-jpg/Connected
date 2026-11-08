@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line } from 'react-native-svg';
+import { AuthForm } from '@/components/AuthForm';
 import { Grid, Label, OptionCard, StepTitle, Tile } from '@/components/OnboardingParts';
 import { Avatar, Button, Chip, IconButton, Segmented } from '@/components/ui';
 import { AVAILABILITY, CHALLENGES, CHARLOTTE_CENTER, DIETS, FIELDS, FOODS, GOALS, INTERESTS, LANGUAGES, MEET_MODES, SKILLS, STATUSES, TRAITS, TRAVEL_MI } from '@/data/options';
@@ -27,12 +28,16 @@ const MAX_CHALLENGES = 3;
 const toggle = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
 export default function Onboarding() {
-  const { edit } = useLocalSearchParams<{ edit?: 'prefs' | 'profile' }>();
+  const { edit: editParam } = useLocalSearchParams<{ edit?: 'prefs' | 'profile' | 'account' }>();
+  // "account" opens just the create-account step (from the Profile tab).
+  const accountOnly = editParam === 'account';
+  const edit = accountOnly ? undefined : editParam;
   const app = useApp();
   const insets = useSafeAreaInsets();
   const scroll = useRef<ScrollViewInstance>(null);
   const steps = edit === 'prefs' ? PREF_STEPS : edit === 'profile' ? (['profile'] as StepId[]) : ALL_STEPS;
-  const [phase, setPhase] = useState<'welcome' | 'steps' | 'done'>(edit ? 'steps' : 'welcome');
+  const [phase, setPhase] = useState<'welcome' | 'steps' | 'account' | 'done'>(accountOnly ? 'account' : edit ? 'steps' : 'welcome');
+  const [confirmNote, setConfirmNote] = useState('');
   const [i, setI] = useState(0);
   const [err, setErr] = useState('');
   const [customSkill, setCustomSkill] = useState('');
@@ -61,6 +66,8 @@ export default function Onboarding() {
     if (e) return setErr(e);
     if (i < steps.length - 1) return go(i + 1);
     if (edit) return router.back();
+    // With a backend, save everything to an account so other people can find you.
+    if (app.backendEnabled && !app.session) return setPhase('account');
     app.finishOnboarding();
     setPhase('done');
   }
@@ -77,8 +84,58 @@ export default function Onboarding() {
     setProfile({ photoUri: res.uri });
   }
 
-  if (phase === 'welcome') return <Welcome onStart={() => setPhase('steps')} onSample={() => { app.loadSample(); router.replace('/'); }} />;
+  if (phase === 'welcome') {
+    return (
+      <Welcome
+        onStart={() => setPhase('steps')}
+        onSample={() => { app.loadSample(); router.replace('/'); }}
+        onSignIn={app.backendEnabled ? () => router.push('/auth') : undefined}
+      />
+    );
+  }
   if (phase === 'done') return <Done />;
+  if (phase === 'account') {
+    return (
+      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: C.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={{ padding: S.lg, paddingTop: insets.top + S.sm, paddingBottom: insets.bottom + S.xl, gap: S.xl }} keyboardShouldPersistTaps="handled">
+          <IconButton icon="chevron-back" label="Back" onPress={() => (accountOnly ? router.back() : setPhase('steps'))} style={{ marginLeft: -S.sm }} />
+          <StepTitle
+            icon="person-add-outline"
+            section="Your account"
+            title="Save your profile"
+            sub="Create an account so people nearby can find you and your requests and chats reach real people. Your email is never shown to anyone."
+          />
+          {confirmNote ? (
+            <View style={styles.notice}>
+              <Ionicons name="mail-outline" size={22} color={C.accent} />
+              <Text style={[T.body, { flex: 1, fontSize: 15, lineHeight: 21 }]}>{confirmNote}</Text>
+            </View>
+          ) : null}
+          <AuthForm
+            mode={confirmNote ? 'signin' : 'signup'}
+            onDone={(r) => {
+              if (r.mode === 'signup' && r.needsConfirmation) {
+                setConfirmNote('Check your email and tap the confirmation link, then sign in below.');
+                return;
+              }
+              if (accountOnly) return router.back();
+              app.finishOnboarding();
+              setPhase('done');
+            }}
+          />
+          {accountOnly ? null : (
+            <Pressable
+              onPress={() => { app.finishOnboarding(); setPhase('done'); }}
+              accessibilityRole="button"
+              style={{ alignSelf: 'center', minHeight: 44, justifyContent: 'center' }}
+            >
+              <Text style={T.small}>Skip for now (you&apos;ll only see demo people)</Text>
+            </Pressable>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
 
   const optional = step === 'people' || step === 'interests' || step === 'food';
   const last = i === steps.length - 1;
@@ -350,7 +407,7 @@ export default function Onboarding() {
   );
 }
 
-function Welcome({ onStart, onSample }: { onStart: () => void; onSample: () => void }) {
+function Welcome({ onStart, onSample, onSignIn }: { onStart: () => void; onSample: () => void; onSignIn?: () => void }) {
   const insets = useSafeAreaInsets();
   return (
     <View style={{ flex: 1, backgroundColor: C.accent }}>
@@ -385,8 +442,9 @@ function Welcome({ onStart, onSample }: { onStart: () => void; onSample: () => v
         </View>
         <View style={{ gap: S.sm }}>
           <Button label="Get started" icon="arrow-forward" onPress={onStart} />
-          <Button label="Look around with a sample profile" variant="secondary" onPress={onSample} />
-          <Text style={[T.small, { textAlign: 'center' }]}>The people and events in this build are demo profiles.</Text>
+          {onSignIn ? <Button label="I already have an account" variant="secondary" onPress={onSignIn} /> : null}
+          <Button label="Look around with a sample profile" variant="quiet" onPress={onSample} />
+          <Text style={[T.small, { textAlign: 'center' }]}>Demo people are marked as demo profiles.</Text>
         </View>
       </ScrollView>
     </View>

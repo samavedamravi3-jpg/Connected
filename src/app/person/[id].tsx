@@ -1,13 +1,14 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MeetSpots } from '@/components/MeetSpots';
 import { Avatar, Button, IconButton, Segmented, Tag } from '@/components/ui';
 import { audienceLabel, availabilityLabel, fieldLabel, venueById } from '@/data/options';
 import { dataSource } from '@/data/source';
+import type { Person } from '@/data/types';
 import { approxDistance } from '@/lib/geo';
 import {
   canSeeDoor, conversationStarter, doorActive, doorState, firstName, matchPoints, matchStrength, sharedInterests, sharedLanguages, sharedSkills, type Tone,
@@ -28,7 +29,17 @@ export default function PersonScreen() {
   const app = useApp();
   const insets = useSafeAreaInsets();
   const scroll = useRef<ScrollViewInstance>(null);
-  const p = dataSource.getPerson(id);
+  // Demo people and already-loaded real people are instant; others are fetched from the backend.
+  const [fetched, setFetched] = useState<{ id: string; person: Person | undefined } | null>(null);
+  const cached = dataSource.getPerson(id);
+  useEffect(() => {
+    if (dataSource.getPerson(id)) return;
+    let alive = true;
+    dataSource.fetchPerson(id).then((person) => alive && setFetched({ id, person }));
+    return () => { alive = false; };
+  }, [id]);
+  const p = cached ?? (fetched?.id === id ? fetched.person : undefined);
+  const loadingPerson = !cached && fetched?.id !== id;
   const door = p?.door && doorActive(p.door) ? p.door : undefined;
   const seeDoor = !!(p && door && canSeeDoor(door, p, app.prefs, app.profile));
   const [tone, setTone] = useState<Tone>('friendly');
@@ -41,7 +52,7 @@ export default function PersonScreen() {
   if (!p) {
     return (
       <View style={{ flex: 1, padding: S.lg, paddingTop: insets.top + S.lg, gap: S.md }}>
-        <Text style={T.h2}>This profile isn&apos;t available</Text>
+        <Text style={T.h2}>{loadingPerson ? 'Loading profile…' : 'This profile isn’t available'}</Text>
         <Button label="Back to map" onPress={() => router.back()} />
       </View>
     );
@@ -74,12 +85,21 @@ export default function PersonScreen() {
     setEdited(false);
   };
 
-  const send = () => {
+  const send = async () => {
     if (msg.trim().length < 20) {
       Alert.alert('Add a little more', `A sentence or two helps ${first} know what you'd like to talk about.`);
       return;
     }
-    app.sendRequest(p.id, msg.trim());
+    try {
+      await app.sendRequest(p.id, msg.trim());
+    } catch (e) {
+      Alert.alert('Couldn’t send your request', e instanceof Error ? e.message : 'Check your connection and try again.');
+    }
+  };
+  const reportAndBlock = (reason: string) => {
+    app.report(p.id, reason);
+    app.block(p.id);
+    router.back();
   };
 
   const more = () =>
@@ -97,9 +117,9 @@ export default function PersonScreen() {
         text: 'Report',
         style: 'destructive',
         onPress: () =>
-          Alert.alert(`Report ${first}`, 'What happened? Reporting also blocks them. In this demo, reports stay on your phone.', [
-            { text: 'Made me uncomfortable', onPress: () => { app.block(p.id); router.back(); } },
-            { text: 'Spam or selling something', onPress: () => { app.block(p.id); router.back(); } },
+          Alert.alert(`Report ${first}`, p.isDemo ? 'What happened? Reporting also blocks them. Demo profiles’ reports stay on your phone.' : 'What happened? Reporting also blocks them, and the report is sent for review.', [
+            { text: 'Made me uncomfortable', onPress: () => reportAndBlock('Made me uncomfortable') },
+            { text: 'Spam or selling something', onPress: () => reportAndBlock('Spam or selling something') },
             { text: 'Cancel', style: 'cancel' },
           ]),
       },
@@ -131,7 +151,7 @@ export default function PersonScreen() {
           </View>
           <View style={{ flexDirection: 'row', gap: 6 }}>
             {strength === 'strong' ? <Tag label="Strong match for you" tone="accent" icon="star" /> : strength === 'good' ? <Tag label="Good match" tone="accent" /> : null}
-            <Tag label="Demo profile" icon="flask-outline" />
+            {p.isDemo ? <Tag label="Demo profile" icon="flask-outline" /> : <Tag label="Connected member" tone="ok" icon="checkmark-circle" />}
           </View>
         </LinearGradient>
 
@@ -209,15 +229,35 @@ export default function PersonScreen() {
           </Block>
 
           <View onLayout={(e) => setComposeY(e.nativeEvent.layout.y)}>
-            <Block title={req ? 'Your request' : 'Say hello'}>
+            <Block title={req ? (req.incoming && req.status === 'requested' ? `${first} wants to connect` : 'Your request') : 'Say hello'}>
               {isBlocked ? (
                 <Text style={T.muted}>You blocked {first}. Unblock them in Profile to connect.</Text>
+              ) : req?.incoming && req.status === 'requested' ? (
+                <View style={[styles.status, { backgroundColor: C.accentSoft, borderColor: C.line }]}>
+                  <Text style={styles.quote}>{req.message}</Text>
+                  <View style={{ flexDirection: 'row', gap: S.sm }}>
+                    <Button
+                      label="Accept"
+                      icon="checkmark"
+                      onPress={() => app.respondRemote(req.id, 'accepted').catch((e) => Alert.alert('Couldn’t accept', e instanceof Error ? e.message : 'Try again.'))}
+                      style={{ flex: 1 }}
+                    />
+                    <Button
+                      label="Decline"
+                      variant="secondary"
+                      onPress={() => app.respondRemote(req.id, 'declined').catch((e) => Alert.alert('Couldn’t decline', e instanceof Error ? e.message : 'Try again.'))}
+                      style={{ flex: 1 }}
+                    />
+                  </View>
+                  <Text style={T.small}>Accepting opens a private chat. Declining sends {first} a short, polite note with no reason.</Text>
+                </View>
               ) : req ? (
                 <RequestStatus
                   status={req.status}
                   first={first}
                   message={req.message}
-                  onCancel={() => app.cancelRequest(req.id)}
+                  demo={!req.remote}
+                  onCancel={() => app.cancelRequest(req.id).catch((e) => Alert.alert('Couldn’t cancel', e instanceof Error ? e.message : 'Try again.'))}
                   onSim={(s) => app.simulateReply(req.id, s)}
                   onOpenChat={() => router.push({ pathname: '/chat/[id]', params: { id: req.id } })}
                 />
@@ -264,10 +304,11 @@ function Block({ title, hint, children }: { title: string; hint?: string; childr
   );
 }
 
-function RequestStatus({ status, first, message, onCancel, onSim, onOpenChat }: {
+function RequestStatus({ status, first, message, demo, onCancel, onSim, onOpenChat }: {
   status: 'requested' | 'accepted' | 'declined' | 'cancelled';
   first: string;
   message: string;
+  demo: boolean;
   onCancel: () => void;
   onSim: (s: 'accepted' | 'declined') => void;
   onOpenChat: () => void;
@@ -279,13 +320,17 @@ function RequestStatus({ status, first, message, onCancel, onSim, onOpenChat }: 
         <Text style={T.body}>Waiting for {first} to reply. It isn&apos;t a confirmed meeting until they accept.</Text>
         <Text style={styles.quote} numberOfLines={4}>{message}</Text>
         <Button label="Cancel request" variant="secondary" small onPress={onCancel} style={{ alignSelf: 'flex-start' }} />
-        <View style={styles.demo}>
-          <Text style={T.small}>Demo: a reply arrives in a few seconds, or</Text>
-          <View style={{ flexDirection: 'row', gap: S.sm }}>
-            <Button label="Accept now" variant="secondary" small onPress={() => onSim('accepted')} />
-            <Button label="Decline now" variant="secondary" small onPress={() => onSim('declined')} />
+        {demo ? (
+          <View style={styles.demo}>
+            <Text style={T.small}>Demo: a reply arrives in a few seconds, or</Text>
+            <View style={{ flexDirection: 'row', gap: S.sm }}>
+              <Button label="Accept now" variant="secondary" small onPress={() => onSim('accepted')} />
+              <Button label="Decline now" variant="secondary" small onPress={() => onSim('declined')} />
+            </View>
           </View>
-        </View>
+        ) : (
+          <Text style={T.small}>You&apos;ll get their reply here as soon as they respond.</Text>
+        )}
       </View>
     );
   if (status === 'accepted')

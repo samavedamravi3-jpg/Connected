@@ -29,7 +29,7 @@ export default function SearchScreen() {
       if (alive) setResult({ q: query, hits: hits.filter((h) => !app.blocked.includes(h.person.id)) });
     });
     return () => { alive = false; };
-  }, [q, app.blocked]);
+  }, [q, app.blocked, app.session, app.showDemo]);
 
   const query = q.trim();
   const hits = query && result?.q === query ? result.hits : [];
@@ -96,7 +96,7 @@ export default function SearchScreen() {
           contentContainerStyle={{ paddingHorizontal: S.lg, paddingBottom: insets.bottom + S.xl }}
           keyboardShouldPersistTaps="handled"
           ListHeaderComponent={
-            hits.length ? <Text style={[T.small, { paddingVertical: S.md }]}>{hits.length} {hits.length === 1 ? 'person' : 'people'} · demo profiles</Text> : undefined
+            hits.length ? <Text style={[T.small, { paddingVertical: S.md }]}>{hits.length} {hits.length === 1 ? 'person' : 'people'}</Text> : undefined
           }
           ListEmptyComponent={
             searching ? undefined : (
@@ -125,7 +125,7 @@ export default function SearchScreen() {
                   <Text style={T.small} numberOfLines={1}>{p.role} · {p.org}</Text>
                   <Text style={styles.matched} numberOfLines={1}>Matched: {matched.slice(0, 3).join(', ')}</Text>
                 </View>
-                <Text style={styles.dist}>{approxDistance(d).replace('about ', '')}</Text>
+                <Text style={styles.dist}>{p.areaHidden ? 'Public places' : approxDistance(d).replace('about ', '')}</Text>
               </Pressable>
             );
           }}

@@ -24,6 +24,8 @@ export function MeetSpots({ person, onUse, useLabel = 'Suggest this' }: Props) {
   const origin = app.here?.coord ?? CHARLOTTE_CENTER;
   const originLabel = app.here?.isGps ? 'you' : app.here?.label ?? 'Charlotte';
   const diets = [...new Set<DietId>([...app.prefs.diet, ...person.diet])];
+  // People who share "public places only" have no area, so look for spots near you instead.
+  const theirs = person.areaHidden ? origin : person.coord;
   const key = `${person.id}|${origin.latitude.toFixed(2)},${origin.longitude.toFixed(2)}|${app.prefs.foods.join(',')}|${diets.join(',')}`;
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<{ key: string; plan: MeetPlan } | null>(null);
@@ -31,7 +33,7 @@ export function MeetSpots({ person, onUse, useLabel = 'Suggest this' }: Props) {
 
   useEffect(() => {
     let alive = true;
-    findMeetSpots(origin, person.coord, app.prefs.foods, person.foods, diets).then((plan) => {
+    findMeetSpots(origin, theirs, app.prefs.foods, person.foods, diets).then((plan) => {
       if (alive) setResult({ key: `${key}#${attempt}`, plan });
     });
     return () => { alive = false; };
@@ -82,7 +84,7 @@ export function MeetSpots({ person, onUse, useLabel = 'Suggest this' }: Props) {
                 <Text style={styles.spotName} numberOfLines={1}>{s.name}</Text>
                 <Text style={T.small} numberOfLines={1}>{s.kind} · {s.area}</Text>
                 <Text style={styles.spotDist} numberOfLines={1}>
-                  {approxDistance(s.fromA)} from {originLabel} · {approxDistance(s.fromB)} from {first}
+                  {approxDistance(s.fromA)} from {originLabel}{person.areaHidden ? '' : ` · ${approxDistance(s.fromB)} from ${first}`}
                 </Text>
                 {s.dietOk.length ? (
                   <Text style={styles.diet}>

@@ -35,6 +35,7 @@ export default function RootLayout() {
             <Stack.Screen name="event/[id]" options={{ title: 'Event' }} />
             <Stack.Screen name="chat/[id]" options={{ title: 'Conversation' }} />
             <Stack.Screen name="search" options={{ headerShown: false }} />
+            <Stack.Screen name="auth" options={{ headerShown: false }} />
             <Stack.Screen name="assistant" options={{ headerShown: false, presentation: 'modal' }} />
           </Stack>
           {introDone ? null : <Intro onDone={() => setIntroDone(true)} />}

@@ -72,7 +72,7 @@ export function PersonCard({ person: p, distanceFromLabel, prefs, profile, onOpe
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.md }}>
         <Button label="View profile" onPress={onOpen} style={{ flex: 1 }} />
-        <Text style={styles.demo}>Demo profile</Text>
+        <Text style={styles.demo}>{p.isDemo ? 'Demo profile' : 'Connected member'}</Text>
       </View>
     </View>
   );
