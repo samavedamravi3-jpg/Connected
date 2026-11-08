@@ -35,6 +35,11 @@ import {
 import NearbyMap, { type MapItem } from "./nearby-map";
 import {
   NYC,
+  CHARLOTTE,
+  normalizeProfile,
+  demoPeopleFor,
+  demoHotspotsFor,
+  eventTime,
   blankProfile,
   people as samplePeople,
   events as sampleEvents,
@@ -49,6 +54,11 @@ import {
   type Person,
   type LocalEvent,
 } from "@/lib/network";
+
+import Avatar from "./avatar";
+import Onboarding from "./onboarding";
+import ApproachCoach from "./approach-coach";
+import { upcomingCharlotteEvents } from "@/lib/local-events";
 
 type Connection = {
   id: string;
@@ -83,22 +93,6 @@ async function api(path: string, method = "GET", body?: unknown) {
     throw new Error(data.error || "Something went wrong. Please try again.");
   return data;
 }
-function Avatar({
-  person,
-  large = false,
-}: {
-  person: { name: string; color?: string };
-  large?: boolean;
-}) {
-  return (
-    <span
-      className={`avatar ${large ? "large" : ""}`}
-      style={{ background: person.color || "#ddd3ec" }}
-    >
-      {initials(person.name) || "You"}
-    </span>
-  );
-}
 function Modal({
   children,
   close,
@@ -109,11 +103,13 @@ function Modal({
   wide?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(close);
+  closeRef.current = close;
   useEffect(() => {
     const prior = document.activeElement as HTMLElement;
     ref.current?.focus();
     const listener = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key === "Escape") closeRef.current();
       if (e.key === "Tab") {
         const els = ref.current?.querySelectorAll<HTMLElement>(
           'button,a[href],input,select,textarea,[tabindex="0"]',
@@ -135,7 +131,7 @@ function Modal({
       document.removeEventListener("keydown", listener);
       prior?.focus();
     };
-  }, [close]);
+  }, []);
   return (
     <div
       className="modal-backdrop"
@@ -177,14 +173,15 @@ export default function ConnectedApp() {
     [query, setQuery] = useState(""),
     [industry, setIndustry] = useState("All industries"),
     [company, setCompany] = useState("All companies"),
-    [radius, setRadius] = useState(2),
+    [radius, setRadius] = useState(5),
     [onlyAvailable, setOnlyAvailable] = useState(false),
     [filters, setFilters] = useState(false),
-    [center, setCenter] = useState<[number, number]>(NYC),
+    [center, setCenter] = useState<[number, number]>(CHARLOTTE),
     [demo, setDemo] = useState(true),
     [gps, setGps] = useState<[number, number] | null>(null);
-  const [people, setPeople] = useState<Person[]>(samplePeople),
-    [events, setEvents] = useState<LocalEvent[]>(sampleEvents),
+  const [city, setCity] = useState<"Charlotte" | "NYC">("Charlotte");
+  const [people, setPeople] = useState<Person[]>(demoPeopleFor("Charlotte")),
+    [events, setEvents] = useState<LocalEvent[]>(upcomingCharlotteEvents()),
     [selected, setSelected] = useState<MapItem | null>(null),
     [saved, setSaved] = useState<string[]>([]),
     [blocked, setBlocked] = useState<string[]>([]),
@@ -199,8 +196,8 @@ export default function ConnectedApp() {
     time: "",
     category: "Technology",
     description: "",
-    lat: String(NYC[0]),
-    lng: String(NYC[1]),
+    lat: String(CHARLOTTE[0]),
+    lng: String(CHARLOTTE[1]),
   });
   const notice = (s: string) => setToast(s);
   useEffect(() => {
@@ -208,9 +205,10 @@ export default function ConnectedApp() {
       .then((d) => {
         setSignedIn(true);
         if (d.profile) {
-          setProfile(d.profile);
-          setDraft(d.profile);
+          setProfile(normalizeProfile(d.profile));
+          setDraft(normalizeProfile(d.profile));
           setUntil(d.visibleUntil);
+          if ((d.profile.onboardingVersion || 1) < 2) setOnboard(true);
         } else setOnboard(true);
       })
       .catch(() => {
@@ -237,18 +235,20 @@ export default function ConnectedApp() {
   }, [signedIn]);
   useEffect(() => {
     if (demo) {
-      setPeople(samplePeople);
-      setEvents(sampleEvents);
+      setPeople(demoPeopleFor(city));
+      setEvents(
+        city === "Charlotte" ? upcomingCharlotteEvents() : sampleEvents,
+      );
       return;
     }
     if (!signedIn) return;
     let active = true;
     const update = () =>
-      api("discover")
+      api(`discover?latitude=${center[0]}&longitude=${center[1]}`)
         .then((d) => {
           if (active) {
             setPeople(d.people);
-            setEvents(d.events);
+            setEvents([...upcomingCharlotteEvents(), ...d.events]);
           }
         })
         .catch((e) => {
@@ -260,7 +260,7 @@ export default function ConnectedApp() {
       active = false;
       clearInterval(t);
     };
-  }, [demo, signedIn]);
+  }, [demo, signedIn, city, center]);
   useEffect(() => {
     if (!until) return;
     const t = setTimeout(
@@ -280,7 +280,8 @@ export default function ConnectedApp() {
             !blocked.includes(p.id) &&
             (industry === "All industries" || p.industry === industry) &&
             (company === "All companies" || p.company === company) &&
-            (!onlyAvailable || p.available) &&
+            (!onlyAvailable ||
+              (p.available && (!p.availability || p.availability === "Now"))) &&
             distanceKm(center, [p.lat, p.lng]) <= radius &&
             `${p.name} ${p.company} ${p.role} ${p.help.join(" ")}`
               .toLowerCase()
@@ -321,7 +322,7 @@ export default function ConnectedApp() {
   const filteredHotspots = useMemo(
     () =>
       demo
-        ? hotspots.filter(
+        ? demoHotspotsFor(city).filter(
             (h) =>
               distanceKm(center, [h.lat, h.lng]) <= radius &&
               `${h.title} ${h.companies.join(" ")}`
@@ -330,7 +331,7 @@ export default function ConnectedApp() {
               (company === "All companies" || h.companies.includes(company)),
           )
         : [],
-    [demo, center, radius, query, company],
+    [demo, center, radius, query, company, city],
   );
   const select = (item: MapItem) => {
     setSelected(item);
@@ -339,7 +340,9 @@ export default function ConnectedApp() {
   };
   const locate = () => {
     if (!navigator.geolocation) {
-      notice("Location is unavailable in this browser. You can explore NYC.");
+      notice(
+        "Location is unavailable in this browser. You can explore Charlotte.",
+      );
       return;
     }
     notice("Waiting for location permission…");
@@ -354,7 +357,7 @@ export default function ConnectedApp() {
       },
       () =>
         notice(
-          "Location access was unavailable. You can still explore the NYC demo.",
+          "Location access was unavailable. You can still explore the demo.",
         ),
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
     );
@@ -362,7 +365,7 @@ export default function ConnectedApp() {
   const needAccount = () => {
     if (!signedIn) {
       setOnboard(true);
-      setStep(3);
+      setStep(4);
       return true;
     }
     if (!profile.name) {
@@ -382,12 +385,13 @@ export default function ConnectedApp() {
     try {
       const d = await api("profile", "PUT", {
         ...draft,
+        onboardingVersion: 2,
         discovery: draft.discovery && !!gps,
         latitude: gps?.[0] ?? null,
         longitude: gps?.[1] ?? null,
       });
-      setProfile(d.profile);
-      setDraft(d.profile);
+      setProfile(normalizeProfile(d.profile));
+      setDraft(normalizeProfile(d.profile));
       setUntil(d.visibleUntil);
       setOnboard(false);
       notice("You’re all set. Let’s find your people.");
@@ -402,8 +406,8 @@ export default function ConnectedApp() {
     const cached = sessionStorage.getItem("connected-draft");
     if (cached) {
       try {
-        setDraft({ ...JSON.parse(cached), discovery: false });
-        setStep(3);
+        setDraft(normalizeProfile({ ...JSON.parse(cached), discovery: false }));
+        setStep(4);
       } catch {}
       sessionStorage.removeItem("connected-draft");
     }
@@ -439,8 +443,8 @@ export default function ConnectedApp() {
         latitude: gps?.[0] ?? null,
         longitude: gps?.[1] ?? null,
       });
-      setProfile(d.profile);
-      setDraft(d.profile);
+      setProfile(normalizeProfile(d.profile));
+      setDraft(normalizeProfile(d.profile));
       setUntil(d.visibleUntil);
       notice(
         d.profile.discovery
@@ -455,7 +459,12 @@ export default function ConnectedApp() {
     if (selected?.kind !== "person" || needAccount()) return;
     setBusy(true);
     try {
-      await api("connections", "POST", { personId: selected.item.id, message });
+      await api("connections", "POST", {
+        personId: selected.item.id,
+        message,
+        latitude: center[0],
+        longitude: center[1],
+      });
       setConnections((await api("connections")).requests);
       notice(
         selected.item.sample
@@ -473,7 +482,11 @@ export default function ConnectedApp() {
     if (selected?.kind !== "person" || needAccount()) return;
     setBusy(true);
     try {
-      const d = await api("icebreaker", "POST", { personId: selected.item.id });
+      const d = await api("icebreaker", "POST", {
+        personId: selected.item.id,
+        latitude: center[0],
+        longitude: center[1],
+      });
       setMessage(d.text);
       setAiNote(
         d.source === "claude"
@@ -512,7 +525,7 @@ export default function ConnectedApp() {
     }
     setDemo(isDemo);
     setSelected(null);
-    if (isDemo) setCenter(NYC);
+    if (isDemo) setCenter(city === "Charlotte" ? CHARLOTTE : NYC);
   };
   const createEvent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -604,7 +617,7 @@ export default function ConnectedApp() {
             className="nav-item"
             onClick={() => {
               setDraft(profile);
-              setStep(3);
+              setStep(4);
               setOnboard(true);
             }}
           >
@@ -612,7 +625,7 @@ export default function ConnectedApp() {
             Preferences
           </button>
           <div className="user-block">
-            <Avatar person={{ name: profile.name || "You" }} />
+            <Avatar person={{ ...profile, name: profile.name || "You" }} />
             <div>
               <b>{profile.name || "Your next chapter"}</b>
               <span>{profile.name ? profile.role : "Make yourself known"}</span>
@@ -790,7 +803,11 @@ export default function ConnectedApp() {
                 </label>
                 <button className="location-button" onClick={locate}>
                   <MapPin size={16} />
-                  {gps && center === gps ? "My location" : "New York, NY"}
+                  {gps && center === gps
+                    ? "My location"
+                    : city === "Charlotte"
+                      ? "Charlotte, NC"
+                      : "New York, NY"}
                   <ChevronDown size={15} />
                 </button>
                 <button
@@ -858,7 +875,7 @@ export default function ConnectedApp() {
                     onClick={() => {
                       setIndustry("All industries");
                       setCompany("All companies");
-                      setRadius(2);
+                      setRadius(5);
                       setOnlyAvailable(false);
                       setQuery("");
                     }}
@@ -867,6 +884,30 @@ export default function ConnectedApp() {
                   </button>
                 </div>
               )}
+              <div className="city-picker">
+                <MapPin size={16} />
+                <label>
+                  Explore{" "}
+                  <select
+                    aria-label="Explore city"
+                    value={city}
+                    onChange={(e) => {
+                      const c = e.target.value as "Charlotte" | "NYC";
+                      setCity(c);
+                      setCenter(c === "Charlotte" ? CHARLOTTE : NYC);
+                      setSelected(null);
+                    }}
+                  >
+                    <option value="Charlotte">Charlotte, NC</option>
+                    <option value="NYC">New York · sample city</option>
+                  </select>
+                </label>
+                <span>
+                  {city === "Charlotte"
+                    ? "Real local events. New possibilities."
+                    : "The original Connected demo."}
+                </span>
+              </div>
               <div className="view-toolbar">
                 <div
                   className="tabs"
@@ -896,7 +937,7 @@ export default function ConnectedApp() {
                     className={demo ? "active" : ""}
                     onClick={() => setMode(true)}
                   >
-                    NYC demo
+                    Demo people
                   </button>
                   <button
                     className={!demo ? "active" : ""}
@@ -937,7 +978,7 @@ export default function ConnectedApp() {
                     {demo && (
                       <div className="demo-label">
                         <Globe size={13} />
-                        Demo city · sample people, events & activity
+                        Fictional people & hotspots · illustrative photos
                       </div>
                     )}
                     {hasPeople &&
@@ -1026,6 +1067,12 @@ export default function ConnectedApp() {
                         <CalendarDays size={17} />
                       </div>
                     )}
+                    {hasEvents && city === "Charlotte" && (
+                      <p className="events-source-note">
+                        Organizer listings · checked Nov 7, 2026 · confirm
+                        details before going
+                      </p>
+                    )}
                     {hasEvents &&
                       filteredEvents.map((e) => (
                         <button
@@ -1040,16 +1087,7 @@ export default function ConnectedApp() {
                             <Coffee size={24} />
                           </span>
                           <span>
-                            <small>
-                              {e.sample
-                                ? e.time
-                                : new Date(e.time).toLocaleString(undefined, {
-                                    month: "short",
-                                    day: "numeric",
-                                    hour: "numeric",
-                                    minute: "2-digit",
-                                  })}
-                            </small>
+                            <small>{eventTime(e)}</small>
                             <h3>{e.title}</h3>
                             <p>{e.venue}</p>
                           </span>
@@ -1097,7 +1135,7 @@ export default function ConnectedApp() {
                               ? "Save people or events to find them here."
                               : demo
                                 ? "Try widening your distance or clearing a filter."
-                                : "Invite your team to create profiles and turn on discovery, or explore the NYC demo."}
+                                : "Invite your team to create profiles and turn on discovery, or explore the demo."}
                           </p>
                           <button
                             className="text-button"
@@ -1137,7 +1175,7 @@ export default function ConnectedApp() {
                 </span>
                 <span>
                   {demo
-                    ? "Illustrative NYC data · no affiliation with listed companies"
+                    ? "Demo people · no affiliation with listed companies"
                     : "Discovery expires after one hour"}
                 </span>
               </footer>
@@ -1164,257 +1202,21 @@ export default function ConnectedApp() {
             sessionStorage.setItem("connected-explored", "1");
           }}
         >
-          <div className="onboarding">
-            <div className="onboarding-story">
-              <span className="brand light">
-                <Link2 size={24} />
-                connected.
-              </span>
-              <div className="story-dots">
-                <span>✳</span>
-                <i>M</i>
-                <b>J</b>
-              </div>
-              <h2>
-                You don’t need
-                <br />a network
-                <br />
-                to get started<span>.</span>
-              </h2>
-              <p>
-                Just a goal, a little curiosity,
-                <br />
-                and a willingness to say hello.
-              </p>
-              <div className="story-foot">
-                <ShieldCheck size={17} /> Your location. Your choice.
-              </div>
-            </div>
-            <div className="onboarding-form">
-              <div className="step-dots">
-                {[0, 1, 2, 3].map((n) => (
-                  <i key={n} className={n <= step ? "active" : ""} />
-                ))}
-              </div>
-              <span className="eyebrow">
-                A BETTER KIND OF INTRODUCTION · {step + 1}/4
-              </span>
-              {step === 0 && (
-                <>
-                  <h2>What’s your next move?</h2>
-                  <p>
-                    Start with what you need. We’ll help you find people who can
-                    help.
-                  </p>
-                  <label>
-                    Your goal
-                    <textarea
-                      maxLength={500}
-                      placeholder="I want to land my first banking internship, but I don’t know where to start…"
-                      value={draft.goal}
-                      onChange={(e) =>
-                        setDraft({ ...draft, goal: e.target.value })
-                      }
-                    />
-                  </label>
-                  <span className="field-caption">
-                    A few ideas to get you going
-                  </span>
-                  <div className="choice-grid">
-                    {helpOptions.map((h) => (
-                      <button
-                        key={h}
-                        className={draft.interests.includes(h) ? "chosen" : ""}
-                        onClick={() =>
-                          setDraft({
-                            ...draft,
-                            interests: draft.interests.includes(h)
-                              ? draft.interests.filter((x) => x !== h)
-                              : [...draft.interests, h],
-                            goal:
-                              draft.goal || `Get help with ${h.toLowerCase()}`,
-                          })
-                        }
-                      >
-                        {h}
-                        {draft.interests.includes(h) && <Check size={13} />}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-              {step === 1 && (
-                <>
-                  <h2>Put a name to the hello.</h2>
-                  <p>A little context makes a conversation easier.</p>
-                  <label>
-                    Your name
-                    <input
-                      maxLength={60}
-                      placeholder="e.g. Shritan Samavedam"
-                      value={draft.name}
-                      onChange={(e) =>
-                        setDraft({ ...draft, name: e.target.value })
-                      }
-                    />
-                  </label>
-                  <label>
-                    What do you do?
-                    <input
-                      maxLength={80}
-                      placeholder="Student, designer, founder…"
-                      value={draft.role}
-                      onChange={(e) =>
-                        setDraft({ ...draft, role: e.target.value })
-                      }
-                    />
-                  </label>
-                  <label>
-                    Company or school <span className="muted">(optional)</span>
-                    <input
-                      maxLength={80}
-                      placeholder="Where you’re coming from"
-                      value={draft.company}
-                      onChange={(e) =>
-                        setDraft({ ...draft, company: e.target.value })
-                      }
-                    />
-                  </label>
-                  <label>
-                    Your field
-                    <select
-                      value={draft.industry}
-                      onChange={(e) =>
-                        setDraft({ ...draft, industry: e.target.value })
-                      }
-                    >
-                      {industries.slice(1).map((x) => (
-                        <option key={x}>{x}</option>
-                      ))}
-                    </select>
-                  </label>
-                </>
-              )}
-              {step === 2 && (
-                <>
-                  <h2>Everyone has something to give.</h2>
-                  <p>
-                    What could you help someone with in 10 minutes? Pick any
-                    that feel right.
-                  </p>
-                  <div className="choice-grid tall">
-                    {helpOptions.map((h) => (
-                      <button
-                        key={h}
-                        className={draft.help.includes(h) ? "chosen" : ""}
-                        onClick={() =>
-                          setDraft({
-                            ...draft,
-                            help: draft.help.includes(h)
-                              ? draft.help.filter((x) => x !== h)
-                              : [...draft.help, h],
-                          })
-                        }
-                      >
-                        {h}
-                        {draft.help.includes(h) ? (
-                          <Check size={16} />
-                        ) : (
-                          <Plus size={16} />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="soft-note">
-                    <Heart size={19} />
-                    You don’t have to be an expert. Your experience can be
-                    someone else’s starting point.
-                  </div>
-                </>
-              )}
-              {step === 3 && (
-                <>
-                  <h2>Your city. Your terms.</h2>
-                  <p>Explore freely. Choose when you want to be found.</p>
-                  <div className="privacy-card">
-                    <ShieldCheck size={26} />
-                    <h3>You’re in control</h3>
-                    <p>
-                      Discovery is off by default. When enabled, only an
-                      approximate area is shared, for one hour. No location
-                      history.
-                    </p>
-                  </div>
-                  <button className="button location-setup" onClick={locate}>
-                    <LocateFixed size={17} />
-                    {gps ? "Location ready" : "Use my location"}
-                    {gps && <Check size={16} />}
-                  </button>
-                  <label className="check-label discovery-option">
-                    <input
-                      type="checkbox"
-                      checked={draft.discovery}
-                      disabled={!gps}
-                      onChange={(e) =>
-                        setDraft({ ...draft, discovery: e.target.checked })
-                      }
-                    />
-                    Let nearby people discover me for one hour
-                  </label>
-                  <p className="muted small-text">
-                    You can also browse the NYC demo without sharing a location.
-                  </p>
-                  {!signedIn && (
-                    <div className="soft-note">
-                      <UserRound size={18} />
-                      Sign in to save your profile and send requests.
-                    </div>
-                  )}
-                </>
-              )}
-              <div className="onboard-actions">
-                {step > 0 ? (
-                  <button
-                    className="text-button"
-                    onClick={() => setStep(step - 1)}
-                  >
-                    <ArrowLeft size={16} />
-                    Back
-                  </button>
-                ) : (
-                  <button
-                    className="text-button"
-                    onClick={() => {
-                      setOnboard(false);
-                      sessionStorage.setItem("connected-explored", "1");
-                    }}
-                  >
-                    Explore the demo
-                  </button>
-                )}
-                <button
-                  className="button primary"
-                  disabled={
-                    busy ||
-                    (step === 0 && draft.goal.trim().length < 5) ||
-                    (step === 1 &&
-                      (!draft.name.trim() || !draft.role.trim())) ||
-                    (step === 3 && signedIn && (!draft.name || !draft.goal))
-                  }
-                  onClick={() => (step < 3 ? setStep(step + 1) : saveProfile())}
-                >
-                  {busy
-                    ? "Saving…"
-                    : step === 3
-                      ? signedIn
-                        ? "Let’s get connected"
-                        : "Sign in & continue"
-                      : "Continue"}
-                  <ArrowRight size={16} />
-                </button>
-              </div>
-            </div>
-          </div>
+          <Onboarding
+            draft={draft}
+            setDraft={setDraft}
+            step={step}
+            setStep={setStep}
+            gps={gps}
+            locate={locate}
+            signedIn={signedIn}
+            busy={busy}
+            save={saveProfile}
+            close={() => {
+              setOnboard(false);
+              sessionStorage.setItem("connected-explored", "1");
+            }}
+          />
         </Modal>
       )}
       {selected && !onboard && (
@@ -1440,7 +1242,8 @@ export default function ConnectedApp() {
               </div>
               {selected.item.sample && (
                 <p className="demo-label">
-                  Fictional demo profile · company affiliation is illustrative
+                  Fictional profile · illustrative portrait and company
+                  affiliation
                 </p>
               )}
               <div className="privacy-card">
@@ -1448,6 +1251,30 @@ export default function ConnectedApp() {
                 <h3>Why say hello?</h3>
                 <p>{matchPerson(selected.item, profile).reason}</p>
               </div>
+              <div className="profile-preferences">
+                <span>{selected.item.meetingStyle || "Either"} meetings</span>
+                <span>{selected.item.availability || "Flexible"}</span>
+              </div>
+              {selected.item.socials &&
+                Object.values(selected.item.socials).some(Boolean) && (
+                  <div className="social-links">
+                    <p>Member-provided profile links</p>
+                    {Object.entries(selected.item.socials)
+                      .filter(([, url]) => url)
+                      .map(([name, url]) => (
+                        <a
+                          className="button small"
+                          key={name}
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {name}
+                          <ArrowUpRight size={14} />
+                        </a>
+                      ))}
+                  </div>
+                )}
               <h4>Happy to help with</h4>
               <div className="help-tags">
                 {selected.item.help.map((h) => (
@@ -1456,6 +1283,16 @@ export default function ConnectedApp() {
               </div>
               <h4>Looking for</h4>
               <p>{selected.item.goal}</p>
+              <ApproachCoach
+                key={selected.item.id}
+                person={selected.item}
+                center={center}
+                needAccount={needAccount}
+                onDraft={(text) => {
+                  setMessage(text);
+                  setAiNote("Added from your coach. Edit before sending.");
+                }}
+              />
               <label>
                 Your introduction
                 <textarea
@@ -1533,20 +1370,40 @@ export default function ConnectedApp() {
               </div>
               <span className="eyebrow">
                 {selected.item.category} ·{" "}
-                {selected.item.sample ? "DEMO EVENT" : "COMMUNITY EVENT"}
+                {selected.item.sample
+                  ? "DEMO EVENT"
+                  : selected.item.sourceUrl
+                    ? "ORGANIZER LISTING"
+                    : "COMMUNITY EVENT"}
               </span>
               <h2>{selected.item.title}</h2>
               <p>
                 <Clock size={16} />
-                {selected.item.sample
-                  ? selected.item.time
-                  : new Date(selected.item.time).toLocaleString()}
+                {eventTime(selected.item)}
               </p>
               <p>
                 <MapPin size={16} />
                 {selected.item.venue}
               </p>
               <p>{selected.item.description}</p>
+              {selected.item.sourceUrl && (
+                <>
+                  <p className="small-text muted">
+                    {selected.item.sourceName} · checked{" "}
+                    {selected.item.checkedAt}. Approximate venue pin. Confirm
+                    details with the organizer.
+                  </p>
+                  <a
+                    className="button primary"
+                    href={selected.item.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Event details & registration
+                    <ArrowUpRight size={16} />
+                  </a>
+                </>
+              )}
               {selected.item.sample && (
                 <p className="soft-note">
                   This is a sample event for the hackathon, not a real listing.
@@ -1681,7 +1538,7 @@ export default function ConnectedApp() {
               />
             </label>
             <p className="small-text muted">
-              Use the public venue’s coordinates. Default: Flatiron, NYC.
+              Use the public venue’s coordinates. Default: Uptown, Charlotte.
             </p>
             <div className="coordinate-fields">
               <label>

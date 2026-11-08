@@ -1,31 +1,27 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import type { Map as LeafletMap, LayerGroup } from "leaflet";
-import { Plus, Minus, LocateFixed, Layers } from "lucide-react";
-import type { Person, LocalEvent, Hotspot } from "@/lib/network";
-import { initials } from "@/lib/network";
-import "leaflet/dist/leaflet.css";
+import type { Map as GLMap, Marker } from "maplibre-gl";
+import {
+  Plus,
+  Minus,
+  LocateFixed,
+  RotateCw,
+  Compass,
+  Layers,
+} from "lucide-react";
+import {
+  initials,
+  type Person,
+  type LocalEvent,
+  type Hotspot,
+} from "@/lib/network";
+import FlatMap from "./flat-map";
+import "maplibre-gl/dist/maplibre-gl.css";
 export type MapItem =
   | { kind: "person"; item: Person }
   | { kind: "event"; item: LocalEvent }
   | { kind: "hotspot"; item: Hotspot };
-const safe = (s: string) =>
-  s.replace(
-    /[&<>"']/g,
-    (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        c
-      ]!,
-  );
-export default function NearbyMap({
-  center,
-  people,
-  events,
-  hotspots,
-  onSelect,
-  onLocate,
-  selected,
-}: {
+type Props = {
   center: [number, number];
   people: Person[];
   events: LocalEvent[];
@@ -33,41 +29,82 @@ export default function NearbyMap({
   onSelect: (i: MapItem) => void;
   onLocate: () => void;
   selected: MapItem | null;
-}) {
+};
+export default function NearbyMap(props: Props) {
+  const { center, people, events, hotspots, onSelect, onLocate, selected } =
+    props;
   const node = useRef<HTMLDivElement>(null),
-    map = useRef<LeafletMap | null>(null),
-    layer = useRef<LayerGroup | null>(null),
+    map = useRef<GLMap | null>(null),
+    markers = useRef<Marker[]>([]),
     callback = useRef(onSelect);
   callback.current = onSelect;
   const [ready, setReady] = useState(false),
-    [tileError, setTileError] = useState(false);
+    [fallback, setFallback] = useState(false),
+    [error, setError] = useState(false),
+    [tilted, setTilted] = useState(true),
+    [bearing, setBearing] = useState(0),
+    [orbit, setOrbit] = useState(false);
   useEffect(() => {
     let disposed = false;
-    let resize: ResizeObserver;
-    import("leaflet").then((L) => {
-      if (disposed || !node.current) return;
-      map.current = L.map(node.current, {
-        center,
-        zoom: 15,
-        zoomControl: false,
-        scrollWheelZoom: true,
-      });
-      L.tileLayer(
-        "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-        {
-          attribution:
-            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
-          maxZoom: 19,
-        },
-      )
-        .on("tileerror", () => setTileError(true))
-        .on("load", () => setTileError(false))
-        .addTo(map.current);
-      layer.current = L.layerGroup().addTo(map.current);
-      resize = new ResizeObserver(() => map.current?.invalidateSize());
-      resize.observe(node.current);
-      setReady(true);
-    });
+    let resize: ResizeObserver | undefined;
+    import("maplibre-gl")
+      .then((GL) => {
+        if (disposed || !node.current) return;
+        try {
+          const m = new GL.Map({
+            container: node.current,
+            center: [center[1], center[0]],
+            zoom: 13.8,
+            pitch: 45,
+            bearing: -18,
+            maxPitch: 60,
+            attributionControl: { compact: true },
+            style: {
+              version: 8,
+              sources: {
+                osm: {
+                  type: "raster",
+                  tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+                  tileSize: 256,
+                  maxzoom: 19,
+                  attribution:
+                    '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                },
+              },
+              layers: [
+                {
+                  id: "base",
+                  type: "raster",
+                  source: "osm",
+                  paint: { "raster-saturation": -0.4, "raster-opacity": 0.9 },
+                },
+              ],
+            },
+          });
+          map.current = m;
+          m.on("load", () => setReady(true));
+          m.on("error", () => setError(true));
+          m.on("sourcedata", () => {
+            if (m.areTilesLoaded()) setError(false);
+          });
+          m.on("rotate", () => setBearing(Math.round(m.getBearing())));
+          m.on("pitch", () => setTilted(m.getPitch() > 10));
+          m.on("dragstart", () => setOrbit(false));
+          m.on("zoomstart", (e) => {
+            if (e.originalEvent) setOrbit(false);
+          });
+          m.on("rotatestart", (e) => {
+            if (e.originalEvent) setOrbit(false);
+          });
+          m.on("webglcontextlost", () => setFallback(true));
+          resize = new ResizeObserver(() => m.resize());
+          resize.observe(node.current);
+          setReady(true);
+        } catch {
+          setFallback(true);
+        }
+      })
+      .catch(() => setFallback(true));
     return () => {
       disposed = true;
       resize?.disconnect();
@@ -76,103 +113,185 @@ export default function NearbyMap({
     };
   }, []);
   useEffect(() => {
-    if (ready) map.current?.flyTo(center, 15, { duration: 0.7 });
+    if (ready)
+      map.current?.easeTo({
+        center: [center[1], center[0]],
+        zoom: 13.8,
+        duration: 700,
+      });
+    setOrbit(false);
   }, [center, ready]);
   useEffect(() => {
-    if (!ready) return;
+    if (!orbit || !map.current) return;
+    let frame = 0,
+      last = 0;
+    const tick = (t: number) => {
+      if (
+        !document.hidden &&
+        !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ) {
+        if (last)
+          map.current?.setBearing(
+            map.current.getBearing() + (t - last) * 0.004,
+          );
+        last = t;
+      } else last = 0;
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [orbit]);
+  useEffect(() => {
+    if (!ready || fallback) return;
     let cancelled = false;
-    import("leaflet").then((L) => {
-      if (cancelled || !layer.current) return;
-      layer.current.clearLayers();
-      hotspots.forEach((h) => {
-        L.circle([h.lat, h.lng], {
-          radius: 200,
-          color: h.color,
-          fillColor: h.color,
-          weight: 1,
-          opacity: 0.3,
-          fillOpacity: 0.17,
-          interactive: false,
-        }).addTo(layer.current!);
-        L.marker([h.lat + 0.0013, h.lng], {
-          icon: L.divIcon({
-            className: "hotspot-marker",
-            html: `<span>✦ ${h.people} people</span>`,
-            iconSize: [112, 30],
-            iconAnchor: [56, 15],
-          }),
-          title: h.title,
-        })
-          .on("click", () => callback.current({ kind: "hotspot", item: h }))
-          .addTo(layer.current!);
-      });
-      people.forEach((p) => {
-        L.marker([p.lat, p.lng], {
-          icon: L.divIcon({
-            className: "person-marker",
-            html: `<div class="map-avatar ${selected?.item.id === p.id ? "chosen" : ""}" style="--avatar:${safe(p.color)}">${safe(initials(p.name))}${p.available ? "<i></i>" : ""}</div><span class="pin-company">${safe(p.company || p.role)}</span>`,
-            iconSize: [90, 78],
-            iconAnchor: [45, 35],
-          }),
-          title: `${p.name}, ${p.company}`,
-          keyboard: true,
-        })
-          .on("click", () => callback.current({ kind: "person", item: p }))
-          .addTo(layer.current!);
-      });
-      events.forEach((e) =>
-        L.marker([e.lat, e.lng], {
-          icon: L.divIcon({
-            className: "event-marker",
-            html: "<span>▦</span>",
-            iconSize: [38, 38],
-            iconAnchor: [19, 19],
-          }),
-          title: e.title,
-        })
-          .on("click", () => callback.current({ kind: "event", item: e }))
-          .addTo(layer.current!),
+    import("maplibre-gl").then((GL) => {
+      if (cancelled || !map.current) return;
+      markers.current.forEach((m) => m.remove());
+      markers.current = [];
+      const add = (item: MapItem) => {
+        const el = document.createElement("button");
+        el.type = "button";
+        el.className = `gl-pin ${item.kind}-marker`;
+        el.setAttribute(
+          "aria-label",
+          item.kind === "person"
+            ? `${item.item.name}, ${item.item.company}`
+            : item.item.title,
+        );
+        el.onclick = () => {
+          setOrbit(false);
+          callback.current(item);
+        };
+        if (item.kind === "person") {
+          const p = item.item,
+            avatar = document.createElement("span");
+          avatar.className = `map-avatar ${selected?.item.id === p.id ? "chosen" : ""}`;
+          avatar.style.setProperty("--avatar", p.color);
+          avatar.textContent = initials(p.name);
+          if (p.photoUrl) {
+            const img = document.createElement("img");
+            img.src = p.photoUrl;
+            img.alt = "";
+            img.referrerPolicy = "no-referrer";
+            img.onerror = () => img.remove();
+            avatar.appendChild(img);
+          }
+          if (p.available) avatar.appendChild(document.createElement("i"));
+          el.appendChild(avatar);
+          const label = document.createElement("span");
+          label.className = "pin-company";
+          label.textContent = p.company || p.role;
+          el.appendChild(label);
+        } else {
+          const label = document.createElement("span");
+          label.textContent =
+            item.kind === "event" ? "▦" : `✦ ${item.item.title}`;
+          el.appendChild(label);
+        }
+        markers.current.push(
+          new GL.Marker({ element: el })
+            .setLngLat([item.item.lng, item.item.lat])
+            .addTo(map.current!),
+        );
+      };
+      hotspots.forEach((item) => add({ kind: "hotspot", item }));
+      events.forEach((item) => add({ kind: "event", item }));
+      people.forEach((item) => add({ kind: "person", item }));
+      const dot = document.createElement("div");
+      dot.className = "search-center";
+      dot.title = "Search area center";
+      markers.current.push(
+        new GL.Marker({ element: dot })
+          .setLngLat([center[1], center[0]])
+          .addTo(map.current),
       );
-      L.circleMarker(center, {
-        radius: 8,
-        color: "#fff",
-        weight: 3,
-        fillColor: "#7357bd",
-        fillOpacity: 1,
-      })
-        .bindTooltip("Your search area")
-        .addTo(layer.current!);
     });
     return () => {
       cancelled = true;
     };
-  }, [ready, people, events, hotspots, selected, center]);
+  }, [ready, fallback, people, events, hotspots, selected, center]);
+  if (fallback)
+    return (
+      <div className="flat-map-wrapper">
+        <FlatMap {...props} />
+        <span className="map-fallback-label">
+          2D map · rotation unavailable on this device
+        </span>
+      </div>
+    );
+  const move = (options: { bearing?: number; pitch?: number }) => {
+    setOrbit(false);
+    map.current?.easeTo({ ...options, duration: 600 });
+  };
   return (
-    <div className="map-shell">
+    <div className="map-shell map-360">
       <div
-        className="map-canvas"
         ref={node}
+        className="map-canvas"
         role="region"
-        aria-label="Interactive map of nearby people and events"
+        aria-label="Rotatable map of nearby people and events"
       />
       <div className="map-top">
         <span className="map-location">
-          <span className="pulse-dot" />{" "}
-          {Math.abs(center[0] - 40.7415) < 0.02
-            ? "Flatiron, New York"
-            : "Your search area"}{" "}
-          <span className="map-live">NEARBY</span>
-        </span>
-        <span className="map-layer">
-          <Layers size={15} /> Explore map
+          <span className="pulse-dot" />
+          {Math.abs(center[0] - 35.2271) < 0.1
+            ? "Charlotte, NC"
+            : Math.abs(center[0] - 40.7415) < 0.1
+              ? "New York, NY"
+              : "Your search area"}
+          <span className="map-live">EXPLORE</span>
         </span>
       </div>
+      <div className="map-view-tools">
+        <button
+          className={tilted ? "active" : ""}
+          aria-pressed={tilted}
+          onClick={() => move({ pitch: tilted ? 0 : 50 })}
+        >
+          <Layers size={15} />
+          {tilted ? "Tilted view" : "Flat view"}
+        </button>
+        <button
+          className={orbit ? "active" : ""}
+          aria-pressed={orbit}
+          onClick={() => setOrbit(!orbit)}
+        >
+          <RotateCw size={15} />
+          {orbit ? "Pause orbit" : "360° orbit"}
+        </button>
+      </div>
       <div className="map-controls">
-        <button aria-label="Zoom in" onClick={() => map.current?.zoomIn()}>
+        <button
+          aria-label="Zoom in"
+          onClick={() => {
+            setOrbit(false);
+            map.current?.zoomIn();
+          }}
+        >
           <Plus size={19} />
         </button>
-        <button aria-label="Zoom out" onClick={() => map.current?.zoomOut()}>
+        <button
+          aria-label="Zoom out"
+          onClick={() => {
+            setOrbit(false);
+            map.current?.zoomOut();
+          }}
+        >
           <Minus size={19} />
+        </button>
+        <button
+          aria-label="Rotate map clockwise"
+          onClick={() =>
+            move({ bearing: (map.current?.getBearing() || 0) + 45 })
+          }
+        >
+          <RotateCw size={18} />
+        </button>
+        <button
+          aria-label="Reset map north"
+          onClick={() => move({ bearing: 0 })}
+        >
+          <Compass size={19} style={{ transform: `rotate(${-bearing}deg)` }} />
         </button>
         <button aria-label="Use my location" onClick={onLocate}>
           <LocateFixed size={19} />
@@ -189,16 +308,17 @@ export default function NearbyMap({
         </span>
         <span>
           <i className="legend-hot" />
-          Hotspots
+          Demo hotspots
         </span>
       </div>
-      {tileError && (
+      {error && (
         <div className="map-error">
-          Map tiles couldn’t load. Nearby results are still available in the
-          list.
+          Some map tiles couldn’t load. Results remain available in the list.
         </div>
       )}
-      <div className="map-note">Approximate locations. Real possibilities.</div>
+      <div className="map-note">
+        Drag to explore · right-drag to rotate & tilt · approximate pins
+      </div>
     </div>
   );
 }

@@ -2152,3 +2152,358 @@ textarea::placeholder {
     transition: none !important;
   }
 }
+/* Charlotte discovery, preferences and conversation coach */
+.avatar {
+  position: relative;
+  overflow: hidden;
+}
+.avatar img,
+.map-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.map-avatar img {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+.map-avatar {
+  position: relative;
+}
+.map-avatar i {
+  z-index: 2;
+}
+.photo-upload {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+  flex-wrap: wrap;
+}
+.photo-upload label.button {
+  display: flex;
+  position: relative;
+  cursor: pointer;
+  margin: 0;
+}
+.photo-upload input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+}
+.field-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.field-error {
+  font-size: 13px;
+  color: #aa364c;
+  margin: 8px 0;
+}
+.radius-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 22px 0;
+}
+.radius-choices button {
+  padding: 12px 15px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.radius-choices .chosen {
+  background: var(--lavender);
+  border-color: var(--purple);
+  color: var(--purple-dark);
+}
+.city-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 15px;
+  flex-wrap: wrap;
+}
+.city-picker select {
+  border: 0;
+  background: transparent;
+  font-weight: 700;
+  padding: 6px;
+  color: var(--purple-dark);
+}
+.city-picker > span {
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: auto;
+}
+.events-source-note {
+  font-size: 11px;
+  color: #74717c;
+  padding: 6px 12px 12px;
+  line-height: 1.5;
+}
+.profile-preferences {
+  display: flex;
+  gap: 8px;
+  margin: 14px 0;
+}
+.profile-preferences span {
+  background: var(--lavender);
+  padding: 6px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+}
+.social-links {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+.social-links p {
+  width: 100%;
+  font-size: 12px;
+  color: var(--muted);
+}
+.social-links a {
+  text-transform: capitalize;
+}
+.coach {
+  background: #faf8fd;
+  border: 1px solid #e7e0f0;
+  border-radius: 18px;
+  padding: 18px;
+  margin: 22px 0;
+}
+.coach-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.coach-heading > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--purple-dark);
+}
+.coach > p {
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 10px 0;
+}
+.coach .coach-privacy {
+  font-size: 11px;
+  color: #7b7484;
+  line-height: 1.5;
+}
+.coach-prompts {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 14px 0;
+}
+.coach-prompts button {
+  border: 1px solid #ded5eb;
+  border-radius: 10px;
+  text-align: left;
+  padding: 9px 11px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: white;
+  font-size: 12px;
+}
+.coach-messages {
+  max-height: 300px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.coach-bubble {
+  padding: 12px;
+  border-radius: 12px;
+  background: white;
+  margin: 10px 0;
+  border: 1px solid var(--line);
+}
+.coach-bubble.user {
+  background: #eee7f8;
+  margin-left: 25px;
+}
+.coach-bubble small {
+  font-size: 10px;
+  color: var(--purple-dark);
+  display: block;
+  margin-bottom: 5px;
+}
+.coach-bubble p {
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.coach-bubble button {
+  margin-top: 8px;
+  font-size: 11px;
+}
+.coach-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: white;
+  border: 1px solid #dfd6ed;
+  border-radius: 12px;
+  padding: 5px;
+}
+.coach .coach-input input {
+  border: 0;
+  margin: 0;
+  padding: 9px;
+  width: 100%;
+  background: transparent;
+}
+.coach-thinking {
+  font-size: 12px;
+  color: var(--purple);
+  padding: 12px;
+}
+.gl-pin {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  min-width: 42px;
+  overflow: visible;
+}
+.gl-pin .map-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gl-pin .pin-company {
+  white-space: nowrap;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gl-pin.hotspot-marker {
+  background: #f0e6f5e8;
+  border: 1px solid #c7aede;
+  border-radius: 25px;
+  padding: 8px 12px;
+  color: #6b478a;
+  font-size: 11px;
+  box-shadow: 0 3px 15px #654d7122;
+}
+.gl-pin.event-marker {
+  height: 38px;
+  min-width: 38px;
+  background: #6c548d;
+  border: 3px solid white;
+  border-radius: 12px;
+  color: white;
+  font-size: 23px;
+  box-shadow: 0 4px 12px #46345933;
+}
+.search-center {
+  width: 17px;
+  height: 17px;
+  background: #7251a5;
+  border: 3px solid white;
+  border-radius: 50%;
+  box-shadow: 0 0 0 10px #8967bd22;
+}
+.map-view-tools {
+  position: absolute;
+  top: 72px;
+  left: 20px;
+  z-index: 4;
+  display: flex;
+  gap: 7px;
+}
+.map-view-tools button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 9px 12px;
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 2px 9px #3331;
+}
+.map-view-tools button.active {
+  color: #6c468e;
+  background: #f4eefb;
+}
+.map-360 .map-controls {
+  z-index: 4;
+}
+.map-360 .map-top,
+.map-360 .map-legend,
+.map-360 .map-note {
+  pointer-events: none;
+  z-index: 4;
+}
+.map-360 .map-note {
+  bottom: 36px;
+  background: #ffffffe6;
+  padding: 5px 9px;
+  border-radius: 8px;
+  font-size: 10px;
+}
+.maplibregl-ctrl-attrib a {
+  color: #5f536d;
+}
+.flat-map-wrapper {
+  position: relative;
+  min-width: 0;
+}
+.flat-map-wrapper > .map-shell {
+  height: 100%;
+}
+.map-fallback-label {
+  position: absolute;
+  top: 72px;
+  left: 20px;
+  z-index: 500;
+  background: white;
+  border-radius: 12px;
+  padding: 8px;
+  font-size: 11px;
+}
+@media (max-width: 700px) {
+  .field-pair {
+    grid-template-columns: 1fr;
+  }
+  .city-picker > span {
+    width: 100%;
+    margin-left: 26px;
+  }
+  .map-view-tools {
+    top: 58px;
+    left: 12px;
+  }
+  .map-view-tools button {
+    font-size: 10px;
+    padding: 8px 10px;
+  }
+  .coach {
+    padding: 13px;
+  }
+  .coach-heading {
+    flex-wrap: wrap;
+  }
+  .map-360 .map-note {
+    max-width: 75%;
+    font-size: 9px;
+  }
+  .map-360 .map-controls {
+    top: 110px;
+  }
+  .onboarding-form .photo-upload .button {
+    font-size: 12px;
+  }
+  .radius-choices button {
+    padding: 10px 12px;
+  }
+}

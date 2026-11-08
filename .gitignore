@@ -46,3 +46,6 @@ yarn-error.log*
 !.env.example
 /knowledge/.obsidian/workspace*.json
 /knowledge/.obsidian/cache/
+
+# Local browser-automation output
+/.playwright-mcp/
