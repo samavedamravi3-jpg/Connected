@@ -12,7 +12,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#EFEBFB",
+        "backgroundColor": "#5B35C9",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -32,7 +32,23 @@
           "isAndroidBackgroundLocationEnabled": false
         }
       ],
-      "expo-font"
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Connected lets you choose a profile photo from your library. Only the photo you pick is used.",
+          "cameraPermission": false
+        }
+      ],
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#5B35C9",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 140,
+          "resizeMode": "contain"
+        }
+      ]
     ]
   }
 }

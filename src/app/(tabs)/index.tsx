@@ -3,7 +3,7 @@ import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import MapView, { Circle, Marker, UrlTile, type Region } from 'react-native-maps';
+import MapView, { Circle, Marker, type MapStyleElement, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FilterSheet } from '@/components/FilterSheet';
 import { PersonCard } from '@/components/PersonCard';
@@ -13,12 +13,18 @@ import { dataSource } from '@/data/source';
 import type { LatLng, NearbyPerson } from '@/data/types';
 import { activeFilterCount, applyFilters, defaultFilters, type Filters } from '@/lib/filters';
 import { approxDistance, deltaForMiles, distanceMi } from '@/lib/geo';
-import { canSeeDoor, doorActive, firstName, matchScore } from '@/lib/match';
+import { canSeeDoor, doorActive, matchScore } from '@/lib/match';
 import { useApp } from '@/state/AppState';
 import { C, R, S, T, shadow } from '@/theme';
 
-// Free CARTO basemap built on OpenStreetMap data. Attribution is shown on the map, as their terms require.
-const TILE_URL = 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png';
+// The phone's own map: Apple Maps on iOS and Google Maps on Android. Neither needs an API key in
+// Expo Go, and both draw their own attribution. Business and transit labels are hidden so pins stand out.
+const ANDROID_MAP_STYLE: MapStyleElement[] = [
+  { featureType: 'poi.business', stylers: [{ visibility: 'off' }] },
+  { featureType: 'poi.attraction', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { featureType: 'road', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+];
 const POOL_RADIUS_MI = 25;
 
 type Perm = 'checking' | 'undetermined' | 'granted' | 'denied';
@@ -130,7 +136,12 @@ export default function MapScreen() {
         ref={mapRef}
         style={StyleSheet.absoluteFill}
         initialRegion={regionFor(CHARLOTTE_CENTER, prefs.travelMi)}
-        mapType={Platform.OS === 'android' ? 'none' : 'standard'}
+        mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
+        customMapStyle={Platform.OS === 'android' ? ANDROID_MAP_STYLE : undefined}
+        showsPointsOfInterests={false}
+        showsBuildings={false}
+        showsTraffic={false}
+        showsIndoors={false}
         rotateEnabled={false}
         pitchEnabled={false}
         toolbarEnabled={false}
@@ -142,7 +153,6 @@ export default function MapScreen() {
         }}
         accessibilityLabel="Map of people nearby"
       >
-        <UrlTile urlTemplate={TILE_URL} maximumZ={19} tileSize={256} shouldReplaceMapContent zIndex={-1} />
         <Circle center={searchCenter} radius={filters.distanceMi * 1609.34} strokeColor="rgba(91,53,201,0.35)" fillColor="rgba(91,53,201,0.06)" strokeWidth={1} />
         {userLoc ? (
           <Marker coordinate={userLoc} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false} title="You" accessibilityLabel="Your location">
@@ -163,7 +173,7 @@ export default function MapScreen() {
               accessibilityLabel={`${p.name}, ${p.role}, ${approxDistance(withDistance(p).distanceMi)} ${distanceFromLabel}`}
             >
               <View style={[styles.pin, on && styles.pinOn]}>
-                <Text style={[styles.pinText, on && { color: C.white }]}>{initialsOf(p.name)}</Text>
+                <Avatar name={p.name} uri={p.photo} size={on ? 44 : 34} />
                 {door ? <View style={styles.pinBadge}><Ionicons name="enter" size={10} color={C.white} /></View> : null}
               </View>
             </Marker>
@@ -257,9 +267,6 @@ export default function MapScreen() {
             </View>
           </View>
         ) : null}
-        <Pressable onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')} accessibilityRole="link" style={styles.attrib}>
-          <Text style={styles.attribText}>© OpenStreetMap contributors © CARTO</Text>
-        </Pressable>
       </View>
 
       {loading ? <ActivityIndicator style={{ position: 'absolute', alignSelf: 'center', top: '50%' }} color={C.accent} /> : null}
@@ -298,7 +305,7 @@ export default function MapScreen() {
                   style={({ pressed }) => [styles.row, pressed && { backgroundColor: C.bg2 }]}
                   accessibilityRole="button"
                 >
-                  <Avatar name={p.name} />
+                  <Avatar name={p.name} uri={p.photo} />
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={T.h3} numberOfLines={1}>{p.name}</Text>
                     <Text style={T.small} numberOfLines={1}>{p.role} · {fieldLabel(p.field)}</Text>
@@ -332,8 +339,6 @@ export default function MapScreen() {
   );
 }
 
-const initialsOf = (n: string) => (firstName(n)[0] ?? '') + (n.split(' ')[1]?.[0] ?? '');
-
 const styles = StyleSheet.create({
   top: { position: 'absolute', left: 0, right: 0, top: 0, paddingHorizontal: S.md, gap: S.sm, alignItems: 'stretch' },
   bar: { flexDirection: 'row', alignItems: 'center', gap: S.sm, backgroundColor: C.bg, borderRadius: R.md, paddingLeft: S.lg, paddingRight: S.xs, paddingVertical: S.xs, minHeight: 56 },
@@ -345,11 +350,8 @@ const styles = StyleSheet.create({
   side: { position: 'absolute', right: S.md, gap: S.sm },
   bottom: { position: 'absolute', left: S.md, right: S.md, bottom: 4, gap: 6 },
   panel: { backgroundColor: C.bg, borderRadius: R.lg, padding: S.lg, gap: S.sm, borderWidth: 1, borderColor: C.line },
-  attrib: { alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.85)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  attribText: { fontSize: 10, color: C.ink2 },
-  pin: { width: 38, height: 38, borderRadius: 19, backgroundColor: C.bg, borderWidth: 2, borderColor: C.accent, alignItems: 'center', justifyContent: 'center' },
-  pinOn: { backgroundColor: C.accent, borderColor: C.white, width: 46, height: 46, borderRadius: 23 },
-  pinText: { fontSize: 13, fontWeight: '700', color: C.accent },
+  pin: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.bg, borderWidth: 3, borderColor: C.bg, alignItems: 'center', justifyContent: 'center', shadowColor: '#1B1726', shadowOpacity: 0.25, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 4 },
+  pinOn: { width: 52, height: 52, borderRadius: 26, borderColor: C.accent },
   pinBadge: { position: 'absolute', right: -4, top: -4, width: 18, height: 18, borderRadius: 9, backgroundColor: C.blue, borderWidth: 2, borderColor: C.white, alignItems: 'center', justifyContent: 'center' },
   youDot: { width: 18, height: 18, borderRadius: 9, backgroundColor: C.blue, borderWidth: 3, borderColor: C.white },
   modalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: S.lg, paddingBottom: S.sm, borderBottomWidth: 1, borderBottomColor: C.line },

@@ -7,6 +7,11 @@ export type AudienceId = 'anyone' | 'students' | 'early' | 'changing' | 'same-fi
 export type AvailabilityId = 'today' | 'week' | 'weekends' | 'evenings';
 export type Mode = 'seeking' | 'offering' | 'both';
 export type ShareMode = 'area' | 'public';
+export type MeetMode = 'inperson' | 'video' | 'either';
+/** Things a person is stuck on; mentors list the ones they're good at helping with. */
+export type ChallengeId = 'start' | 'network' | 'interviews' | 'resume' | 'credentials' | 'switching' | 'hiring' | 'skills' | 'team';
+/** Backgrounds and roles people can share or look for. */
+export type TraitId = 'firstgen' | 'immigrant' | 'switcher' | 'senior' | 'near' | 'hiring';
 export type EventCategory = 'networking' | 'career' | 'hackathon';
 
 export type Area = { id: string; name: string; center: LatLng };
@@ -43,6 +48,14 @@ export type Person = {
   meets: 'public' | 'video' | 'both';
   hook: string;
   questions: string[];
+  /** First-person intro, written by the person. */
+  bio: string;
+  traits: TraitId[];
+  helpTags: ChallengeId[];
+  languages: string[];
+  yearsExp: number;
+  /** Profile photo URL, when the person uploaded one. Demo profiles have none. */
+  photo?: string;
   door?: OpenDoor;
   /** Demo only: how the simulated reply goes. */
   demoResponse: 'accept' | 'decline';
@@ -91,7 +104,14 @@ export type IncomingRequest = {
 };
 
 export type Prefs = {
+  /** The field you want to grow in. */
   field: FieldId | null;
+  /** For career changers: the field you're coming from. */
+  fromField: FieldId | null;
+  challenges: ChallengeId[];
+  wantTraits: TraitId[];
+  languages: string[];
+  meetMode: MeetMode;
   interests: string[];
   skills: string[];
   goals: GoalId[];
@@ -108,4 +128,8 @@ export type Profile = {
   status: StatusId | null;
   org: string;
   intro: string;
+  /** What you could help others with (shown when offering help). */
+  offer: string;
+  /** Local file URI of your profile photo, copied into the app's documents folder. */
+  photoUri: string | null;
 };

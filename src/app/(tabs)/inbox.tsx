@@ -46,7 +46,7 @@ export default function Inbox() {
                 onPress={() => (r.status === 'accepted' ? router.push({ pathname: '/chat/[id]', params: { id: r.id } }) : router.push({ pathname: '/person/[id]', params: { id: p.id } }))}
                 style={({ pressed }) => [styles.item, pressed && { backgroundColor: C.bg2 }]}
               >
-                <Avatar name={p.name} />
+                <Avatar name={p.name} uri={p.photo} />
                 <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
                   <Row style={{ justifyContent: 'space-between' }}>
                     <Text style={T.h3} numberOfLines={1}>{p.name}</Text>

@@ -2,13 +2,36 @@
  * DEMO DATA. Every person and event here is fictional. Coordinates are approximate neighborhood
  * points (rounded), never anyone's live location. Replace via src/data/source.ts with a real backend.
  */
-import type { AudienceId, CommunityEvent, IncomingRequest, Person } from './types';
+import type { AudienceId, ChallengeId, CommunityEvent, IncomingRequest, Person, TraitId } from './types';
 
 const MIN = 60_000;
 const quarter = () => Math.round(Date.now() / (15 * MIN)) * 15 * MIN;
 
 type DoorSeed = { venueId: string; from: number; to: number; lengthMin: number; topics: string[]; audience: AudienceId[] };
-type Seed = Omit<Person, 'door' | 'isDemo'> & { doorSeed?: DoorSeed };
+type Extra = Pick<Person, 'bio' | 'traits' | 'helpTags' | 'languages' | 'yearsExp'>;
+type Seed = Omit<Person, 'door' | 'isDemo' | keyof Extra | 'photo'> & { doorSeed?: DoorSeed };
+
+const x = (bio: string, traits: TraitId[], helpTags: ChallengeId[], languages: string[], yearsExp: number): Extra => ({ bio, traits, helpTags, languages, yearsExp });
+
+/** The human side of each demo profile, written in their own voice. */
+const EXTRA: Record<string, Extra> = {
+  maya: x('I grew up in Gastonia and was the first in my family to finish college. I got into banking through an operations job nobody wanted, and I like helping people find side doors like that.', ['firstgen', 'senior'], ['network', 'interviews', 'hiring', 'start'], ['English'], 14),
+  daniel: x('I cooked for nine years before a bootcamp got me into software. Happy to look at your projects or run a mock interview over coffee.', ['switcher', 'senior'], ['interviews', 'skills', 'switching'], ['English', 'Spanish'], 7),
+  noor: x('I started on a help desk after moving from Jordan. Security felt out of reach until someone walked me through the certifications, so I try to pay that forward.', ['immigrant', 'near'], ['skills', 'credentials', 'start'], ['English', 'Arabic'], 4),
+  priya: x('Trained in Kerala, re-licensed in North Carolina. The paperwork nearly broke me, so ask me anything about it.', ['immigrant', 'senior'], ['credentials', 'start', 'hiring'], ['English', 'Hindi'], 15),
+  marcus: x('I read about 200 resumes a week for hospital roles. I\u2019ll tell you honestly what makes me stop scrolling.', ['hiring', 'senior'], ['resume', 'interviews', 'hiring'], ['English'], 11),
+  grace: x('Came for grad school and stayed. I run a small CPA practice and remember how confusing licensing was with a degree from overseas.', ['immigrant', 'senior'], ['credentials', 'hiring'], ['English', 'Mandarin'], 16),
+  jordan: x('Two years into a bank analyst program. I applied with no contacts and a state-school degree, so I know the cold-application route well.', ['near', 'firstgen'], ['interviews', 'network', 'resume'], ['English', 'Korean'], 2),
+  sofia: x('Bootcamp grad, now testing healthcare software. Still close enough to the job hunt to remember every rejection email.', ['near', 'switcher'], ['start', 'skills', 'team'], ['English', 'Spanish'], 1),
+  tomasz: x('Ten years turning wrenches, now running grid projects. If you work with your hands and want an office role, I\u2019ve been exactly there.', ['switcher', 'senior'], ['switching', 'resume', 'hiring'], ['English', 'Polish'], 18),
+  ade: x('I practiced medicine in Lagos, then moved into clinical research here while sorting out credentials. It\u2019s a long road, but there are shortcuts.', ['immigrant', 'switcher'], ['credentials', 'switching', 'start'], ['English', 'Yoruba'], 9),
+  elena: x('Eight years teaching math, now doing data for the transit agency. Teachers have more transferable skills than they think.', ['switcher', 'near'], ['switching', 'skills', 'resume'], ['English', 'Russian'], 3),
+  hannah: x('I run the county\u2019s job training programs. Most people have no idea how much free training exists, and I love showing them.', ['hiring', 'senior'], ['hiring', 'start', 'skills'], ['English'], 12),
+  aisha: x('Graphic designer turned product designer. I\u2019ll review your portfolio and be kind about it, mostly.', ['firstgen', 'senior'], ['resume', 'switching', 'interviews'], ['English', 'Arabic'], 9),
+  kevin: x('Senior at UNC Charlotte and I run the startup club. Always looking for people to build weird things with at hackathons.', ['near'], ['team', 'network'], ['English', 'Vietnamese'], 0),
+  rosa: x('Started as a bilingual teller at 19. Now I manage the branch and do the hiring. Banking has more doors in than people think.', ['firstgen', 'hiring'], ['hiring', 'interviews', 'start'], ['English', 'Spanish'], 13),
+  samuel: x('Six years teaching middle school science before instructional design. Happy to talk about leaving the classroom without the guilt.', ['switcher', 'near'], ['switching', 'resume', 'skills'], ['English'], 2),
+};
 
 const SEEDS: Seed[] = [
   {
@@ -182,6 +205,7 @@ export function buildDemoPeople(): Person[] {
   const base = quarter();
   return SEEDS.map(({ doorSeed, ...p }) => ({
     ...p,
+    ...EXTRA[p.id],
     isDemo: true as const,
     door: doorSeed
       ? {

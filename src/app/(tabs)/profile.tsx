@@ -1,10 +1,12 @@
 import { router } from 'expo-router';
-import { Alert, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Avatar, Button, Card, ChipGroup, KV, Note, Row, Section, Tag } from '@/components/ui';
-import { AVAILABILITY, audienceLabel, fieldLabel, goalLabel, statusLabel, venueById } from '@/data/options';
+import { AVAILABILITY, MEET_MODES, audienceLabel, challengeLabel, fieldLabel, goalLabel, statusLabel, traitLabel, venueById } from '@/data/options';
 import { dataSource } from '@/data/source';
 import type { AvailabilityId } from '@/data/types';
 import { doorState } from '@/lib/match';
+import { pickProfilePhoto, removeProfilePhoto } from '@/lib/photo';
 import { fmtWindow } from '@/lib/time';
 import { useApp } from '@/state/AppState';
 import { C, R, S, T } from '@/theme';
@@ -15,13 +17,31 @@ export default function ProfileTab() {
   const active = app.doors.filter((d) => ['live', 'upcoming'].includes(doorState(d, app.now)));
   const past = app.doors.filter((d) => !active.includes(d));
 
+  const changePhoto = async () => {
+    const res = await pickProfilePhoto(profile.photoUri);
+    if (!res) return;
+    if ('error' in res) return Alert.alert('Can’t open photos', res.error);
+    app.setProfile({ photoUri: res.uri });
+  };
+  const photoMenu = () =>
+    profile.photoUri
+      ? Alert.alert('Profile photo', undefined, [
+          { text: 'Choose a new photo', onPress: changePhoto },
+          { text: 'Remove photo', style: 'destructive', onPress: () => { removeProfilePhoto(profile.photoUri); app.setProfile({ photoUri: null }); } },
+          { text: 'Cancel', style: 'cancel' },
+        ])
+      : changePhoto();
+
   const toggleAvail = (id: AvailabilityId) =>
     app.setPrefs({ availability: prefs.availability.includes(id) ? prefs.availability.filter((x) => x !== id) : [...prefs.availability, id] });
 
   return (
     <ScrollView style={{ backgroundColor: C.bg }} contentContainerStyle={{ padding: S.lg, gap: S.xl, paddingBottom: S.xxl }}>
       <View style={{ flexDirection: 'row', gap: S.md, alignItems: 'center' }}>
-        <Avatar name={profile.name || '?'} size={60} />
+        <Pressable onPress={photoMenu} accessibilityRole="button" accessibilityLabel={profile.photoUri ? 'Change profile photo' : 'Add a profile photo'}>
+          <Avatar name={profile.name || '?'} uri={profile.photoUri} size={72} />
+          <View style={styles.camBadge}><Ionicons name={profile.photoUri ? 'pencil' : 'camera'} size={13} color={C.white} /></View>
+        </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={T.title}>{profile.name || 'Your profile'}</Text>
           <Text style={T.muted}>{statusLabel(profile.status)}{profile.org ? ` · ${profile.org}` : ''}</Text>
@@ -63,11 +83,15 @@ export default function ProfileTab() {
 
       <Section title="Preferences" right={<Button label="Edit" variant="secondary" small onPress={() => router.push({ pathname: '/onboarding', params: { edit: 'prefs' } })} />}>
         <View style={{ gap: S.sm }}>
-          <KV k="Field" v={fieldLabel(prefs.field)} />
+          <KV k="Growing in" v={fieldLabel(prefs.field)} />
+          {prefs.fromField ? <KV k="Coming from" v={fieldLabel(prefs.fromField)} /> : null}
+          <KV k="In my way" v={prefs.challenges.map(challengeLabel).join('; ') || 'Not set'} />
+          <KV k="Click with" v={prefs.wantTraits.map(traitLabel).join(', ') || 'Anyone'} />
+          <KV k="Languages" v={prefs.languages.join(', ') || 'Not set'} />
           <KV k="Looking for" v={prefs.goals.map((g) => (g === 'other' && prefs.goalOther ? prefs.goalOther : goalLabel(g))).join(', ') || 'Not set'} />
           <KV k="Interests" v={prefs.interests.join(', ') || 'Not set'} />
           <KV k="Skills" v={prefs.skills.join(', ') || 'Not set'} />
-          <KV k="Travel" v={`Up to ${prefs.travelMi} mi`} />
+          <KV k="Meeting" v={`${MEET_MODES.find((m) => m.id === prefs.meetMode)?.label ?? 'Either'}, up to ${prefs.travelMi} mi`} />
           <KV k="Here to" v={{ seeking: 'Find connections', offering: 'Offer help', both: 'Both' }[prefs.mode]} />
           <KV k="Sharing" v={prefs.shareMode === 'area' ? 'Approximate area' : 'Public meeting place only'} />
         </View>
@@ -78,6 +102,7 @@ export default function ProfileTab() {
           <KV k="Name" v={profile.name || 'Not set'} />
           <KV k="Status" v={statusLabel(profile.status)} />
           <KV k="Organization" v={profile.org || 'Not set'} />
+          {profile.offer ? <KV k="Can offer" v={profile.offer} /> : null}
         </View>
       </Section>
 
@@ -112,6 +137,7 @@ export default function ProfileTab() {
 }
 
 const styles = StyleSheet.create({
+  camBadge: { position: 'absolute', right: -2, bottom: -2, width: 26, height: 26, borderRadius: 13, backgroundColor: C.accent, borderWidth: 2, borderColor: C.bg, alignItems: 'center', justifyContent: 'center' },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: S.md },
   divider: { height: 1, backgroundColor: C.line, marginVertical: S.xs, borderRadius: R.sm },
 });

@@ -20,9 +20,10 @@ export type AppData = {
 };
 
 export const emptyPrefs: Prefs = {
-  field: null, interests: [], skills: [], goals: [], goalOther: '', travelMi: 5, mode: 'seeking', shareMode: 'public', discoverable: true, availability: ['week'],
+  field: null, fromField: null, challenges: [], wantTraits: [], languages: ['English'], meetMode: 'either',
+  interests: [], skills: [], goals: [], goalOther: '', travelMi: 5, mode: 'seeking', shareMode: 'public', discoverable: true, availability: ['week'],
 };
-const emptyProfile: Profile = { name: '', status: null, org: '', intro: '' };
+const emptyProfile: Profile = { name: '', status: null, org: '', intro: '', offer: '', photoUri: null };
 
 const fresh = (): AppData => ({
   onboarded: false, prefs: emptyPrefs, profile: emptyProfile, requests: [], messages: {}, incoming: DEMO_INCOMING, doors: [], savedEvents: [], blocked: [],
@@ -30,10 +31,15 @@ const fresh = (): AppData => ({
 
 export const SAMPLE: Pick<AppData, 'prefs' | 'profile'> = {
   prefs: {
-    field: 'finance', interests: ['Fintech', 'Data & analytics', 'Investing'], skills: ['Excel', 'Spanish', 'Customer service'],
+    field: 'finance', fromField: null, challenges: ['network', 'interviews', 'start'], wantTraits: ['firstgen', 'near'], languages: ['English', 'Spanish'], meetMode: 'either',
+    interests: ['Fintech', 'Data & analytics', 'Investing'], skills: ['Excel', 'Spanish', 'Customer service'],
     goals: ['mentorship', 'advice', 'peers'], goalOther: '', travelMi: 5, mode: 'both', shareMode: 'public', discoverable: true, availability: ['week', 'evenings'],
   },
-  profile: { name: 'Alex Rivera', status: 'student', org: 'UNC Charlotte', intro: 'First-gen finance student. I want honest advice on getting into banking without connections, and I’m happy to help anyone navigating community college transfers.' },
+  profile: {
+    name: 'Alex Rivera', status: 'student', org: 'UNC Charlotte', photoUri: null,
+    intro: 'First-gen finance student, transferred from community college last year. Trying to break into banking without knowing anyone in it.',
+    offer: 'Happy to help anyone navigating a community college transfer or job hunting in Spanish.',
+  },
 };
 
 type Ctx = AppData & {

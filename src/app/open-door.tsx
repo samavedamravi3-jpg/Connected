@@ -79,7 +79,7 @@ export default function OpenDoorScreen() {
         </View>
         <View style={styles.preview}>
           <View style={{ flexDirection: 'row', gap: S.md, alignItems: 'center' }}>
-            <Avatar name={app.profile.name || 'You'} />
+            <Avatar name={app.profile.name || 'You'} uri={app.profile.photoUri} />
             <View>
               <Text style={T.h3}>{app.profile.name || 'You'}</Text>
               <Text style={T.small}>{statusLabel(app.profile.status)} · {fieldLabel(app.prefs.field)}</Text>

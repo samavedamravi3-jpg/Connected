@@ -1,15 +1,19 @@
-import type { Area, AudienceId, AvailabilityId, EventCategory, FieldId, GoalId, StatusId, Venue } from './types';
+import type Ionicons from '@expo/vector-icons/Ionicons';
+import type { ComponentProps } from 'react';
+import type { Area, AudienceId, AvailabilityId, ChallengeId, EventCategory, FieldId, GoalId, MeetMode, StatusId, TraitId, Venue } from './types';
+
+type Icon = ComponentProps<typeof Ionicons>['name'];
 
 export const CHARLOTTE_CENTER = { latitude: 35.2271, longitude: -80.8431 };
 
-export const FIELDS: { id: FieldId; label: string }[] = [
-  { id: 'finance', label: 'Finance & banking' },
-  { id: 'tech', label: 'Technology' },
-  { id: 'health', label: 'Healthcare' },
-  { id: 'energy', label: 'Energy & engineering' },
-  { id: 'design', label: 'Design & marketing' },
-  { id: 'public', label: 'Public service & nonprofits' },
-  { id: 'education', label: 'Education' },
+export const FIELDS: { id: FieldId; label: string; icon: Icon }[] = [
+  { id: 'finance', label: 'Finance & banking', icon: 'trending-up-outline' },
+  { id: 'tech', label: 'Technology', icon: 'code-slash-outline' },
+  { id: 'health', label: 'Healthcare', icon: 'medkit-outline' },
+  { id: 'energy', label: 'Energy & engineering', icon: 'flash-outline' },
+  { id: 'design', label: 'Design & marketing', icon: 'color-palette-outline' },
+  { id: 'public', label: 'Public service & nonprofits', icon: 'people-outline' },
+  { id: 'education', label: 'Education', icon: 'school-outline' },
 ];
 
 export const INTERESTS = [
@@ -22,21 +26,50 @@ export const SKILLS = [
   'Spanish', 'Research', 'Writing', 'Financial modeling', 'Clinical care', 'CAD', 'Marketing', 'Teaching',
 ];
 
-export const GOALS: { id: GoalId; label: string; hint: string; verb: string }[] = [
-  { id: 'mentorship', label: 'Mentorship', hint: 'Someone further along to learn from', verb: 'looking for a mentor' },
-  { id: 'advice', label: 'Career advice', hint: 'A quick, honest take on your next step', verb: 'looking for career advice' },
-  { id: 'peers', label: 'Peers', hint: 'People at your stage to swap notes with', verb: 'hoping to meet peers' },
-  { id: 'collab', label: 'Collaborators', hint: 'Build a project or join a team', verb: 'looking for collaborators' },
-  { id: 'recruiting', label: 'Recruiting insights', hint: 'How hiring actually works here', verb: 'trying to understand how hiring works' },
-  { id: 'other', label: 'Something else', hint: 'Tell us in a few words', verb: 'hoping to connect' },
+export const GOALS: { id: GoalId; label: string; hint: string; verb: string; icon: Icon }[] = [
+  { id: 'mentorship', label: 'Mentorship', hint: 'Someone further along to learn from', verb: 'looking for a mentor', icon: 'compass-outline' },
+  { id: 'advice', label: 'Career advice', hint: 'A quick, honest take on your next step', verb: 'looking for career advice', icon: 'chatbubble-ellipses-outline' },
+  { id: 'peers', label: 'Peers', hint: 'People at your stage to swap notes with', verb: 'hoping to meet peers', icon: 'people-circle-outline' },
+  { id: 'collab', label: 'Collaborators', hint: 'Build a project or join a team', verb: 'looking for collaborators', icon: 'construct-outline' },
+  { id: 'recruiting', label: 'Recruiting insights', hint: 'How hiring actually works here', verb: 'trying to understand how hiring works', icon: 'briefcase-outline' },
+  { id: 'other', label: 'Something else', hint: 'Tell us in a few words', verb: 'hoping to connect', icon: 'ellipsis-horizontal-circle-outline' },
 ];
 
-export const STATUSES: { id: StatusId; label: string }[] = [
-  { id: 'student', label: 'Student' },
-  { id: 'early', label: 'Early career' },
-  { id: 'experienced', label: 'Experienced' },
-  { id: 'changing', label: 'Changing careers' },
-  { id: 'between', label: 'Between jobs' },
+export const STATUSES: { id: StatusId; label: string; hint: string; icon: Icon }[] = [
+  { id: 'student', label: 'Student', hint: 'In school, college or a bootcamp', icon: 'school-outline' },
+  { id: 'early', label: 'Early in my career', hint: 'Roughly my first five years of work', icon: 'leaf-outline' },
+  { id: 'experienced', label: 'Experienced', hint: 'Several years in, happy to give back', icon: 'ribbon-outline' },
+  { id: 'changing', label: 'Changing careers', hint: 'Moving from one field into another', icon: 'swap-horizontal-outline' },
+  { id: 'between', label: 'Between jobs', hint: 'Looking for my next role', icon: 'search-outline' },
+];
+
+export const CHALLENGES: { id: ChallengeId; label: string; icon: Icon; theyHelp: string }[] = [
+  { id: 'start', label: 'Not sure where to start', icon: 'map-outline', theyHelp: 'figuring out where to start' },
+  { id: 'network', label: 'I don\u2019t know anyone in the field', icon: 'person-add-outline', theyHelp: 'meeting people in the field' },
+  { id: 'interviews', label: 'Getting through interviews', icon: 'mic-outline', theyHelp: 'interview prep' },
+  { id: 'resume', label: 'My resume isn\u2019t landing', icon: 'document-text-outline', theyHelp: 'resumes that get noticed' },
+  { id: 'credentials', label: 'Credentials or licenses from abroad', icon: 'globe-outline', theyHelp: 'credentials from abroad' },
+  { id: 'switching', label: 'Explaining a career switch', icon: 'swap-horizontal-outline', theyHelp: 'telling a career-change story' },
+  { id: 'hiring', label: 'Understanding how hiring works here', icon: 'briefcase-outline', theyHelp: 'how hiring works here' },
+  { id: 'skills', label: 'Knowing which skills to learn next', icon: 'bulb-outline', theyHelp: 'what to learn next' },
+  { id: 'team', label: 'Finding people to build with', icon: 'construct-outline', theyHelp: 'finding a team' },
+];
+
+export const TRAITS: { id: TraitId; label: string; hint: string; icon: Icon; common: string }[] = [
+  { id: 'firstgen', label: 'First-generation professionals', hint: 'Figured it out without a roadmap', icon: 'flag-outline', common: 'Both first-gen' },
+  { id: 'immigrant', label: 'People who moved here from abroad', hint: 'Rebuilt a career in a new country', icon: 'airplane-outline', common: 'Both moved here from abroad' },
+  { id: 'switcher', label: 'People who changed careers', hint: 'Made the jump you\u2019re making', icon: 'swap-horizontal-outline', common: 'Changed careers too' },
+  { id: 'senior', label: 'Senior people in my field', hint: 'Years of experience and a wide view', icon: 'ribbon-outline', common: 'Years in the field' },
+  { id: 'near', label: 'Someone a few years ahead', hint: 'Close enough to remember what it was like', icon: 'footsteps-outline', common: 'A few years ahead' },
+  { id: 'hiring', label: 'Recruiters & hiring managers', hint: 'The people who decide who gets hired', icon: 'briefcase-outline', common: 'Involved in hiring' },
+];
+
+export const LANGUAGES = ['English', 'Spanish', 'Mandarin', 'Hindi', 'Arabic', 'French', 'Vietnamese', 'Portuguese', 'Korean', 'Polish', 'Russian', 'Yoruba', 'Tagalog'];
+
+export const MEET_MODES: { id: MeetMode; label: string; icon: Icon }[] = [
+  { id: 'inperson', label: 'In person', icon: 'cafe-outline' },
+  { id: 'video', label: 'Video call', icon: 'videocam-outline' },
+  { id: 'either', label: 'Either works', icon: 'swap-vertical-outline' },
 ];
 
 export const AUDIENCES: { id: AudienceId; label: string }[] = [
@@ -89,3 +122,6 @@ export const statusLabel = (id: StatusId | null | undefined) => STATUSES.find((s
 export const audienceLabel = (id: AudienceId) => AUDIENCES.find((a) => a.id === id)?.label ?? id;
 export const availabilityLabel = (id: AvailabilityId) => AVAILABILITY.find((a) => a.id === id)?.label ?? id;
 export const venueById = (id: string) => VENUES.find((v) => v.id === id) ?? VENUES[0];
+
+export const challengeLabel = (id: ChallengeId) => CHALLENGES.find((c) => c.id === id)?.label ?? id;
+export const traitLabel = (id: TraitId) => TRAITS.find((t) => t.id === id)?.label ?? id;

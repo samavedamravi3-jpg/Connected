@@ -1,12 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { StyleSheet, Text, View } from 'react-native';
-import { availabilityLabel, fieldLabel, venueById } from '@/data/options';
+import { availabilityLabel, venueById } from '@/data/options';
 import type { NearbyPerson, Prefs, Profile } from '@/data/types';
 import { approxDistance } from '@/lib/geo';
-import { canSeeDoor, doorActive, doorState, matchReasons } from '@/lib/match';
+import { canSeeDoor, doorActive, doorState, matchPoints, matchStrength } from '@/lib/match';
 import { fmtTime, fmtWindow } from '@/lib/time';
 import { C, R, S, T, shadow } from '@/theme';
-import { Avatar, Button, DemoTag, IconButton } from './ui';
+import { Avatar, Button, IconButton } from './ui';
 
 type Props = {
   person: NearbyPerson;
@@ -19,83 +19,69 @@ type Props = {
 
 /** Compact card shown over the map for the selected pin. */
 export function PersonCard({ person: p, distanceFromLabel, prefs, profile, onOpen, onClose }: Props) {
-  const reason = matchReasons(p, prefs)[0];
+  const points = matchPoints(p, prefs).slice(0, 2);
+  const strength = matchStrength(p, prefs);
   const door = p.door && doorActive(p.door) ? p.door : undefined;
   const seeDoor = door ? canSeeDoor(door, p, prefs, profile) : false;
+  const free = p.availability.includes('today') ? 'Free today' : `Free ${availabilityLabel(p.availability[0]).toLowerCase()}`;
 
   return (
-    <View style={[styles.card, shadow]} accessibilityViewIsModal={false}>
+    <View style={[styles.card, shadow]}>
       <View style={styles.head}>
-        <Avatar name={p.name} size={48} />
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={T.h3} numberOfLines={1}>{p.name}</Text>
-          <Text style={T.small} numberOfLines={1}>{p.role} · {p.org}</Text>
+        <Avatar name={p.name} uri={p.photo} size={58} ring={!!door && seeDoor} />
+        <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.name} numberOfLines={1}>{p.name}</Text>
+            {strength === 'strong' ? <Text style={styles.badge}>Strong match</Text> : null}
+          </View>
+          <Text style={T.small} numberOfLines={1}>{p.role}, {p.org}</Text>
+          <Text style={[T.small, { color: C.ink2 }]} numberOfLines={1}>
+            {approxDistance(p.distanceMi)} {distanceFromLabel} · {p.areaName} · {free}
+          </Text>
         </View>
-        <IconButton icon="close" label="Close profile card" onPress={onClose} style={{ marginTop: -6, marginRight: -8 }} />
+        <IconButton icon="close" label="Close" onPress={onClose} style={{ marginTop: -8, marginRight: -8 }} />
       </View>
 
-      <View style={styles.metaRow}>
-        <Meta icon="briefcase-outline" text={fieldLabel(p.field)} />
-        <Meta icon="navigate-outline" text={`${approxDistance(p.distanceMi)} ${distanceFromLabel}`} />
-        <Meta icon="time-outline" text={p.availability.map(availabilityLabel).join(', ')} />
-      </View>
+      <Text style={styles.bio} numberOfLines={2}>{p.bio}</Text>
+
+      {points.length ? (
+        <View style={{ gap: 6 }}>
+          {points.map((pt) => (
+            <View key={pt.text} style={styles.point}>
+              <Ionicons name={pt.icon} size={15} color={C.accent} />
+              <Text style={styles.pointText} numberOfLines={1}>{pt.text}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
 
       {door ? (
         <View style={styles.door}>
-          <Ionicons name="enter-outline" size={18} color={C.accent} />
-          <Text style={[T.small, { color: C.ink, flex: 1, fontSize: 14 }]}>
+          <Ionicons name="enter-outline" size={17} color={C.accent} />
+          <Text style={[T.small, { color: C.ink, flex: 1, fontSize: 14 }]} numberOfLines={1}>
             {seeDoor
-              ? `Open Door ${doorState(door) === 'live' ? `now until ${fmtTime(door.end)}` : fmtWindow(door.start, door.end).toLowerCase()} at ${venueById(door.venueId).name}`
-              : 'Has an Open Door for a different group today'}
+              ? `Open Door ${doorState(door) === 'live' ? `now until ${fmtTime(door.end)}` : fmtWindow(door.start, door.end).toLowerCase()} · ${venueById(door.venueId).name}`
+              : 'Hosting an Open Door for another group'}
           </Text>
         </View>
       ) : null}
 
-      <Text style={[T.body, { fontSize: 15, lineHeight: 21 }]} numberOfLines={2}>
-        <Text style={{ fontWeight: '600' }}>Can help with: </Text>
-        {p.helpsWith.slice(0, 2).join('; ')}
-      </Text>
-
-      <View style={styles.tags}>
-        {p.interests.slice(0, 3).map((i) => (
-          <Text key={i} style={[styles.pill, prefs.interests.includes(i) && styles.pillShared]}>{i}</Text>
-        ))}
-        {p.skills.slice(0, 2).map((s) => (
-          <Text key={s} style={[styles.pill, styles.skill]}>{s}</Text>
-        ))}
-      </View>
-
-      {reason ? (
-        <Text style={[T.small, { color: C.accent }]} numberOfLines={1}>
-          <Ionicons name="sparkles-outline" size={13} color={C.accent} /> {reason}
-        </Text>
-      ) : null}
-
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.md }}>
         <Button label="View profile" onPress={onOpen} style={{ flex: 1 }} />
-        <DemoTag />
+        <Text style={styles.demo}>Demo profile</Text>
       </View>
-    </View>
-  );
-}
-
-function Meta({ icon, text }: { icon: 'briefcase-outline' | 'navigate-outline' | 'time-outline'; text: string }) {
-  return (
-    <View style={styles.meta}>
-      <Ionicons name={icon} size={14} color={C.ink3} />
-      <Text style={[T.small, { fontSize: 13 }]} numberOfLines={1}>{text}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: C.bg, borderRadius: R.lg, padding: S.lg, gap: S.md, borderWidth: 1, borderColor: C.line },
+  card: { backgroundColor: C.bg, borderRadius: 22, padding: S.lg, gap: S.md },
   head: { flexDirection: 'row', gap: S.md, alignItems: 'center' },
-  metaRow: { flexDirection: 'row', flexWrap: 'wrap', columnGap: S.md, rowGap: 4 },
-  meta: { flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: '100%' },
-  door: { flexDirection: 'row', gap: S.sm, alignItems: 'center', backgroundColor: C.accentSoft, borderRadius: R.sm, padding: S.sm },
-  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  pill: { fontSize: 13, color: C.ink2, backgroundColor: C.bg2, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, overflow: 'hidden' },
-  pillShared: { backgroundColor: C.accentSoft, color: C.accent, fontWeight: '600' },
-  skill: { backgroundColor: C.blueSoft, color: C.blue },
+  name: { fontSize: 18, fontWeight: '700', color: C.ink, flexShrink: 1 },
+  badge: { fontSize: 11, fontWeight: '700', color: C.accent, backgroundColor: C.accentSoft, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, overflow: 'hidden' },
+  bio: { fontSize: 15, lineHeight: 21, color: C.ink2 },
+  point: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  pointText: { fontSize: 14, color: C.ink, fontWeight: '500', flex: 1 },
+  door: { flexDirection: 'row', gap: S.sm, alignItems: 'center', backgroundColor: C.accentSoft, borderRadius: R.md, paddingHorizontal: S.md, paddingVertical: 10 },
+  demo: { fontSize: 12, color: C.ink3 },
 });

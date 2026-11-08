@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ComponentProps, ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { AVATAR_COLORS, C, R, S, T } from '@/theme';
 import { initials } from '@/lib/match';
 
@@ -109,12 +109,22 @@ export function Choice({ title, hint, selected, onPress, multi }: { title: strin
   );
 }
 
-export function Avatar({ name, size = 44 }: { name: string; size?: number }) {
+/** Profile photo when there is one, otherwise soft-colored initials. `ring` adds a purple outline. */
+export function Avatar({ name, size = 44, uri, ring }: { name: string; size?: number; uri?: string | null; ring?: boolean }) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  const inner = ring ? size - 6 : size;
+  const face = uri ? (
+    <Image source={{ uri }} style={{ width: inner, height: inner, borderRadius: inner / 2, backgroundColor: C.bg2 }} accessibilityIgnoresInvertColors />
+  ) : (
+    <View style={{ width: inner, height: inner, borderRadius: inner / 2, backgroundColor: AVATAR_COLORS[h % AVATAR_COLORS.length], alignItems: 'center', justifyContent: 'center' }}>
+      <Text style={{ fontWeight: '700', color: C.ink, fontSize: inner * 0.36, letterSpacing: 0.3 }}>{initials(name)}</Text>
+    </View>
+  );
+  if (!ring) return <View accessible={false}>{face}</View>;
   return (
-    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: AVATAR_COLORS[h % AVATAR_COLORS.length], alignItems: 'center', justifyContent: 'center' }} accessible={false}>
-      <Text style={{ fontWeight: '700', color: C.ink, fontSize: size * 0.36 }}>{initials(name)}</Text>
+    <View accessible={false} style={{ width: size, height: size, borderRadius: size / 2, borderWidth: 2, borderColor: C.accent, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg }}>
+      {face}
     </View>
   );
 }
