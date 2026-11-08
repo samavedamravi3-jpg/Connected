@@ -39,8 +39,12 @@ Checks: `npm run typecheck`, `npx expo lint`, `npx expo-doctor`.
 
 ## Map and location
 
-- Map: the phone's built-in map (Apple Maps on iOS, Google Maps on Android) via `react-native-maps`, in a muted style. No API key is needed in Expo Go. Android store builds need a free Google Maps key in the `react-native-maps` config plugin.
-- Location: one foreground fix with `expo-location` after you allow it. There are no watchers and no background location (disabled in `app.json`).
+- Map: the phone's built-in map (Apple Maps on iOS, Google Maps on Android) via `react-native-maps`, styled as a "network map": a lavender wash (full custom palette on Android), people as match-strength nodes, and connection lines to your best matches. No API key is needed in Expo Go. Android store builds need a free Google Maps key in the `react-native-maps` config plugin.
+- Location (`src/lib/useLiveLocation.ts`): after you allow it, your position updates live **only while the Map tab is open and the app is in the foreground**, and you can pause it. Background location is disabled in `app.json`. Your location is never shown to anyone else.
+
+## Where to meet
+
+On a profile or in a chat, **Where you two could meet** (`src/lib/places.ts`) suggests real places near the midpoint between you and the other person that serve food you both picked in onboarding, ranked so neither of you travels much farther. Places come from OpenStreetMap's Nominatim search (free, no key): the app sends only a rounded area (~1 km), makes at most one request per second, caches results, and falls back to the app's list of public venues when offline.
 
 ## Data
 
