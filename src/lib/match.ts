@@ -151,6 +151,8 @@ function describeMe(profile: Profile, prefs: Prefs, p: Person): string {
 }
 
 export const firstName = (n: string) => n.trim().split(/\s+/)[0] ?? '';
+/** "Alex Rivera" from a profile's first and last name. */
+export const fullName = (p: { name: string; lastName?: string }) => [p.name.trim(), (p.lastName ?? '').trim()].filter(Boolean).join(' ');
 export const initials = (n: string) => n.trim().split(/\s+/).map((w) => w[0] ?? '').slice(0, 2).join('').toUpperCase() || '?';
 const lowerFirst = (s: string) => (s ? s[0].toLowerCase() + s.slice(1) : s);
 export function fieldLabelShort(id: string): string {

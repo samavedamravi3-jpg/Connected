@@ -39,3 +39,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Secrets for the assistant proxy and local app config
+.env
+.env.*
+!.env.example

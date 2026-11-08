@@ -23,7 +23,7 @@ export const emptyPrefs: Prefs = {
   field: null, fromField: null, challenges: [], wantTraits: [], languages: ['English'], meetMode: 'either', foods: [], diet: [],
   interests: [], skills: [], goals: [], goalOther: '', travelMi: 5, mode: 'seeking', shareMode: 'public', discoverable: true, availability: ['week'],
 };
-const emptyProfile: Profile = { name: '', status: null, org: '', intro: '', offer: '', photoUri: null };
+const emptyProfile: Profile = { name: '', lastName: '', status: null, org: '', intro: '', offer: '', photoUri: null };
 
 const fresh = (): AppData => ({
   onboarded: false, prefs: emptyPrefs, profile: emptyProfile, requests: [], messages: {}, incoming: DEMO_INCOMING, doors: [], savedEvents: [], blocked: [],
@@ -37,7 +37,7 @@ export const SAMPLE: Pick<AppData, 'prefs' | 'profile'> = {
     goals: ['mentorship', 'advice', 'peers'], goalOther: '', travelMi: 5, mode: 'both', shareMode: 'public', discoverable: true, availability: ['week', 'evenings'],
   },
   profile: {
-    name: 'Alex Rivera', status: 'student', org: 'UNC Charlotte', photoUri: null,
+    name: 'Alex', lastName: 'Rivera', status: 'student', org: 'UNC Charlotte', photoUri: null,
     intro: 'First-gen finance student, transferred from community college last year. Trying to break into banking without knowing anyone in it.',
     offer: 'Happy to help anyone navigating a community college transfer or job hunting in Spanish.',
   },
@@ -85,7 +85,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .then((raw) => {
         if (!raw) return;
         const saved = JSON.parse(raw) as Partial<AppData>;
-        setData((d) => ({ ...d, ...saved, prefs: { ...emptyPrefs, ...saved.prefs }, profile: { ...emptyProfile, ...saved.profile } }));
+        const profile = { ...emptyProfile, ...saved.profile };
+        // Older saves kept the full name in one field; split it into first and last.
+        if (saved.profile && !('lastName' in saved.profile) && profile.name.trim().includes(' ')) {
+          const [first, ...rest] = profile.name.trim().split(/\s+/);
+          profile.name = first;
+          profile.lastName = rest.join(' ');
+        }
+        setData((d) => ({ ...d, ...saved, prefs: { ...emptyPrefs, ...saved.prefs }, profile }));
       })
       .catch(() => {})
       .finally(() => setHydrated(true));

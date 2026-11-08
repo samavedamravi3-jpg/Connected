@@ -9,6 +9,7 @@ import { FilterSheet } from '@/components/FilterSheet';
 import { NodePin, YouNode, nodeAnchor } from '@/components/MapPins';
 import { PersonCard } from '@/components/PersonCard';
 import { Avatar, Button, Chip } from '@/components/ui';
+import { HOTSPOTS, HOTSPOT_LEVELS, type Hotspot } from '@/data/hotspots';
 import { AREAS, CHARLOTTE_CENTER, GOALS } from '@/data/options';
 import { dataSource } from '@/data/source';
 import type { LatLng, NearbyPerson } from '@/data/types';
@@ -77,6 +78,8 @@ export default function MapScreen() {
   const [modal, setModal] = useState<'filters' | 'area' | null>(null);
   const [sheetIndex, setSheetIndex] = useState(0);
   const [tab, setTab] = useState<Tab>('best');
+  const [showHotspots, setShowHotspots] = useState(true);
+  const [hotspotId, setHotspotId] = useState<string | null>(null);
   const [settledPinsKey, setSettledPinsKey] = useState('');
 
   useEffect(() => {
@@ -145,7 +148,9 @@ export default function MapScreen() {
   }, [people, selected]);
 
   // Custom markers re-render while they change, then stop tracking for smooth panning.
-  const pinsKey = `${people.map((p) => p.id + p.strength).join(',')}|${selectedId ?? ''}`;
+  const pinsKey = `${people.map((p) => p.id + p.strength).join(',')}|${selectedId ?? ''}|${showHotspots}|${hotspotId ?? ''}`;
+  const hotspot = HOTSPOTS.find((h) => h.id === hotspotId);
+  const peopleIn = (h: Hotspot) => people.filter((p) => distanceMi(h.center, p.coord) <= h.radiusMi).length;
   const trackPins = settledPinsKey !== pinsKey;
   useEffect(() => {
     const t = setTimeout(() => setSettledPinsKey(pinsKey), 700);
@@ -157,7 +162,17 @@ export default function MapScreen() {
   const fCount = activeFilterCount(filters);
   const nearCharlotte = distanceMi(searchCenter, CHARLOTTE_CENTER) < 40;
 
+  const selectHotspot = (h: Hotspot) => {
+    setSelectedId(null);
+    setHotspotId(h.id);
+    setSheetIndex(1);
+    setFollowing(false);
+    const d = Math.max(0.04, (h.radiusMi / 69) * 3.2);
+    mapRef.current?.animateToRegion({ latitude: h.center.latitude - d * 0.22, longitude: h.center.longitude, latitudeDelta: d, longitudeDelta: d }, 450);
+  };
+
   const select = (p: NearbyPerson) => {
+    setHotspotId(null);
     setSelectedId(p.id);
     setSheetIndex(1);
     setFollowing(false);
@@ -188,6 +203,7 @@ export default function MapScreen() {
 
   const closeCard = () => {
     setSelectedId(null);
+    setHotspotId(null);
     setSheetIndex(0);
   };
   const openProfile = (p: NearbyPerson) => router.push({ pathname: '/person/[id]', params: { id: p.id, d: String(p.distanceMi), from: fromLabel } });
@@ -225,12 +241,51 @@ export default function MapScreen() {
         }}
         onPress={(e) => {
           const action = (e.nativeEvent as { action?: string }).action;
-          if (action !== 'marker-press' && selectedId) closeCard();
+          if (action !== 'marker-press' && (selectedId || hotspotId)) closeCard();
         }}
         accessibilityLabel="Map of your network nearby"
       >
         <Polygon coordinates={wash} fillColor={WASH} strokeWidth={0} strokeColor="transparent" zIndex={0} tappable={false} />
         <Circle center={searchCenter} radius={filters.distanceMi * 1609.34} strokeColor="rgba(91,53,201,0.22)" fillColor="rgba(91,53,201,0.03)" strokeWidth={1} zIndex={1} />
+        {showHotspots
+          ? HOTSPOTS.map((h) => {
+              const lv = HOTSPOT_LEVELS[h.level];
+              const on = h.id === hotspotId;
+              return (
+                <Circle
+                  key={`hz-${h.id}`}
+                  center={h.center}
+                  radius={h.radiusMi * 1609.34}
+                  fillColor={lv.fill}
+                  strokeColor={lv.stroke}
+                  strokeWidth={on ? 2.5 : 1}
+                  zIndex={1}
+                />
+              );
+            })
+          : null}
+        {showHotspots
+          ? HOTSPOTS.map((h) => {
+              const lv = HOTSPOT_LEVELS[h.level];
+              const on = h.id === hotspotId;
+              return (
+                <Marker
+                  key={`hl-${h.id}`}
+                  coordinate={h.center}
+                  anchor={{ x: 0.5, y: 0.5 }}
+                  tracksViewChanges={trackPins}
+                  zIndex={5}
+                  onPress={() => selectHotspot(h)}
+                  accessibilityLabel={`${h.name}, ${lv.label}: ${h.kind}`}
+                >
+                  <View collapsable={false} style={[styles.hotLabel, on && { borderColor: lv.color }]}>
+                    <View style={[styles.hotDot, { backgroundColor: lv.color }]} />
+                    <Text style={styles.hotText} numberOfLines={1}>{h.name}</Text>
+                  </View>
+                </Marker>
+              );
+            })
+          : null}
         {showLines
           ? lineTargets.map((p) => {
               const on = p.id === selectedId;
@@ -298,6 +353,9 @@ export default function MapScreen() {
               </View>
             </View>
           </Pressable>
+          <Pressable onPress={() => router.push('/search')} accessibilityRole="button" accessibilityLabel="Search people" style={({ pressed }) => [styles.filterBtn, pressed && { backgroundColor: C.bg2 }]}>
+            <Ionicons name="search" size={20} color={C.ink} />
+          </Pressable>
           <Pressable onPress={() => setModal('filters')} accessibilityRole="button" accessibilityLabel={`Filters${fCount ? `, ${fCount} on` : ''}`} style={({ pressed }) => [styles.filterBtn, pressed && { backgroundColor: C.bg2 }]}>
             <Ionicons name="options-outline" size={20} color={C.ink} />
             {fCount ? <View style={styles.count}><Text style={styles.countText}>{fCount}</Text></View> : null}
@@ -332,9 +390,14 @@ export default function MapScreen() {
 
       {/* Map controls */}
       <View style={[styles.controls, shadow, { top: insets.top + 140 }]}>
+        <Pressable onPress={() => router.push('/assistant')} accessibilityRole="button" accessibilityLabel="Ask the Connected assistant" style={({ pressed }) => [styles.control, styles.askBtn, pressed && { opacity: 0.85 }]}>
+          <Ionicons name="sparkles" size={19} color={C.white} />
+        </Pressable>
         <ControlButton icon={following ? 'locate' : 'locate-outline'} active={following} label={following ? 'Following your location' : 'Center on my location'} onPress={recenter} />
         <View style={styles.controlDivider} />
         <ControlButton icon="git-network-outline" active={showLines} label={showLines ? 'Hide connection lines' : 'Show connection lines'} onPress={() => setShowLines((v) => !v)} />
+        <View style={styles.controlDivider} />
+        <ControlButton icon={showHotspots ? 'flame' : 'flame-outline'} active={showHotspots} label={showHotspots ? 'Hide hotspots' : 'Show hotspots'} onPress={() => { setShowHotspots((v) => !v); setHotspotId(null); }} />
         {loc.perm === 'granted' ? (
           <>
             <View style={styles.controlDivider} />
@@ -343,15 +406,29 @@ export default function MapScreen() {
         ) : null}
       </View>
 
+      {/* Hotspot key */}
+      {showHotspots && !moved ? (
+        <View style={[styles.key, shadow, { top: insets.top + 140 }]} pointerEvents="none">
+          <Text style={styles.keyTitle}>Hotspots</Text>
+          {(['high', 'medium', 'emerging'] as const).map((lvl) => (
+            <View key={lvl} style={styles.keyRow}>
+              <View style={[styles.keySwatch, { backgroundColor: HOTSPOT_LEVELS[lvl].fill, borderColor: HOTSPOT_LEVELS[lvl].color }]} />
+              <Text style={styles.keyText}>{HOTSPOT_LEVELS[lvl].label}</Text>
+            </View>
+          ))}
+          <Text style={styles.keyNote}>Demo estimates · tap a name</Text>
+        </View>
+      ) : null}
+
       {height ? (
         <BottomSheet
           containerHeight={height}
           snaps={snaps}
           index={Math.min(sheetIndex, snaps.length - 1)}
           onIndexChange={setSheetIndex}
-          contentKey={selectedId ?? tab}
+          contentKey={selectedId ?? hotspotId ?? tab}
           header={
-            selected ? (
+            selected || hotspot ? (
               <View style={styles.sheetHead}>
                 <Pressable onPress={closeCard} accessibilityRole="button" style={styles.backRow} hitSlop={8}>
                   <Ionicons name="chevron-back" size={18} color={C.accent} />
@@ -408,6 +485,42 @@ export default function MapScreen() {
                 onClose={closeCard}
                 onOpen={() => openProfile(selected)}
               />
+            </View>
+          ) : hotspot ? (
+            <View style={{ paddingHorizontal: S.lg, paddingTop: S.sm, gap: S.md }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.md }}>
+                <View style={[styles.hotIcon, { backgroundColor: HOTSPOT_LEVELS[hotspot.level].fill, borderColor: HOTSPOT_LEVELS[hotspot.level].color }]}>
+                  <Ionicons name="flame" size={20} color={HOTSPOT_LEVELS[hotspot.level].color} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.hotTitle}>{hotspot.name}</Text>
+                  <Text style={[T.small, { color: HOTSPOT_LEVELS[hotspot.level].color, fontWeight: '700' }]}>{HOTSPOT_LEVELS[hotspot.level].label} · {hotspot.kind}</Text>
+                </View>
+              </View>
+              <Text style={[T.body, { fontSize: 15, lineHeight: 22 }]}>{hotspot.why}</Text>
+              <View style={styles.hotFacts}>
+                <View style={styles.hotFact}>
+                  <Text style={styles.hotFactNum}>{peopleIn(hotspot)}</Text>
+                  <Text style={styles.hotFactLabel}>people here in your network</Text>
+                </View>
+                <View style={styles.hotFactDivider} />
+                <View style={styles.hotFact}>
+                  <Text style={styles.hotFactNum}>{approxDistance(distanceMi(origin, hotspot.center)).replace('about ', '')}</Text>
+                  <Text style={styles.hotFactLabel}>{me ? 'from you' : `from ${areaName}`}</Text>
+                </View>
+              </View>
+              <Text style={T.small}>Busiest: {hotspot.peak}</Text>
+              <Button
+                label={`See people in ${hotspot.name}`}
+                icon="people-outline"
+                onPress={() => {
+                  setHotspotId(null);
+                  setTab('all');
+                  goToArea(hotspot.center, hotspot.name);
+                  setSheetIndex(1);
+                }}
+              />
+              <Text style={T.small}>Hub levels are demo estimates of where offices, campuses and meetups cluster. The people count comes from opted-in profiles.</Text>
             </View>
           ) : listed.length ? (
             <View style={{ paddingHorizontal: S.lg, paddingTop: S.xs }}>
@@ -527,6 +640,23 @@ const styles = StyleSheet.create({
   quick: { gap: S.sm, paddingHorizontal: S.md },
   searchHere: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.bg, paddingHorizontal: S.lg, minHeight: 38, borderRadius: R.pill, borderWidth: 1, borderColor: C.line },
   searchHereText: { color: C.accent, fontWeight: '700', fontSize: 14 },
+  askBtn: { backgroundColor: C.accent },
+  key: { position: 'absolute', left: S.md, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: 12, borderWidth: 1, borderColor: C.line, paddingHorizontal: 10, paddingVertical: 8, gap: 5 },
+  keyTitle: { fontSize: 12, fontWeight: '800', color: C.ink, letterSpacing: 0.2 },
+  keyRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  keySwatch: { width: 14, height: 14, borderRadius: 7, borderWidth: 1.5 },
+  keyText: { fontSize: 12, color: C.ink2, fontWeight: '600' },
+  keyNote: { fontSize: 10, color: C.ink3, marginTop: 1 },
+  hotLabel: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 8, borderWidth: 1.5, borderColor: 'transparent', paddingHorizontal: 7, paddingVertical: 3, shadowColor: '#2A1E5C', shadowOpacity: 0.12, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+  hotDot: { width: 7, height: 7, borderRadius: 4 },
+  hotText: { fontSize: 11, fontWeight: '700', color: C.ink },
+  hotIcon: { width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  hotTitle: { fontSize: 20, fontWeight: '800', color: C.ink },
+  hotFacts: { flexDirection: 'row', borderWidth: 1, borderColor: C.line, borderRadius: R.md, paddingVertical: S.md },
+  hotFact: { flex: 1, alignItems: 'center', gap: 2 },
+  hotFactNum: { fontSize: 20, fontWeight: '800', color: C.ink, fontVariant: ['tabular-nums'] },
+  hotFactLabel: { fontSize: 12, color: C.ink3, textAlign: 'center' },
+  hotFactDivider: { width: 1, backgroundColor: C.line },
   controls: { position: 'absolute', right: S.md, backgroundColor: C.bg, borderRadius: 14, borderWidth: 1, borderColor: C.line, overflow: 'hidden' },
   control: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center' },
   controlDivider: { height: 1, backgroundColor: C.line, marginHorizontal: 8 },

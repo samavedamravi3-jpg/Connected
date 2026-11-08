@@ -5,7 +5,7 @@ import { Avatar, Button, Card, ChipGroup, KV, Note, Row, Section, Tag } from '@/
 import { AVAILABILITY, MEET_MODES, audienceLabel, challengeLabel, dietLabel, fieldLabel, foodLabel, goalLabel, statusLabel, traitLabel, venueById } from '@/data/options';
 import { dataSource } from '@/data/source';
 import type { AvailabilityId } from '@/data/types';
-import { doorState } from '@/lib/match';
+import { doorState, fullName } from '@/lib/match';
 import { pickProfilePhoto, removeProfilePhoto } from '@/lib/photo';
 import { fmtWindow } from '@/lib/time';
 import { useApp } from '@/state/AppState';
@@ -39,11 +39,11 @@ export default function ProfileTab() {
     <ScrollView style={{ backgroundColor: C.bg }} contentContainerStyle={{ padding: S.lg, gap: S.xl, paddingBottom: S.xxl }}>
       <View style={{ flexDirection: 'row', gap: S.md, alignItems: 'center' }}>
         <Pressable onPress={photoMenu} accessibilityRole="button" accessibilityLabel={profile.photoUri ? 'Change profile photo' : 'Add a profile photo'}>
-          <Avatar name={profile.name || '?'} uri={profile.photoUri} size={72} />
+          <Avatar name={fullName(profile) || '?'} uri={profile.photoUri} size={72} />
           <View style={styles.camBadge}><Ionicons name={profile.photoUri ? 'pencil' : 'camera'} size={13} color={C.white} /></View>
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={T.title}>{profile.name || 'Your profile'}</Text>
+          <Text style={T.title}>{fullName(profile) || 'Your profile'}</Text>
           <Text style={T.muted}>{statusLabel(profile.status)}{profile.org ? ` · ${profile.org}` : ''}</Text>
         </View>
       </View>
@@ -100,7 +100,7 @@ export default function ProfileTab() {
 
       <Section title="Profile" right={<Button label="Edit" variant="secondary" small onPress={() => router.push({ pathname: '/onboarding', params: { edit: 'profile' } })} />}>
         <View style={{ gap: S.sm }}>
-          <KV k="Name" v={profile.name || 'Not set'} />
+          <KV k="Name" v={fullName(profile) || 'Not set'} />
           <KV k="Status" v={statusLabel(profile.status)} />
           <KV k="Organization" v={profile.org || 'Not set'} />
           {profile.offer ? <KV k="Can offer" v={profile.offer} /> : null}

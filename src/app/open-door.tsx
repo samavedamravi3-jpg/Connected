@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, Button, Chip, ChipGroup, Choice, KV, Note, Segmented } from '@/components/ui';
 import { AUDIENCES, VENUES, audienceLabel, fieldLabel, statusLabel, venueById } from '@/data/options';
 import type { AudienceId, OpenDoor } from '@/data/types';
+import { fullName } from '@/lib/match';
 import { fmtTime, fmtWindow } from '@/lib/time';
 import { useApp } from '@/state/AppState';
 import { C, R, S, T } from '@/theme';
@@ -79,9 +80,9 @@ export default function OpenDoorScreen() {
         </View>
         <View style={styles.preview}>
           <View style={{ flexDirection: 'row', gap: S.md, alignItems: 'center' }}>
-            <Avatar name={app.profile.name || 'You'} uri={app.profile.photoUri} />
+            <Avatar name={fullName(app.profile) || 'You'} uri={app.profile.photoUri} />
             <View>
-              <Text style={T.h3}>{app.profile.name || 'You'}</Text>
+              <Text style={T.h3}>{fullName(app.profile) || 'You'}</Text>
               <Text style={T.small}>{statusLabel(app.profile.status)} · {fieldLabel(app.prefs.field)}</Text>
             </View>
           </View>

@@ -10,7 +10,7 @@ import { Avatar, Button, Chip, IconButton, Segmented } from '@/components/ui';
 import { AVAILABILITY, CHALLENGES, CHARLOTTE_CENTER, DIETS, FIELDS, FOODS, GOALS, INTERESTS, LANGUAGES, MEET_MODES, SKILLS, STATUSES, TRAITS, TRAVEL_MI } from '@/data/options';
 import { dataSource } from '@/data/source';
 import type { NearbyPerson } from '@/data/types';
-import { matchPoints, matchScore } from '@/lib/match';
+import { fullName, matchPoints, matchScore } from '@/lib/match';
 import { pickProfilePhoto } from '@/lib/photo';
 import { useApp } from '@/state/AppState';
 import { C, R, S, T } from '@/theme';
@@ -51,7 +51,8 @@ export default function Onboarding() {
     if (step === 'goals' && !prefs.goals.length) return 'Pick at least one thing you’re hoping to find.';
     if (step === 'goals' && prefs.goals.includes('other') && !prefs.goalOther.trim()) return 'Tell us briefly what you’re looking for.';
     if (step === 'challenges' && !prefs.challenges.length) return 'Pick at least one. It’s the biggest factor in who we suggest.';
-    if (step === 'profile' && !profile.name.trim()) return 'Add your first name so people know what to call you.';
+    if (step === 'profile' && !profile.name.trim()) return 'Add your first name.';
+    if (step === 'profile' && !profile.lastName.trim()) return 'Add your last name. It helps people recognize you when you meet.';
     return '';
   }
 
@@ -287,7 +288,7 @@ export default function Onboarding() {
             <View style={{ alignItems: 'center', gap: S.sm }}>
               <Pressable onPress={choosePhoto} accessibilityRole="button" accessibilityLabel={profile.photoUri ? 'Change profile photo' : 'Add a profile photo'} style={styles.photo}>
                 {profile.photoUri || profile.name.trim() ? (
-                  <Avatar name={profile.name || '?'} uri={profile.photoUri} size={104} />
+                  <Avatar name={fullName(profile) || '?'} uri={profile.photoUri} size={104} />
                 ) : (
                   <Ionicons name="camera-outline" size={34} color={C.accent} />
                 )}
@@ -296,9 +297,18 @@ export default function Onboarding() {
               <Text style={T.small}>{profile.photoUri ? 'Tap to change' : 'Add a photo (optional, but people reply more)'}</Text>
               {profile.photoUri ? <Button label="Remove photo" variant="quiet" small onPress={() => setProfile({ photoUri: null })} /> : null}
             </View>
-            <Field label="First name">
-              <TextInput value={profile.name} onChangeText={(t) => { setProfile({ name: t }); setErr(''); }} placeholder="Alex" placeholderTextColor={C.ink3} style={styles.input} autoComplete="given-name" accessibilityLabel="First name" />
-            </Field>
+            <View style={styles.nameRow}>
+              <View style={{ flex: 1 }}>
+                <Field label="First name">
+                  <TextInput value={profile.name} onChangeText={(t) => { setProfile({ name: t }); setErr(''); }} placeholder="Alex" placeholderTextColor={C.ink3} style={styles.input} autoComplete="given-name" textContentType="givenName" autoCapitalize="words" accessibilityLabel="First name" />
+                </Field>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Field label="Last name">
+                  <TextInput value={profile.lastName} onChangeText={(t) => { setProfile({ lastName: t }); setErr(''); }} placeholder="Rivera" placeholderTextColor={C.ink3} style={styles.input} autoComplete="family-name" textContentType="familyName" autoCapitalize="words" accessibilityLabel="Last name" />
+                </Field>
+              </View>
+            </View>
             <Field label="School or workplace" hint="Optional">
               <TextInput value={profile.org} onChangeText={(t) => setProfile({ org: t })} placeholder="UNC Charlotte" placeholderTextColor={C.ink3} style={styles.input} accessibilityLabel="School or workplace, optional" />
             </Field>
@@ -454,6 +464,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 }
 
 const styles = StyleSheet.create({
+  nameRow: { flexDirection: 'row', gap: S.md },
   topBar: { flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingHorizontal: S.sm },
   progress: { flex: 1, flexDirection: 'row', gap: 4 },
   bar: { flex: 1, height: 4, borderRadius: 2, backgroundColor: C.line },

@@ -46,6 +46,27 @@ Checks: `npm run typecheck`, `npx expo lint`, `npx expo-doctor`.
 
 On a profile or in a chat, **Where you two could meet** (`src/lib/places.ts`) suggests real places near the midpoint between you and the other person that serve food you both picked in onboarding, ranked so neither of you travels much farther. Places come from OpenStreetMap's Nominatim search (free, no key): the app sends only a rounded area (~1 km), makes at most one request per second, caches results, and falls back to the app's list of public venues when offline.
 
+## Search and hotspots
+
+- **Search** (magnifying glass on the map): searches people by name, role, company, field, skills, interests, languages, neighborhood, food and bio, and shows why each result matched. Implemented as `searchPeople` on the data source, so a backend can replace it.
+- **Hotspots** (flame button): color-coded zones for Charlotte's professional hubs (purple = major hub, pink = active hub, teal = emerging spot) with a key on the map. Tap a hotspot's name for details. Hub levels are demo estimates in `src/data/hotspots.ts`; the "people here" count is computed live from opted-in profiles.
+
+## Assistant
+
+The sparkle button on the map opens the **Connected assistant**. It recommends people, drafts first messages, points you to meeting spots, and explains the app.
+
+- **Built-in mode (default):** runs on the phone with no AI service or key (`src/lib/assistant.ts`).
+- **Claude mode (optional):** an API key must never ship inside a phone app, so a small proxy in `server/` holds the key and calls Claude (`claude-opus-5-5`, low effort, refusal fallback on, cached system prompt). To use it:
+
+  ```bash
+  cd server
+  npm install
+  cp .env.example .env    # then put your ANTHROPIC_API_KEY and an APP_TOKEN in it
+  node --env-file=.env --import tsx src/index.ts
+  ```
+
+  Then copy `.env.example` to `.env` in the app folder, set `EXPO_PUBLIC_ASSISTANT_URL` to the proxy's address (for a phone on your Wi-Fi: `http://<your-PC-IP>:8787/assistant`) and the same token, and restart `npx expo start`. For a published preview, deploy the proxy somewhere public (any Node host) and use that URL. If the proxy is unreachable, the app falls back to the built-in assistant.
+
 ## Data
 
 All people and events are **demo data** (`src/data/demo.ts`), clearly labeled in the app. Demo pins sit at rounded neighborhood points, never anyone's live location. To connect a backend, implement the `DataSource` interface in `src/data/source.ts`. Screens only talk to `dataSource`.

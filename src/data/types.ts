@@ -131,7 +131,9 @@ export type Prefs = {
 };
 
 export type Profile = {
+  /** First name. */
   name: string;
+  lastName: string;
   status: StatusId | null;
   org: string;
   intro: string;
