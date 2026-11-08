@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Avatar, Button, Card, ChipGroup, KV, Note, Row, Section, Tag } from '@/components/ui';
 import { AVAILABILITY, MEET_MODES, audienceLabel, challengeLabel, dietLabel, fieldLabel, foodLabel, goalLabel, statusLabel, traitLabel, venueById } from '@/data/options';
@@ -37,17 +38,38 @@ export default function ProfileTab() {
 
   return (
     <ScrollView style={{ backgroundColor: C.bg }} contentContainerStyle={{ padding: S.lg, gap: S.xl, paddingBottom: S.xxl }}>
-      <View style={{ flexDirection: 'row', gap: S.md, alignItems: 'center' }}>
-        <Pressable onPress={photoMenu} accessibilityRole="button" accessibilityLabel={profile.photoUri ? 'Change profile photo' : 'Add a profile photo'}>
-          <Avatar name={fullName(profile) || '?'} uri={profile.photoUri} size={72} />
-          <View style={styles.camBadge}><Ionicons name={profile.photoUri ? 'pencil' : 'camera'} size={13} color={C.white} /></View>
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={T.title}>{fullName(profile) || 'Your profile'}</Text>
-          <Text style={T.muted}>{statusLabel(profile.status)}{profile.org ? ` · ${profile.org}` : ''}</Text>
+      <View style={styles.headerCard}>
+        <LinearGradient colors={['#7652E6', '#5B35C9', '#43249A']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.banner}>
+          <Ionicons name="git-network-outline" size={140} color="rgba(255,255,255,0.10)" style={styles.bannerArt} />
+          {prefs.discoverable ? (
+            <View style={styles.visiblePill}><View style={styles.visibleDot} /><Text style={styles.visibleText}>Visible nearby</Text></View>
+          ) : (
+            <View style={styles.visiblePill}><Ionicons name="eye-off-outline" size={12} color={C.white} /><Text style={styles.visibleText}>Hidden</Text></View>
+          )}
+        </LinearGradient>
+        <View style={styles.headerBody}>
+          <Pressable onPress={photoMenu} accessibilityRole="button" accessibilityLabel={profile.photoUri ? 'Change profile photo' : 'Add a profile photo'} style={styles.avatarWrap}>
+            <Avatar name={fullName(profile) || '?'} uri={profile.photoUri} size={88} />
+            <View style={styles.camBadge}><Ionicons name={profile.photoUri ? 'pencil' : 'camera'} size={13} color={C.white} /></View>
+          </Pressable>
+          <Text style={styles.name}>{fullName(profile) || 'Your profile'}</Text>
+          <Text style={T.muted}>{statusLabel(profile.status)}{profile.org ? ` · ${profile.org}` : ''}{prefs.field ? ` · ${fieldLabel(prefs.field)}` : ''}</Text>
+          {profile.intro ? <Text style={styles.intro} numberOfLines={3}>{profile.intro}</Text> : null}
+          <View style={styles.stats}>
+            {[
+              { n: app.requests.filter((r) => r.status === 'accepted').length, label: 'Connections', icon: 'people' as const },
+              { n: app.requests.filter((r) => !r.incoming && r.status !== 'cancelled').length, label: 'Requests', icon: 'paper-plane' as const },
+              { n: app.savedEvents.length, label: 'Saved events', icon: 'bookmark' as const },
+            ].map((s, k) => (
+              <View key={s.label} style={[styles.stat, k > 0 && styles.statDivider]}>
+                <Ionicons name={s.icon} size={16} color={C.accent} />
+                <Text style={styles.statNum}>{s.n}</Text>
+                <Text style={styles.statLabel}>{s.label}</Text>
+              </View>
+            ))}
+          </View>
         </View>
       </View>
-      {profile.intro ? <Text style={T.body}>{profile.intro}</Text> : null}
 
       {app.backendEnabled ? (
         <Card>
@@ -186,6 +208,21 @@ export default function ProfileTab() {
 }
 
 const styles = StyleSheet.create({
+  headerCard: { borderRadius: 24, borderWidth: 1, borderColor: C.line, overflow: 'hidden', backgroundColor: C.bg },
+  banner: { height: 110, padding: S.md, alignItems: 'flex-end', overflow: 'hidden' },
+  bannerArt: { position: 'absolute', left: -20, top: -30 },
+  visiblePill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: R.pill },
+  visibleDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#7CF0B0' },
+  visibleText: { color: C.white, fontSize: 12, fontWeight: '700' },
+  headerBody: { alignItems: 'center', paddingHorizontal: S.lg, paddingBottom: S.lg, gap: 4, marginTop: -48 },
+  avatarWrap: { borderRadius: 50, borderWidth: 4, borderColor: C.bg, marginBottom: 4 },
+  name: { fontSize: 24, fontWeight: '800', color: C.ink, letterSpacing: -0.4, textAlign: 'center' },
+  intro: { fontSize: 15, lineHeight: 21, color: C.ink2, textAlign: 'center', marginTop: 4 },
+  stats: { flexDirection: 'row', alignSelf: 'stretch', marginTop: S.md, paddingTop: S.md, borderTopWidth: 1, borderTopColor: C.line },
+  stat: { flex: 1, alignItems: 'center', gap: 2 },
+  statDivider: { borderLeftWidth: 1, borderLeftColor: C.line },
+  statNum: { fontSize: 20, fontWeight: '800', color: C.ink, fontVariant: ['tabular-nums'] },
+  statLabel: { fontSize: 12, color: C.ink3 },
   camBadge: { position: 'absolute', right: -2, bottom: -2, width: 26, height: 26, borderRadius: 13, backgroundColor: C.accent, borderWidth: 2, borderColor: C.bg, alignItems: 'center', justifyContent: 'center' },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: S.md },
   divider: { height: 1, backgroundColor: C.line, marginVertical: S.xs, borderRadius: R.sm },

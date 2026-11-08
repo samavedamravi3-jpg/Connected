@@ -52,6 +52,21 @@ const MAX_LINES = 6;
 const PEEK = 150;
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
+type MapLook = 'network' | 'city3d' | 'satellite';
+
+const LOOKS: { id: MapLook; label: string; hint: string; icon: IconName }[] = [
+  { id: 'network', label: 'Network', hint: 'Clean, flat, people first', icon: 'git-network-outline' },
+  { id: 'city3d', label: '3D City', hint: 'Tilted view with buildings', icon: 'business-outline' },
+  { id: 'satellite', label: 'Satellite 3D', hint: Platform.OS === 'ios' ? 'Photo-real 3D where available' : 'Satellite, tilted', icon: 'earth-outline' },
+];
+
+/** Approximate camera zoom for a region's latitude span (Apple uses altitude, Google uses zoom). */
+const zoomFor = (latDelta: number) => ({
+  altitude: Math.min(60_000, Math.max(500, latDelta * 111_000 * 1.25)),
+  zoom: Math.min(19, Math.max(3, Math.log2(360 / Math.max(latDelta, 0.0005)))),
+});
+/** A tilted, slightly turned camera that shows buildings in 3D. */
+const camera3d = (latDelta: number) => ({ pitch: 60, heading: 28, ...zoomFor(Math.min(latDelta, 0.08) * 0.75) });
 type Tab = 'best' | 'doors' | 'all';
 const regionFor = (c: LatLng, mi: number): Region => ({ ...c, latitudeDelta: deltaForMiles(mi), longitudeDelta: deltaForMiles(mi) });
 
@@ -86,9 +101,36 @@ export default function MapScreen() {
     followingRef.current = following;
   }, [following]);
 
-  const flyTo = useCallback((c: LatLng, mi: number, ms = 500) => {
-    mapRef.current?.animateToRegion(regionFor(c, mi), ms);
+  // Map look: flat "network" map, tilted 3D city with buildings, or 3D satellite.
+  const [look, setLook] = useState<MapLook>('network');
+  const [showLooks, setShowLooks] = useState(false);
+  const lookRef = useRef<MapLook>('network');
+  useEffect(() => {
+    lookRef.current = look;
+  }, [look]);
+
+  /** Move the camera; in 3D looks keep the tilt instead of flattening to a top-down region. */
+  const moveTo = useCallback((center: LatLng, delta: number, ms = 500) => {
+    if (lookRef.current === 'network') {
+      mapRef.current?.animateToRegion({ ...center, latitudeDelta: delta, longitudeDelta: delta }, ms);
+    } else {
+      mapRef.current?.animateCamera({ center, ...camera3d(delta) }, { duration: ms });
+    }
   }, []);
+
+  const flyTo = useCallback((c: LatLng, mi: number, ms = 500) => {
+    moveTo(c, deltaForMiles(mi), ms);
+  }, [moveTo]);
+
+  const changeLook = (next: MapLook) => {
+    setShowLooks(false);
+    setLook(next);
+    lookRef.current = next;
+    const r = regionRef.current;
+    const center = { latitude: r.latitude, longitude: r.longitude };
+    if (next === 'network') mapRef.current?.animateCamera({ center, pitch: 0, heading: 0, ...zoomFor(r.latitudeDelta) }, { duration: 700 });
+    else mapRef.current?.animateCamera({ center, ...camera3d(Math.min(r.latitudeDelta, 0.06)) }, { duration: 900 });
+  };
 
   // New GPS position: center on you the first time; afterwards, move with you only in follow mode.
   const onFix = useCallback(
@@ -171,7 +213,7 @@ export default function MapScreen() {
     setSheetIndex(1);
     setFollowing(false);
     const d = Math.max(0.04, (h.radiusMi / 69) * 3.2);
-    mapRef.current?.animateToRegion({ latitude: h.center.latitude - d * 0.22, longitude: h.center.longitude, latitudeDelta: d, longitudeDelta: d }, 450);
+    moveTo({ latitude: h.center.latitude - (look === 'network' ? d * 0.22 : 0), longitude: h.center.longitude }, d, 450);
   };
 
   const select = (p: NearbyPerson) => {
@@ -181,7 +223,7 @@ export default function MapScreen() {
     setFollowing(false);
     const d = regionRef.current.latitudeDelta;
     // Keep the person above the half-open sheet.
-    mapRef.current?.animateToRegion({ latitude: p.coord.latitude - d * 0.22, longitude: p.coord.longitude, latitudeDelta: d, longitudeDelta: d }, 450);
+    moveTo({ latitude: p.coord.latitude - (look === 'network' ? d * 0.22 : 0), longitude: p.coord.longitude }, look === 'network' ? d : Math.min(d, 0.03), 450);
   };
 
   const goToArea = (c: LatLng, name: string) => {
@@ -225,17 +267,21 @@ export default function MapScreen() {
         ref={mapRef}
         style={StyleSheet.absoluteFill}
         initialRegion={initialRegion}
-        mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
-        customMapStyle={Platform.OS === 'android' ? ANDROID_MAP_STYLE : undefined}
+        mapType={
+          look === 'satellite'
+            ? Platform.OS === 'ios' ? 'hybridFlyover' : 'hybrid'
+            : Platform.OS === 'ios' ? (look === 'city3d' ? 'standard' : 'mutedStandard') : 'standard'
+        }
+        customMapStyle={Platform.OS === 'android' && look !== 'satellite' ? ANDROID_MAP_STYLE : undefined}
         userInterfaceStyle="light"
         showsPointsOfInterests={false}
-        showsBuildings={false}
+        showsBuildings={look !== 'network'}
         showsTraffic={false}
         showsIndoors={false}
-        rotateEnabled={false}
-        pitchEnabled={false}
+        rotateEnabled={look !== 'network'}
+        pitchEnabled={look !== 'network'}
         toolbarEnabled={false}
-        showsCompass={false}
+        showsCompass={look !== 'network'}
         mapPadding={{ top: insets.top + 120, right: 0, bottom: PEEK, left: 0 }}
         onPanDrag={() => { if (following) setFollowing(false); }}
         onRegionChangeComplete={(r) => {
@@ -248,7 +294,7 @@ export default function MapScreen() {
         }}
         accessibilityLabel="Map of your network nearby"
       >
-        <Polygon coordinates={wash} fillColor={WASH} strokeWidth={0} strokeColor="transparent" zIndex={0} tappable={false} />
+        {look === 'network' ? <Polygon coordinates={wash} fillColor={WASH} strokeWidth={0} strokeColor="transparent" zIndex={0} tappable={false} /> : null}
         <Circle center={searchCenter} radius={filters.distanceMi * 1609.34} strokeColor="rgba(91,53,201,0.22)" fillColor="rgba(91,53,201,0.03)" strokeWidth={1} zIndex={1} />
         {showHotspots
           ? HOTSPOTS.map((h) => {
@@ -401,6 +447,8 @@ export default function MapScreen() {
         <ControlButton icon="git-network-outline" active={showLines} label={showLines ? 'Hide connection lines' : 'Show connection lines'} onPress={() => setShowLines((v) => !v)} />
         <View style={styles.controlDivider} />
         <ControlButton icon={showHotspots ? 'flame' : 'flame-outline'} active={showHotspots} label={showHotspots ? 'Hide hotspots' : 'Show hotspots'} onPress={() => { setShowHotspots((v) => !v); setHotspotId(null); }} />
+        <View style={styles.controlDivider} />
+        <ControlButton icon={look === 'network' ? 'layers-outline' : 'cube'} active={look !== 'network' || showLooks} label="Map style" onPress={() => setShowLooks((v) => !v)} />
         {loc.perm === 'granted' ? (
           <>
             <View style={styles.controlDivider} />
@@ -408,6 +456,34 @@ export default function MapScreen() {
           </>
         ) : null}
       </View>
+
+      {/* Map style picker */}
+      {showLooks ? (
+        <View style={[styles.looks, shadow, { top: insets.top + 140 }]} accessibilityRole="radiogroup" accessibilityLabel="Map style">
+          {LOOKS.map((l) => {
+            const on = look === l.id;
+            return (
+              <Pressable
+                key={l.id}
+                onPress={() => changeLook(l.id)}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: on }}
+                style={({ pressed }) => [styles.lookRow, on && styles.lookRowOn, pressed && !on && { backgroundColor: C.bg2 }]}
+              >
+                <View style={[styles.lookIcon, on && { backgroundColor: C.accent }]}>
+                  <Ionicons name={l.icon} size={18} color={on ? C.white : C.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.lookLabel, on && { color: C.accent }]}>{l.label}</Text>
+                  <Text style={styles.lookHint}>{l.hint}</Text>
+                </View>
+                {on ? <Ionicons name="checkmark" size={18} color={C.accent} /> : null}
+              </Pressable>
+            );
+          })}
+          {look !== 'network' ? <Text style={styles.lookTip}>Twist or tilt with two fingers.</Text> : null}
+        </View>
+      ) : null}
 
       {/* Hotspot key */}
       {showHotspots && !moved ? (
@@ -644,6 +720,13 @@ const styles = StyleSheet.create({
   searchHere: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.bg, paddingHorizontal: S.lg, minHeight: 38, borderRadius: R.pill, borderWidth: 1, borderColor: C.line },
   searchHereText: { color: C.accent, fontWeight: '700', fontSize: 14 },
   askBtn: { backgroundColor: C.accent },
+  looks: { position: 'absolute', right: S.md + 56, width: 236, backgroundColor: C.bg, borderRadius: 16, borderWidth: 1, borderColor: C.line, padding: 6, gap: 2 },
+  lookRow: { flexDirection: 'row', alignItems: 'center', gap: S.sm, padding: 8, borderRadius: 12 },
+  lookRowOn: { backgroundColor: C.accentSoft },
+  lookIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
+  lookLabel: { fontSize: 15, fontWeight: '700', color: C.ink },
+  lookHint: { fontSize: 12, color: C.ink3 },
+  lookTip: { fontSize: 11, color: C.ink3, textAlign: 'center', paddingVertical: 4 },
   key: { position: 'absolute', left: S.md, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: 12, borderWidth: 1, borderColor: C.line, paddingHorizontal: 10, paddingVertical: 8, gap: 5 },
   keyTitle: { fontSize: 12, fontWeight: '800', color: C.ink, letterSpacing: 0.2 },
   keyRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
