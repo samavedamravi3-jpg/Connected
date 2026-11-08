@@ -8,6 +8,13 @@
       "when": 1794074788282,
       "tag": "0000_left_leader",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1794099782876,
+      "tag": "0001_fixed_skin",
+      "breakpoints": true
     }
   ]
 }

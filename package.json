@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "db:local": "node scripts/migrate-local.mjs",
-    "bridge": "node scripts/bridge.mjs"
+    "bridge": "node scripts/bridge.mjs",
+    "smoke:mobile": "node scripts/smoke-mobile-api.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
