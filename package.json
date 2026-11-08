@@ -16,7 +16,8 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "db:local": "node scripts/migrate-local.mjs",
     "bridge": "node scripts/bridge.mjs",
-    "smoke:mobile": "node scripts/smoke-mobile-api.mjs"
+    "smoke:mobile": "node scripts/smoke-mobile-api.mjs",
+    "dev:lan": "node node_modules/vinext/dist/cli.js dev --port 5175 --host 0.0.0.0"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

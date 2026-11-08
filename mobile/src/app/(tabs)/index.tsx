@@ -33,7 +33,7 @@ const regionFor = (c: LatLng, mi: number): Region => ({ ...c, latitudeDelta: del
 
 export default function MapScreen() {
   const app = useApp();
-  const { prefs, profile, blocked } = app;
+  const { prefs, profile, blocked, reportLocation } = app;
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
 
@@ -48,14 +48,22 @@ export default function MapScreen() {
   const [sheet, setSheet] = useState<'filters' | 'list' | 'area' | null>(null);
   const [settledPinsKey, setSettledPinsKey] = useState('');
 
+  // Live accounts: people come and go (visibility lasts an hour), so refresh the map every minute.
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!app.live) return;
+    const t = setInterval(() => setTick((n) => n + 1), 60_000);
+    return () => clearInterval(t);
+  }, [app.live]);
+
   // Load everyone opted in within the pool radius of the search center. Filtering happens locally.
   useEffect(() => {
     let live = true;
-    dataSource.listNearbyPeople(searchCenter, POOL_RADIUS_MI).then((ps) => {
-      if (live) setLoaded({ center: searchCenter, people: ps });
-    });
+    dataSource.listNearbyPeople(searchCenter, POOL_RADIUS_MI)
+      .then((ps) => { if (live) setLoaded({ center: searchCenter, people: ps }); })
+      .catch(() => { if (live) setLoaded({ center: searchCenter, people: [] }); });
     return () => { live = false; };
-  }, [searchCenter]);
+  }, [searchCenter, app.live, tick]);
   const loading = loaded?.center !== searchCenter;
   const pool = useMemo(() => loaded?.people ?? [], [loaded]);
 
@@ -94,7 +102,9 @@ export default function MapScreen() {
     const here = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
     setUserLoc(here);
     goTo(here, 'you');
-  }, [goTo]);
+    // Live accounts: the server keeps only the neighborhood, for an hour, and only if you chose to be found.
+    reportLocation(here);
+  }, [goTo, reportLocation]);
 
   const locateOnce = useCallback(async () => {
     try {
@@ -187,7 +197,7 @@ export default function MapScreen() {
           <View style={{ flex: 1 }}>
             <Text style={T.h3}>People nearby</Text>
             <Text style={T.small} numberOfLines={1}>
-              {loading ? 'Looking…' : `${people.length} within ${filters.distanceMi} mi of ${areaName}`} · demo profiles
+              {loading ? 'Looking…' : `${people.length} within ${filters.distanceMi} mi of ${areaName}`}{app.live ? '' : ' · demo profiles'}
             </Text>
           </View>
           <Pressable onPress={() => setSheet('filters')} accessibilityRole="button" accessibilityLabel={`Filters${fCount ? `, ${fCount} active` : ''}`} style={({ pressed }) => [styles.filterBtn, pressed && { backgroundColor: C.bg2 }]}>
@@ -256,7 +266,9 @@ export default function MapScreen() {
           <View style={[styles.panel, shadow]}>
             <Text style={T.h3}>{nearCharlotte ? 'No one matches here yet' : 'No one nearby yet'}</Text>
             <Text style={T.small}>
-              {nearCharlotte ? 'Try a wider distance or fewer filters.' : 'This demo only has profiles in Charlotte, NC.'}
+              {nearCharlotte
+                ? app.live ? 'People show up here for an hour after they open the app. Try a wider distance, fewer filters, or check back soon.' : 'Try a wider distance or fewer filters.'
+                : app.live ? 'Connected is starting in Charlotte, NC.' : 'This demo only has profiles in Charlotte, NC.'}
             </Text>
             <View style={{ flexDirection: 'row', gap: S.sm }}>
               {nearCharlotte ? (
@@ -288,7 +300,7 @@ export default function MapScreen() {
           <View style={[styles.modalHead, { paddingTop: Platform.OS === 'android' ? insets.top + S.sm : S.lg }]}>
             <View>
               <Text style={T.h2}>{people.length} people nearby</Text>
-              <Text style={T.small}>Best matches first · demo profiles</Text>
+              <Text style={T.small}>Best matches first{app.live ? '' : ' · demo profiles'}</Text>
             </View>
             <IconButton icon="close" label="Close list" onPress={() => setSheet(null)} />
           </View>

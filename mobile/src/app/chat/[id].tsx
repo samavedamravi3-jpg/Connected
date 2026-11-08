@@ -1,12 +1,13 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Note } from '@/components/ui';
 import { dataSource } from '@/data/source';
 import { firstName } from '@/lib/match';
 import { fmtTime } from '@/lib/time';
-import { useApp } from '@/state/AppState';
+import type { Message } from '@/data/types';
+import { useApp, useChatSync } from '@/state/AppState';
 import { C, R, S, T } from '@/theme';
 
 export default function Chat() {
@@ -14,23 +15,37 @@ export default function Chat() {
   const app = useApp();
   const insets = useSafeAreaInsets();
   const [text, setText] = useState('');
+  const [, rerender] = useState(0);
+  const list = useRef<ComponentRef<typeof FlatList<Message>>>(null);
   const req = app.requests.find((r) => r.id === id);
   const p = req ? dataSource.getPerson(req.personId) : undefined;
   const msgs = app.messages[id] ?? [];
+  useChatSync(id);
 
-  if (!req || !p) return <Text style={[T.body, { padding: S.lg }]}>Conversation not found.</Text>;
+  // Opened from a notification before the inbox loaded: fetch the inbox, then the person.
+  useEffect(() => {
+    if (!app.live) return;
+    if (!req) { app.refresh().catch(() => {}); return; }
+    if (!p) dataSource.fetchPerson(req.personId).then(() => rerender((n) => n + 1));
+  }, [app.live, req?.id, p?.id]);
+
+  if (!req || !p) return <Text style={[T.body, { padding: S.lg }]}>{app.live ? 'Loading conversation…' : 'Conversation not found.'}</Text>;
   const canWrite = req.status === 'accepted';
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: C.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
       <Stack.Screen options={{ title: p.name }} />
       <FlatList
+        ref={list}
         data={msgs}
+        onContentSizeChange={() => list.current?.scrollToEnd({ animated: false })}
         keyExtractor={(m) => m.id}
         contentContainerStyle={{ padding: S.lg, gap: S.md }}
         ListHeaderComponent={
           <Note icon="shield-checkmark-outline">
-            Meet somewhere public, like a library or café. Messages in this demo stay on your phone, and {firstName(p.name)}{"'"}s replies are simulated.
+            {app.live
+              ? `Meet somewhere public, like a library or café, and tell a friend where you’ll be. If anything feels off, you can block or report ${firstName(p.name)} from their profile.`
+              : `Meet somewhere public, like a library or café. Messages in this demo stay on your phone, and ${firstName(p.name)}'s replies are simulated.`}
           </Note>
         }
         renderItem={({ item }) => {

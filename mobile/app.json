@@ -48,7 +48,9 @@
           "imageWidth": 140,
           "resizeMode": "contain"
         }
-      ]
+      ],
+      "expo-secure-store",
+      "expo-notifications"
     ]
   }
 }

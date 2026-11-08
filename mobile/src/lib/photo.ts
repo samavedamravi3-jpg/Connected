@@ -35,3 +35,17 @@ export function removeProfilePhoto(uri?: string | null) {
     // Already gone; nothing to do.
   }
 }
+
+/**
+ * Shrink a local photo to a 512 px square JPEG and return base64 for upload (stays well under the
+ * server's 300 KB limit). Tries a lower quality if the first pass is still too large.
+ */
+export async function prepareProfilePhoto(uri: string): Promise<string> {
+  const { ImageManipulator, SaveFormat } = await import('expo-image-manipulator');
+  for (const compress of [0.7, 0.5, 0.35]) {
+    const ref = await ImageManipulator.manipulate(uri).resize({ width: 512, height: 512 }).renderAsync();
+    const out = await ref.saveAsync({ base64: true, compress, format: SaveFormat.JPEG });
+    if (out.base64 && out.base64.length * 0.75 < 290_000) return out.base64;
+  }
+  throw new Error('That photo is too large. Try a different one.');
+}

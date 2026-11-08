@@ -31,6 +31,7 @@ export default function Onboarding() {
   const app = useApp();
   const insets = useSafeAreaInsets();
   const scroll = useRef<ScrollViewInstance>(null);
+  const pendingFinish = useRef(false);
   const steps = edit === 'prefs' ? PREF_STEPS : edit === 'profile' ? (['profile'] as StepId[]) : ALL_STEPS;
   const [phase, setPhase] = useState<'welcome' | 'steps' | 'done'>(edit ? 'steps' : 'welcome');
   const [i, setI] = useState(0);
@@ -60,9 +61,30 @@ export default function Onboarding() {
     if (e) return setErr(e);
     if (i < steps.length - 1) return go(i + 1);
     if (edit) return router.back();
-    app.finishOnboarding();
-    setPhase('done');
+    // Real accounts need an email first; the sign-in screen comes back here and we finish below.
+    if (!app.live) {
+      pendingFinish.current = true;
+      return router.push('/sign-in?then=finish');
+    }
+    void finish();
   }
+
+  async function finish() {
+    try {
+      await app.finishOnboarding();
+      setPhase('done');
+    } catch (e) {
+      Alert.alert('Couldn’t save your profile', (e as Error).message);
+    }
+  }
+
+  // Back from sign-in with a fresh account: save the answers and continue.
+  useEffect(() => {
+    if (app.live && pendingFinish.current && !app.onboarded) {
+      pendingFinish.current = false;
+      void finish();
+    }
+  }, [app.live, app.onboarded]);
 
   function back() {
     if (i === 0) return edit ? router.back() : setPhase('welcome');
@@ -73,10 +95,15 @@ export default function Onboarding() {
     const res = await pickProfilePhoto(profile.photoUri);
     if (!res) return;
     if ('error' in res) return Alert.alert('Can’t open photos', res.error);
+    // Editing a saved live profile uploads right away; during sign-up it uploads when the profile is saved.
+    if (app.live && app.onboarded) {
+      try { await app.setPhoto(res.uri); } catch (e) { Alert.alert('Your photo didn’t upload', (e as Error).message); }
+      return;
+    }
     setProfile({ photoUri: res.uri });
   }
 
-  if (phase === 'welcome') return <Welcome onStart={() => setPhase('steps')} onSample={() => { app.loadSample(); router.replace('/'); }} />;
+  if (phase === 'welcome') return <Welcome onStart={() => setPhase('steps')} onSignIn={() => router.push('/sign-in')} onSample={() => { app.loadSample(); router.replace('/'); }} />;
   if (phase === 'done') return <Done />;
 
   const optional = step === 'people' || step === 'interests';
@@ -317,7 +344,7 @@ export default function Onboarding() {
   );
 }
 
-function Welcome({ onStart, onSample }: { onStart: () => void; onSample: () => void }) {
+function Welcome({ onStart, onSample, onSignIn }: { onStart: () => void; onSample: () => void; onSignIn: () => void }) {
   const insets = useSafeAreaInsets();
   return (
     <View style={{ flex: 1, backgroundColor: C.accent }}>
@@ -353,7 +380,8 @@ function Welcome({ onStart, onSample }: { onStart: () => void; onSample: () => v
         <View style={{ gap: S.sm }}>
           <Button label="Get started" icon="arrow-forward" onPress={onStart} />
           <Button label="Look around with a sample profile" variant="secondary" onPress={onSample} />
-          <Text style={[T.small, { textAlign: 'center' }]}>The people and events in this build are demo profiles.</Text>
+          <Button label="I already have an account" variant="quiet" onPress={onSignIn} />
+          <Text style={[T.small, { textAlign: 'center' }]}>The sample mode uses labeled demo profiles. Sign up to meet real people nearby.</Text>
         </View>
       </ScrollView>
     </View>
@@ -388,7 +416,7 @@ function Done() {
       const ranked = [...ps].sort((a, b) => matchScore(b, prefs) - matchScore(a, prefs));
       setGood(ranked.filter((p) => matchScore(p, prefs) >= 4.5).length);
       setTop(ranked.slice(0, 3));
-    });
+    }).catch(() => { if (live) setTop([]); });
     return () => { live = false; };
   }, [prefs]);
 
@@ -397,7 +425,9 @@ function Done() {
       <LinearGradient colors={['#7652E6', '#5B35C9']} style={[styles.doneHero, { paddingTop: insets.top + S.xxl }]}>
         <View style={styles.doneCheck}><Ionicons name="checkmark" size={30} color={C.accent} /></View>
         <Text style={styles.doneTitle} accessibilityRole="header">You&apos;re all set{app.profile.name ? `, ${app.profile.name.split(' ')[0]}` : ''}.</Text>
-        <Text style={styles.doneSub}>{top ? `${good || top.length} people in Charlotte fit what you told us.` : 'Finding your people…'}</Text>
+        <Text style={styles.doneSub}>
+          {!top ? 'Finding your people…' : top.length ? `${good || top.length} people in Charlotte fit what you told us.` : 'You’re one of the first here. People appear on your map as they join and go visible.'}
+        </Text>
       </LinearGradient>
       <ScrollView contentContainerStyle={{ padding: S.lg, gap: S.md, paddingBottom: insets.bottom + S.xl }}>
         <Text style={T.h2}>Your top matches</Text>
@@ -414,7 +444,7 @@ function Done() {
             </View>
           );
         })}
-        <Text style={T.small}>These are demo profiles. You&apos;ll see everyone on the map, best matches first.</Text>
+        <Text style={T.small}>{app.live ? 'Real members who are visible right now. You’ll see everyone on the map, best matches first.' : 'These are demo profiles. You’ll see everyone on the map, best matches first.'}</Text>
         <Button label="Open the map" icon="map-outline" onPress={() => router.replace('/')} />
       </ScrollView>
     </View>

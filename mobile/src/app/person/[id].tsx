@@ -1,11 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, Button, IconButton, Segmented, Tag } from '@/components/ui';
 import { audienceLabel, availabilityLabel, fieldLabel, venueById } from '@/data/options';
+import { api } from '@/data/api';
 import { dataSource } from '@/data/source';
 import { approxDistance } from '@/lib/geo';
 import {
@@ -26,20 +27,36 @@ export default function PersonScreen() {
   const app = useApp();
   const insets = useSafeAreaInsets();
   const scroll = useRef<ScrollViewInstance>(null);
+  const [loaded, setLoaded] = useState(0);
   const p = dataSource.getPerson(id);
   const door = p?.door && doorActive(p.door) ? p.door : undefined;
-  const seeDoor = !!(p && door && canSeeDoor(door, p, app.prefs, app.profile));
+  // The server withholds the venue from people outside the host's audience; never guess it.
+  const seeDoor = !!(p && door && !door.venueHidden && canSeeDoor(door, p, app.prefs, app.profile));
   const [tone, setTone] = useState<Tone>('friendly');
   const suggestion = p ? conversationStarter(p, app.prefs, app.profile, tone, seeDoor) : '';
   const [msg, setMsg] = useState(suggestion);
   const [edited, setEdited] = useState(false);
   const [showIdeas, setShowIdeas] = useState(false);
   const [composeY, setComposeY] = useState(0);
+  const [drafting, setDrafting] = useState(false);
+  const [aiNote, setAiNote] = useState('');
+
+  // Live data: refresh the profile from the server (also covers opening it from a notification).
+  useEffect(() => {
+    if (!app.live) return;
+    let active = true;
+    dataSource.fetchPerson(id).then((fresh) => {
+      if (!active) return;
+      if (fresh && !edited && !msg) setMsg(conversationStarter(fresh, app.prefs, app.profile, tone, false));
+      setLoaded(Date.now());
+    });
+    return () => { active = false; };
+  }, [app.live, id]);
 
   if (!p) {
     return (
       <View style={{ flex: 1, padding: S.lg, paddingTop: insets.top + S.lg, gap: S.md }}>
-        <Text style={T.h2}>This profile isn&apos;t available</Text>
+        <Text style={T.h2}>{app.live && !loaded ? 'Loading profile…' : 'This profile isn’t available'}</Text>
         <Button label="Back to map" onPress={() => router.back()} />
       </View>
     );
@@ -65,7 +82,22 @@ export default function PersonScreen() {
       Alert.alert('Add a little more', `A sentence or two helps ${first} know what you'd like to talk about.`);
       return;
     }
-    app.sendRequest(p.id, msg.trim());
+    app.sendRequest(p.id, msg.trim(), seeDoor ? door?.id : undefined);
+  };
+
+  /** Ask Claude for a draft (live accounts). Keeps the on-device template if Claude isn't available. */
+  const draftWithClaude = async () => {
+    setDrafting(true);
+    setAiNote('');
+    try {
+      const r = await api<{ text: string | null; source: string; note?: string }>('POST', '/api/v1/ai/opener', { personId: p.id, tone });
+      if (r.text) { setMsg(r.text.slice(0, 500)); setEdited(true); setAiNote('Drafted with Claude. Make it sound like you before sending.'); }
+      else setAiNote(r.note ?? 'Claude isn’t available right now. The template draft is still here.');
+    } catch (e) {
+      setAiNote((e as Error).message);
+    } finally {
+      setDrafting(false);
+    }
   };
 
   const more = () =>
@@ -83,11 +115,17 @@ export default function PersonScreen() {
         text: 'Report',
         style: 'destructive',
         onPress: () =>
-          Alert.alert(`Report ${first}`, 'What happened? Reporting also blocks them. In this demo, reports stay on your phone.', [
-            { text: 'Made me uncomfortable', onPress: () => { app.block(p.id); router.back(); } },
-            { text: 'Spam or selling something', onPress: () => { app.block(p.id); router.back(); } },
-            { text: 'Cancel', style: 'cancel' },
-          ]),
+          Alert.alert(
+            `Report ${first}`,
+            app.live ? 'What happened? Reporting also blocks them, and the Connected team reviews every report.' : 'What happened? Reporting also blocks them. In this demo, reports stay on your phone.',
+            [
+              { text: 'Made me uncomfortable', onPress: () => { app.report(p.id, 'uncomfortable'); router.back(); } },
+              { text: 'Spam or selling something', onPress: () => { app.report(p.id, 'spam'); router.back(); } },
+              { text: 'Fake profile', onPress: () => { app.report(p.id, 'fake'); router.back(); } },
+              { text: 'I felt unsafe', onPress: () => { app.report(p.id, 'unsafe'); router.back(); } },
+              { text: 'Cancel', style: 'cancel' },
+            ],
+          ),
       },
       { text: 'Cancel', style: 'cancel' },
     ]);
@@ -117,7 +155,7 @@ export default function PersonScreen() {
           </View>
           <View style={{ flexDirection: 'row', gap: 6 }}>
             {strength === 'strong' ? <Tag label="Strong match for you" tone="accent" icon="star" /> : strength === 'good' ? <Tag label="Good match" tone="accent" /> : null}
-            <Tag label="Demo profile" icon="flask-outline" />
+            {p.isDemo ? <Tag label="Demo profile" icon="flask-outline" /> : null}
           </View>
         </LinearGradient>
 
@@ -199,6 +237,9 @@ export default function PersonScreen() {
                   status={req.status}
                   first={first}
                   message={req.message}
+                  incoming={req.direction === 'incoming'}
+                  demo={!app.live}
+                  onRespond={(s) => app.respondIncoming(req.id, s)}
                   onCancel={() => app.cancelRequest(req.id)}
                   onSim={(s) => app.simulateReply(req.id, s)}
                   onOpenChat={() => router.push({ pathname: '/chat/[id]', params: { id: req.id } })}
@@ -212,6 +253,10 @@ export default function PersonScreen() {
                     <Text style={T.small}>{msg.length}/500{edited ? ' · edited' : ''}</Text>
                     {edited ? <Button label="Use suggestion" variant="quiet" small onPress={() => { setMsg(suggestion); setEdited(false); }} /> : null}
                   </View>
+                  {app.live ? (
+                    <Button label={drafting ? 'Drafting…' : 'Write it with Claude'} icon="sparkles-outline" variant="secondary" small disabled={drafting} onPress={draftWithClaude} style={{ alignSelf: 'flex-start' }} />
+                  ) : null}
+                  {aiNote ? <Text style={T.small}>{aiNote}</Text> : null}
                   <Button label="Send request" icon="paper-plane-outline" onPress={send} />
                   <Pressable onPress={() => setShowIdeas((v) => !v)} accessibilityRole="button" accessibilityState={{ expanded: showIdeas }} style={styles.ideasToggle}>
                     <Ionicons name="bulb-outline" size={17} color={C.accent} />
@@ -223,7 +268,11 @@ export default function PersonScreen() {
                       {p.questions.map((q) => <Text key={q} style={[T.body, { fontSize: 15 }]}>“{q}”</Text>)}
                     </View>
                   ) : null}
-                  <Text style={T.small}>Nothing is sent until you tap Send. The draft comes from simple templates, not an AI service.</Text>
+                  <Text style={T.small}>
+                    {app.live
+                      ? 'Nothing is sent until you tap Send. The first draft comes from simple templates; Claude only writes one if you ask, using just names, goals and what they offer.'
+                      : 'Nothing is sent until you tap Send. The draft comes from simple templates, not an AI service.'}
+                  </Text>
                 </View>
               )}
             </Block>
@@ -246,14 +295,29 @@ function Block({ title, hint, children }: { title: string; hint?: string; childr
   );
 }
 
-function RequestStatus({ status, first, message, onCancel, onSim, onOpenChat }: {
+function RequestStatus({ status, first, message, incoming, demo, onRespond, onCancel, onSim, onOpenChat }: {
   status: 'requested' | 'accepted' | 'declined' | 'cancelled';
   first: string;
   message: string;
+  incoming?: boolean;
+  demo: boolean;
+  onRespond: (s: 'accepted' | 'declined') => void;
   onCancel: () => void;
   onSim: (s: 'accepted' | 'declined') => void;
   onOpenChat: () => void;
 }) {
+  if (status === 'requested' && incoming)
+    return (
+      <View style={[styles.status, { backgroundColor: C.accentSoft, borderColor: '#D9CFF5' }]}>
+        <Tag label="Asked to connect" tone="accent" icon="mail-unread-outline" />
+        <Text style={T.body}>{first} would like a short conversation.</Text>
+        <Text style={styles.quote} numberOfLines={6}>{message}</Text>
+        <View style={{ flexDirection: 'row', gap: S.sm }}>
+          <Button label="Accept" small onPress={() => onRespond('accepted')} />
+          <Button label="Decline" variant="secondary" small onPress={() => onRespond('declined')} />
+        </View>
+      </View>
+    );
   if (status === 'requested')
     return (
       <View style={[styles.status, { backgroundColor: C.warnSoft, borderColor: '#EAD9B2' }]}>
@@ -261,13 +325,13 @@ function RequestStatus({ status, first, message, onCancel, onSim, onOpenChat }: 
         <Text style={T.body}>Waiting for {first} to reply. It isn&apos;t a confirmed meeting until they accept.</Text>
         <Text style={styles.quote} numberOfLines={4}>{message}</Text>
         <Button label="Cancel request" variant="secondary" small onPress={onCancel} style={{ alignSelf: 'flex-start' }} />
-        <View style={styles.demo}>
+        {demo ? <View style={styles.demo}>
           <Text style={T.small}>Demo: a reply arrives in a few seconds, or</Text>
           <View style={{ flexDirection: 'row', gap: S.sm }}>
             <Button label="Accept now" variant="secondary" small onPress={() => onSim('accepted')} />
             <Button label="Decline now" variant="secondary" small onPress={() => onSim('declined')} />
           </View>
-        </View>
+        </View> : null}
       </View>
     );
   if (status === 'accepted')

@@ -27,6 +27,8 @@ export type OpenDoor = {
   topics: string[];
   audience: AudienceId[];
   endedAt?: number;
+  /** Live data: the host's audience doesn't include you, so the server withheld the exact venue. */
+  venueHidden?: boolean;
 };
 
 /** A person who opted in to nearby discovery. `coord` is an approximate area, never a live location. */
@@ -58,8 +60,9 @@ export type Person = {
   photo?: string;
   door?: OpenDoor;
   /** Demo only: how the simulated reply goes. */
-  demoResponse: 'accept' | 'decline';
-  isDemo: true;
+  demoResponse?: 'accept' | 'decline';
+  /** True for the built-in sample profiles; false for real members from the server. */
+  isDemo: boolean;
 };
 
 export type NearbyPerson = Person & { distanceMi: number };
@@ -77,7 +80,10 @@ export type CommunityEvent = {
   end: number;
   cost: string;
   description: string;
-  isDemo: true;
+  /** Live events link to the organizer page they were checked against. */
+  sourceUrl?: string;
+  checkedAt?: string;
+  isDemo: boolean;
 };
 
 export type RequestStatus = 'requested' | 'accepted' | 'declined' | 'cancelled';
@@ -89,11 +95,15 @@ export type ConnectionRequest = {
   createdAt: number;
   updatedAt: number;
   respondAt: number;
+  /** Live data: 'incoming' when the other person sent it (shown under Requests for you, chat still works). */
+  direction?: 'outgoing' | 'incoming';
 };
 export type Message = { id: string; from: 'me' | 'them'; text: string; at: number; demo?: boolean };
 
 export type IncomingRequest = {
   id: string;
+  /** Live data: the sender's member id (opens their profile). */
+  personId?: string;
   name: string;
   role: string;
   status: StatusId;

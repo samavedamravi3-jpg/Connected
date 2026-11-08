@@ -1,5 +1,5 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { ScrollView, Text, View } from 'react-native';
+import { Linking, ScrollView, Text, View } from 'react-native';
 import { Button, KV, Note, Row, Tag } from '@/components/ui';
 import { CHARLOTTE_CENTER, EVENT_CATEGORIES, fieldLabel } from '@/data/options';
 import { dataSource } from '@/data/source';
@@ -22,7 +22,7 @@ export default function EventScreen() {
       <View style={{ gap: S.sm }}>
         <Text style={T.title} accessibilityRole="header">{e.title}</Text>
         <Row>
-          <Tag label="Demo event" icon="flask-outline" />
+          {e.isDemo ? <Tag label="Demo event" icon="flask-outline" /> : <Tag label="Real listing" tone="ok" icon="checkmark-circle-outline" />}
           {e.field ? <Tag label={fieldLabel(e.field)} /> : null}
         </Row>
       </View>
@@ -37,8 +37,12 @@ export default function EventScreen() {
       <View style={{ gap: S.sm }}>
         <Button label={saved ? 'Saved to my plans' : 'Save to my plans'} icon={saved ? 'bookmark' : 'bookmark-outline'} variant={saved ? 'secondary' : 'primary'} onPress={() => app.toggleSavedEvent(e.id)} />
         <Button label="Find people in this field nearby" variant="secondary" icon="map-outline" onPress={() => router.navigate('/')} />
+        {e.sourceUrl ? (
+          <Button label="Open the organizer’s page" variant="secondary" icon="open-outline" onPress={() => Linking.openURL(e.sourceUrl!)} />
+        ) : null}
       </View>
       <Note icon="information-circle-outline">Saving is private. Connected never shows who is going to an event.</Note>
+      {e.checkedAt ? <Text style={T.small}>Details checked on {e.checkedAt}. Times and registration can change; the organizer’s page is the source of truth.</Text> : null}
     </ScrollView>
   );
 }

@@ -7,7 +7,7 @@ import { dataSource } from '@/data/source';
 import type { AvailabilityId } from '@/data/types';
 import { doorState } from '@/lib/match';
 import { pickProfilePhoto, removeProfilePhoto } from '@/lib/photo';
-import { fmtWindow } from '@/lib/time';
+import { fmtTime, fmtWindow } from '@/lib/time';
 import { useApp } from '@/state/AppState';
 import { C, R, S, T } from '@/theme';
 
@@ -21,13 +21,18 @@ export default function ProfileTab() {
     const res = await pickProfilePhoto(profile.photoUri);
     if (!res) return;
     if ('error' in res) return Alert.alert('Can’t open photos', res.error);
-    app.setProfile({ photoUri: res.uri });
+    if (!app.live) return app.setProfile({ photoUri: res.uri });
+    try { await app.setPhoto(res.uri); } catch (e) { Alert.alert('Your photo didn’t upload', (e as Error).message); }
+  };
+  const removePhoto = async () => {
+    if (!app.live) { removeProfilePhoto(profile.photoUri); return app.setProfile({ photoUri: null }); }
+    try { await app.setPhoto(null); } catch (e) { Alert.alert('Couldn’t remove your photo', (e as Error).message); }
   };
   const photoMenu = () =>
     profile.photoUri
       ? Alert.alert('Profile photo', undefined, [
           { text: 'Choose a new photo', onPress: changePhoto },
-          { text: 'Remove photo', style: 'destructive', onPress: () => { removeProfilePhoto(profile.photoUri); app.setProfile({ photoUri: null }); } },
+          { text: 'Remove photo', style: 'destructive', onPress: removePhoto },
           { text: 'Cancel', style: 'cancel' },
         ])
       : changePhoto();
@@ -53,7 +58,15 @@ export default function ProfileTab() {
         <View style={styles.switchRow}>
           <View style={{ flex: 1, gap: 2 }}>
             <Text style={T.label}>Show me in nearby discovery</Text>
-            <Text style={T.small}>{prefs.discoverable ? 'People who match can find your profile.' : 'You’re hidden. You can still browse and send requests.'}</Text>
+            <Text style={T.small}>
+              {!prefs.discoverable
+                ? 'You’re hidden. You can still browse and send requests.'
+                : !app.live
+                  ? 'People who match can find your profile.'
+                  : app.visibleUntil > app.now
+                    ? `Visible around ${app.areaName ?? 'your area'} until ${fmtTime(app.visibleUntil)}. Opening the app keeps you visible; only your neighborhood is shared.`
+                    : 'Open the map with location on to show up nearby for an hour. Only your neighborhood is shared.'}
+            </Text>
           </View>
           <Switch value={prefs.discoverable} onValueChange={(v) => app.setPrefs({ discoverable: v })} trackColor={{ true: C.accent, false: C.line2 }} accessibilityLabel="Show me in nearby discovery" />
         </View>
@@ -113,7 +126,7 @@ export default function ProfileTab() {
         {app.blocked.length ? (
           app.blocked.map((id) => (
             <Row key={id} style={{ justifyContent: 'space-between' }}>
-              <Text style={T.body}>{dataSource.getPerson(id)?.name ?? id}</Text>
+              <Text style={T.body}>{app.blockedNames[id] ?? dataSource.getPerson(id)?.name ?? 'Blocked member'}</Text>
               <Button label="Unblock" variant="quiet" small onPress={() => app.unblock(id)} />
             </Row>
           ))
@@ -122,16 +135,53 @@ export default function ProfileTab() {
         )}
       </Section>
 
-      <Button
-        label="Start the demo over"
-        variant="danger"
-        onPress={() =>
-          Alert.alert('Start over?', 'This clears your preferences, profile, requests and Open Doors on this phone.', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Start over', style: 'destructive', onPress: async () => { await app.reset(); router.replace('/onboarding'); } },
-          ])
-        }
-      />
+      {app.live ? (
+        <Section title="Account">
+          <KV k="Signed in as" v={app.account?.email ?? ''} />
+          <Text style={T.small}>Your email is only used to sign in. Other members never see it.</Text>
+          <Button
+            label="Sign out"
+            variant="secondary"
+            onPress={() =>
+              Alert.alert('Sign out?', 'Your profile, requests and conversations stay saved. You can sign back in with your email.', [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Sign out', style: 'destructive', onPress: async () => { await app.signOut(); router.replace('/onboarding'); } },
+              ])
+            }
+          />
+          <Button
+            label="Delete my account"
+            variant="danger"
+            onPress={() =>
+              Alert.alert('Delete your account?', 'This permanently deletes your profile, photo, requests, conversations and Open Doors. It can’t be undone.', [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete forever',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try { await app.deleteAccount(); router.replace('/onboarding'); }
+                    catch (e) { Alert.alert('Couldn’t delete your account', (e as Error).message); }
+                  },
+                },
+              ])
+            }
+          />
+        </Section>
+      ) : (
+        <View style={{ gap: S.sm }}>
+          <Button label="Sign in or create a real account" icon="person-add-outline" onPress={() => router.push('/sign-in')} />
+          <Button
+            label="Start the demo over"
+            variant="danger"
+            onPress={() =>
+              Alert.alert('Start over?', 'This clears your preferences, profile, requests and Open Doors on this phone.', [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Start over', style: 'destructive', onPress: async () => { await app.reset(); router.replace('/onboarding'); } },
+              ])
+            }
+          />
+        </View>
+      )}
     </ScrollView>
   );
 }

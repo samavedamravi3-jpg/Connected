@@ -26,7 +26,7 @@ export default function Events() {
   const [maxMi, setMaxMi] = useState(25);
   const [savedOnly, setSavedOnly] = useState(false);
 
-  useEffect(() => { dataSource.listEvents().then(setAll); }, []);
+  useEffect(() => { dataSource.listEvents().then(setAll).catch(() => setAll([])); }, [app.live]);
 
   const list = useMemo(() => {
     if (!all) return [];
@@ -55,7 +55,11 @@ export default function Events() {
           </ScrollView>
           <Segmented label="Date" options={[{ id: 'any' as When, label: 'Any date' }, { id: 'week', label: 'This week' }, { id: 'month', label: 'This month' }]} value={when} onChange={setWhen} />
           <Segmented label="Distance" options={TRAVEL_MI.map((m) => ({ id: m, label: `${m} mi` }))} value={maxMi} onChange={setMaxMi} />
-          <Note icon="flask-outline">Demo events. No event service is connected yet, so these are examples, not real listings.</Note>
+          {app.live ? (
+            <Note icon="checkmark-circle-outline">Real Charlotte events, checked against each organizer’s page. Confirm details there before you go.</Note>
+          ) : (
+            <Note icon="flask-outline">Demo events. Sign in to see real Charlotte listings; these are examples.</Note>
+          )}
         </View>
       }
       ListEmptyComponent={
