@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DEMO_INCOMING } from '@/data/demo';
 import { dataSource } from '@/data/source';
-import type { ConnectionRequest, IncomingRequest, Message, OpenDoor, Prefs, Profile, RequestStatus } from '@/data/types';
+import type { ConnectionRequest, IncomingRequest, LatLng, Message, OpenDoor, Prefs, Profile, RequestStatus } from '@/data/types';
 
 const KEY = 'opendoor.state.v1';
 const REPLY_DELAY_MS = 6000;
@@ -20,7 +20,7 @@ export type AppData = {
 };
 
 export const emptyPrefs: Prefs = {
-  field: null, fromField: null, challenges: [], wantTraits: [], languages: ['English'], meetMode: 'either',
+  field: null, fromField: null, challenges: [], wantTraits: [], languages: ['English'], meetMode: 'either', foods: [], diet: [],
   interests: [], skills: [], goals: [], goalOther: '', travelMi: 5, mode: 'seeking', shareMode: 'public', discoverable: true, availability: ['week'],
 };
 const emptyProfile: Profile = { name: '', status: null, org: '', intro: '', offer: '', photoUri: null };
@@ -32,6 +32,7 @@ const fresh = (): AppData => ({
 export const SAMPLE: Pick<AppData, 'prefs' | 'profile'> = {
   prefs: {
     field: 'finance', fromField: null, challenges: ['network', 'interviews', 'start'], wantTraits: ['firstgen', 'near'], languages: ['English', 'Spanish'], meetMode: 'either',
+    foods: ['coffee', 'mediterranean', 'mexican'], diet: [],
     interests: ['Fintech', 'Data & analytics', 'Investing'], skills: ['Excel', 'Spanish', 'Customer service'],
     goals: ['mentorship', 'advice', 'peers'], goalOther: '', travelMi: 5, mode: 'both', shareMode: 'public', discoverable: true, availability: ['week', 'evenings'],
   },
@@ -42,9 +43,14 @@ export const SAMPLE: Pick<AppData, 'prefs' | 'profile'> = {
   },
 };
 
+/** Where you're looking from: your GPS position or the area you picked. Kept in memory only, never saved or shared. */
+export type Here = { coord: LatLng; label: string; isGps: boolean };
+
 type Ctx = AppData & {
   hydrated: boolean;
   now: number;
+  here: Here | null;
+  setHere: (h: Here) => void;
   setPrefs: (p: Partial<Prefs>) => void;
   setProfile: (p: Partial<Profile>) => void;
   finishOnboarding: () => void;
@@ -68,6 +74,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<AppData>(fresh);
   const [hydrated, setHydrated] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [here, setHere] = useState<Here | null>(null);
   const dataRef = useRef(data);
   useEffect(() => {
     dataRef.current = data;
@@ -126,6 +133,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ...data,
       hydrated,
       now,
+      here,
+      setHere,
       setPrefs,
       setProfile,
       finishOnboarding: () => setData((d) => ({ ...d, onboarded: true })),
@@ -161,7 +170,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setData(fresh());
       },
     }),
-    [data, hydrated, now, setPrefs, setProfile, resolve],
+    [data, hydrated, now, here, setPrefs, setProfile, resolve],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

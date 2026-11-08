@@ -1,6 +1,6 @@
 import type Ionicons from '@expo/vector-icons/Ionicons';
 import type { ComponentProps } from 'react';
-import { CHALLENGES, FIELDS, GOALS, venueById } from '@/data/options';
+import { CHALLENGES, FIELDS, GOALS, foodLabel, venueById } from '@/data/options';
 import type { ChallengeId, OpenDoor, Person, Prefs, Profile, TraitId } from '@/data/types';
 
 export type DoorState = 'live' | 'upcoming' | 'expired' | 'ended';
@@ -62,6 +62,8 @@ export function matchPoints(p: Person, prefs: Prefs): MatchPoint[] {
   if (g && g !== 'other') out.push({ icon: 'hand-left-outline', text: `Open to ${GOALS.find((x) => x.id === g)!.label.toLowerCase()}` });
   const si = sharedInterests(p, prefs)[0];
   if (si) out.push({ icon: 'heart-outline', text: `Also into ${si.toLowerCase()}` });
+  const food = prefs.foods.find((f) => p.foods.includes(f));
+  if (food) out.push({ icon: 'restaurant-outline', text: `Both like ${foodLabel(food).toLowerCase()}` });
   return out;
 }
 
@@ -73,6 +75,7 @@ export function matchScore(p: Person, prefs: Prefs): number {
     goalOverlap(p, prefs).length * 1 +
     sharedLanguages(p, prefs).length * 1.5 +
     sharedInterests(p, prefs).length * 0.75 +
+    prefs.foods.filter((f) => p.foods.includes(f)).length * 0.4 +
     sharedSkills(p, prefs).length * 0.25
   );
 }

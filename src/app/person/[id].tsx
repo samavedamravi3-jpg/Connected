@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useRef, useState, type ReactNode } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MeetSpots } from '@/components/MeetSpots';
 import { Avatar, Button, IconButton, Segmented, Tag } from '@/components/ui';
 import { audienceLabel, availabilityLabel, fieldLabel, venueById } from '@/data/options';
 import { dataSource } from '@/data/source';
@@ -11,6 +12,7 @@ import { approxDistance } from '@/lib/geo';
 import {
   canSeeDoor, conversationStarter, doorActive, doorState, firstName, matchPoints, matchStrength, sharedInterests, sharedLanguages, sharedSkills, type Tone,
 } from '@/lib/match';
+import type { MeetSpot } from '@/lib/places';
 import { fmtTime, fmtWindow } from '@/lib/time';
 import { latestRequest, useApp } from '@/state/AppState';
 import { C, R, S, T } from '@/theme';
@@ -53,6 +55,18 @@ export default function PersonScreen() {
   const isBlocked = app.blocked.includes(p.id);
   const shared = new Set([...sharedInterests(p, app.prefs), ...sharedSkills(p, app.prefs), ...sharedLanguages(p, app.prefs)]);
   const venue = door ? venueById(door.venueId) : undefined;
+
+  const canSuggest = !isBlocked && (!req || req.status === 'accepted');
+  const useSpot = (s: MeetSpot) => {
+    const line = `Would you be up for meeting at ${s.name} in ${s.area}? It's about halfway between us.`;
+    if (req?.status === 'accepted') {
+      router.push({ pathname: '/chat/[id]', params: { id: req.id, draft: line } });
+      return;
+    }
+    setMsg((m) => `${m.trim()} ${line}`.slice(0, 500));
+    setEdited(true);
+    scroll.current?.scrollTo({ y: composeY - S.lg, animated: true });
+  };
 
   const changeTone = (t: Tone) => {
     setTone(t);
@@ -188,6 +202,10 @@ export default function PersonScreen() {
               ))}
             </View>
             <Text style={T.small}>{fieldLabel(p.field)}</Text>
+          </Block>
+
+          <Block title="Where you two could meet">
+            <MeetSpots person={p} onUse={canSuggest ? useSpot : undefined} useLabel={req?.status === 'accepted' ? 'Suggest in chat' : 'Add to message'} />
           </Block>
 
           <View onLayout={(e) => setComposeY(e.nativeEvent.layout.y)}>

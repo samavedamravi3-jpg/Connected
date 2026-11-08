@@ -29,11 +29,11 @@ export function OptionCard({ icon, title, hint, selected, onPress, multi }: { ic
 }
 
 /** Square tile for a 2-column grid of choices (fields, meeting style). */
-export function Tile({ icon, label, selected, onPress }: { icon: IconName; label: string; selected: boolean; onPress: () => void }) {
+export function Tile({ icon, label, selected, onPress, multi }: { icon: IconName; label: string; selected: boolean; onPress: () => void; multi?: boolean }) {
   return (
     <Pressable
-      accessibilityRole="radio"
-      accessibilityState={{ selected }}
+      accessibilityRole={multi ? 'checkbox' : 'radio'}
+      accessibilityState={multi ? { checked: selected } : { selected }}
       accessibilityLabel={label}
       onPress={onPress}
       style={({ pressed }) => [styles.tile, selected && styles.cardOn, pressed && !selected && { backgroundColor: C.bg2 }]}

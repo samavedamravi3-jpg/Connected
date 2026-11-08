@@ -12,6 +12,9 @@ export type MeetMode = 'inperson' | 'video' | 'either';
 export type ChallengeId = 'start' | 'network' | 'interviews' | 'resume' | 'credentials' | 'switching' | 'hiring' | 'skills' | 'team';
 /** Backgrounds and roles people can share or look for. */
 export type TraitId = 'firstgen' | 'immigrant' | 'switcher' | 'senior' | 'near' | 'hiring';
+/** Food and drink people enjoy when meeting someone. */
+export type FoodId = 'coffee' | 'tea' | 'bakery' | 'mediterranean' | 'mexican' | 'indian' | 'japanese' | 'chinese' | 'thai' | 'italian' | 'american' | 'caribbean';
+export type DietId = 'vegetarian' | 'vegan' | 'halal' | 'kosher' | 'gluten_free' | 'no_alcohol';
 export type EventCategory = 'networking' | 'career' | 'hackathon';
 
 export type Area = { id: string; name: string; center: LatLng };
@@ -54,6 +57,8 @@ export type Person = {
   helpTags: ChallengeId[];
   languages: string[];
   yearsExp: number;
+  foods: FoodId[];
+  diet: DietId[];
   /** Profile photo URL, when the person uploaded one. Demo profiles have none. */
   photo?: string;
   door?: OpenDoor;
@@ -112,6 +117,8 @@ export type Prefs = {
   wantTraits: TraitId[];
   languages: string[];
   meetMode: MeetMode;
+  foods: FoodId[];
+  diet: DietId[];
   interests: string[];
   skills: string[];
   goals: GoalId[];

@@ -15,10 +15,14 @@ type Props = {
   profile: Profile;
   onOpen: () => void;
   onClose: () => void;
+  /** Rendered inside the bottom sheet: no card shadow or outer padding. */
+  embedded?: boolean;
+  /** Extra line under the distance, e.g. travel time. */
+  travel?: string;
 };
 
 /** Compact card shown over the map for the selected pin. */
-export function PersonCard({ person: p, distanceFromLabel, prefs, profile, onOpen, onClose }: Props) {
+export function PersonCard({ person: p, distanceFromLabel, prefs, profile, onOpen, onClose, embedded, travel }: Props) {
   const points = matchPoints(p, prefs).slice(0, 2);
   const strength = matchStrength(p, prefs);
   const door = p.door && doorActive(p.door) ? p.door : undefined;
@@ -26,7 +30,7 @@ export function PersonCard({ person: p, distanceFromLabel, prefs, profile, onOpe
   const free = p.availability.includes('today') ? 'Free today' : `Free ${availabilityLabel(p.availability[0]).toLowerCase()}`;
 
   return (
-    <View style={[styles.card, shadow]}>
+    <View style={embedded ? styles.embedded : [styles.card, shadow]}>
       <View style={styles.head}>
         <Avatar name={p.name} uri={p.photo} size={58} ring={!!door && seeDoor} />
         <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
@@ -36,7 +40,7 @@ export function PersonCard({ person: p, distanceFromLabel, prefs, profile, onOpe
           </View>
           <Text style={T.small} numberOfLines={1}>{p.role}, {p.org}</Text>
           <Text style={[T.small, { color: C.ink2 }]} numberOfLines={1}>
-            {approxDistance(p.distanceMi)} {distanceFromLabel} · {p.areaName} · {free}
+            {approxDistance(p.distanceMi)} {distanceFromLabel}{travel ? ` · ${travel}` : ''} · {free}
           </Text>
         </View>
         <IconButton icon="close" label="Close" onPress={onClose} style={{ marginTop: -8, marginRight: -8 }} />
@@ -76,6 +80,7 @@ export function PersonCard({ person: p, distanceFromLabel, prefs, profile, onOpe
 
 const styles = StyleSheet.create({
   card: { backgroundColor: C.bg, borderRadius: 22, padding: S.lg, gap: S.md },
+  embedded: { gap: S.md },
   head: { flexDirection: 'row', gap: S.md, alignItems: 'center' },
   name: { fontSize: 18, fontWeight: '700', color: C.ink, flexShrink: 1 },
   badge: { fontSize: 11, fontWeight: '700', color: C.accent, backgroundColor: C.accentSoft, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, overflow: 'hidden' },

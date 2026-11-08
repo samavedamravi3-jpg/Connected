@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line } from 'react-native-svg';
 import { Grid, Label, OptionCard, StepTitle, Tile } from '@/components/OnboardingParts';
 import { Avatar, Button, Chip, IconButton, Segmented } from '@/components/ui';
-import { AVAILABILITY, CHALLENGES, CHARLOTTE_CENTER, FIELDS, GOALS, INTERESTS, LANGUAGES, MEET_MODES, SKILLS, STATUSES, TRAITS, TRAVEL_MI } from '@/data/options';
+import { AVAILABILITY, CHALLENGES, CHARLOTTE_CENTER, DIETS, FIELDS, FOODS, GOALS, INTERESTS, LANGUAGES, MEET_MODES, SKILLS, STATUSES, TRAITS, TRAVEL_MI } from '@/data/options';
 import { dataSource } from '@/data/source';
 import type { NearbyPerson } from '@/data/types';
 import { matchPoints, matchScore } from '@/lib/match';
@@ -15,12 +15,12 @@ import { pickProfilePhoto } from '@/lib/photo';
 import { useApp } from '@/state/AppState';
 import { C, R, S, T } from '@/theme';
 
-type StepId = 'status' | 'field' | 'goals' | 'challenges' | 'people' | 'interests' | 'meet' | 'privacy' | 'profile';
-const PREF_STEPS: StepId[] = ['status', 'field', 'goals', 'challenges', 'people', 'interests', 'meet', 'privacy'];
+type StepId = 'status' | 'field' | 'goals' | 'challenges' | 'people' | 'interests' | 'meet' | 'food' | 'privacy' | 'profile';
+const PREF_STEPS: StepId[] = ['status', 'field', 'goals', 'challenges', 'people', 'interests', 'meet', 'food', 'privacy'];
 const ALL_STEPS: StepId[] = [...PREF_STEPS, 'profile'];
 const SECTION: Record<StepId, string> = {
   status: 'About you', field: 'About you', goals: 'What you need', challenges: 'What you need', people: 'What you need',
-  interests: 'Your interests', meet: 'Meeting up', privacy: 'Meeting up', profile: 'Your profile',
+  interests: 'Your interests', meet: 'Meeting up', food: 'Meeting up', privacy: 'Meeting up', profile: 'Your profile',
 };
 const MAX_CHALLENGES = 3;
 
@@ -79,7 +79,7 @@ export default function Onboarding() {
   if (phase === 'welcome') return <Welcome onStart={() => setPhase('steps')} onSample={() => { app.loadSample(); router.replace('/'); }} />;
   if (phase === 'done') return <Done />;
 
-  const optional = step === 'people' || step === 'interests';
+  const optional = step === 'people' || step === 'interests' || step === 'food';
   const last = i === steps.length - 1;
 
   return (
@@ -230,6 +230,29 @@ export default function Onboarding() {
               <View style={styles.chips}>
                 {AVAILABILITY.map((a) => <Chip key={a.id} label={a.label} selected={prefs.availability.includes(a.id)} onPress={() => setPrefs({ availability: toggle(prefs.availability, a.id) })} />)}
               </View>
+            </View>
+          </>
+        )}
+
+        {step === 'food' && (
+          <>
+            <StepTitle
+              icon="restaurant-outline"
+              section={SECTION.food}
+              title="What would you grab together?"
+              sub="When you connect with someone, we'll suggest spots halfway between you that serve something you both like."
+            />
+            <Grid>
+              {FOODS.map((fd) => (
+                <Tile key={fd.id} multi icon={fd.icon} label={fd.label} selected={prefs.foods.includes(fd.id)} onPress={() => setPrefs({ foods: toggle(prefs.foods, fd.id) })} />
+              ))}
+            </Grid>
+            <View style={{ gap: S.md }}>
+              <Label right={<Text style={T.small}>Optional</Text>}>Any dietary needs?</Label>
+              <View style={styles.chips}>
+                {DIETS.map((d) => <Chip key={d.id} label={d.label} selected={prefs.diet.includes(d.id)} onPress={() => setPrefs({ diet: toggle(prefs.diet, d.id) })} />)}
+              </View>
+              <Text style={T.small}>We use these to favor places that suit you. Others only see them when you meet.</Text>
             </View>
           </>
         )}

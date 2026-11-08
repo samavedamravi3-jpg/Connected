@@ -1,6 +1,6 @@
 import type Ionicons from '@expo/vector-icons/Ionicons';
 import type { ComponentProps } from 'react';
-import type { Area, AudienceId, AvailabilityId, ChallengeId, EventCategory, FieldId, GoalId, MeetMode, StatusId, TraitId, Venue } from './types';
+import type { Area, AudienceId, AvailabilityId, ChallengeId, DietId, EventCategory, FieldId, FoodId, GoalId, MeetMode, StatusId, TraitId, Venue } from './types';
 
 type Icon = ComponentProps<typeof Ionicons>['name'];
 
@@ -125,3 +125,31 @@ export const venueById = (id: string) => VENUES.find((v) => v.id === id) ?? VENU
 
 export const challengeLabel = (id: ChallengeId) => CHALLENGES.find((c) => c.id === id)?.label ?? id;
 export const traitLabel = (id: TraitId) => TRAITS.find((t) => t.id === id)?.label ?? id;
+
+/** Food and drink choices. `q` is the OpenStreetMap search word; `cuisines` are OSM cuisine tags that count as a match. */
+export const FOODS: { id: FoodId; label: string; icon: Icon; q: string; cuisines: string[]; shops?: string[] }[] = [
+  { id: 'coffee', label: 'Coffee', icon: 'cafe-outline', q: 'cafe', cuisines: ['coffee_shop', 'coffee'] },
+  { id: 'tea', label: 'Tea & boba', icon: 'leaf-outline', q: 'bubble tea', cuisines: ['bubble_tea', 'tea'] },
+  { id: 'bakery', label: 'Bakery & brunch', icon: 'restaurant-outline', q: 'bakery', cuisines: ['breakfast', 'brunch', 'bakery', 'crepe', 'donut'], shops: ['bakery', 'pastry'] },
+  { id: 'mediterranean', label: 'Mediterranean', icon: 'sunny-outline', q: 'mediterranean', cuisines: ['mediterranean', 'greek', 'lebanese', 'turkish', 'middle_eastern', 'falafel', 'kebab'] },
+  { id: 'mexican', label: 'Mexican & Latin', icon: 'flame-outline', q: 'mexican', cuisines: ['mexican', 'latin_american', 'tex-mex', 'tacos', 'salvadoran', 'colombian', 'peruvian'] },
+  { id: 'indian', label: 'Indian', icon: 'bonfire-outline', q: 'indian', cuisines: ['indian', 'pakistani', 'nepalese', 'bangladeshi'] },
+  { id: 'japanese', label: 'Japanese', icon: 'fish-outline', q: 'sushi', cuisines: ['japanese', 'sushi', 'ramen'] },
+  { id: 'chinese', label: 'Chinese', icon: 'restaurant-outline', q: 'chinese', cuisines: ['chinese', 'dim_sum', 'szechuan', 'cantonese'] },
+  { id: 'thai', label: 'Thai & Vietnamese', icon: 'nutrition-outline', q: 'thai', cuisines: ['thai', 'vietnamese', 'pho'] },
+  { id: 'italian', label: 'Italian & pizza', icon: 'pizza-outline', q: 'italian', cuisines: ['italian', 'pizza'] },
+  { id: 'american', label: 'Burgers & BBQ', icon: 'fast-food-outline', q: 'barbecue', cuisines: ['american', 'burger', 'bbq', 'barbecue', 'southern', 'chicken', 'sandwich'] },
+  { id: 'caribbean', label: 'Caribbean & African', icon: 'earth-outline', q: 'caribbean', cuisines: ['caribbean', 'jamaican', 'african', 'ethiopian', 'nigerian', 'west_african'] },
+];
+
+export const DIETS: { id: DietId; label: string; osm?: string }[] = [
+  { id: 'vegetarian', label: 'Vegetarian', osm: 'diet:vegetarian' },
+  { id: 'vegan', label: 'Vegan', osm: 'diet:vegan' },
+  { id: 'halal', label: 'Halal', osm: 'diet:halal' },
+  { id: 'kosher', label: 'Kosher', osm: 'diet:kosher' },
+  { id: 'gluten_free', label: 'Gluten-free', osm: 'diet:gluten_free' },
+  { id: 'no_alcohol', label: 'Alcohol-free spots' },
+];
+
+export const foodLabel = (id: FoodId) => FOODS.find((f) => f.id === id)?.label ?? id;
+export const dietLabel = (id: DietId) => DIETS.find((d) => d.id === id)?.label ?? id;

@@ -1,143 +1,214 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import * as Location from 'expo-location';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import MapView, { Circle, Marker, type MapStyleElement, type Region } from 'react-native-maps';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
+import { Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import MapView, { Circle, Marker, Polygon, Polyline, type MapStyleElement, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BottomSheet } from '@/components/BottomSheet';
 import { FilterSheet } from '@/components/FilterSheet';
+import { NodePin, YouNode, nodeAnchor } from '@/components/MapPins';
 import { PersonCard } from '@/components/PersonCard';
-import { Avatar, Button, Chip, IconButton } from '@/components/ui';
-import { AREAS, CHARLOTTE_CENTER, GOALS, fieldLabel } from '@/data/options';
+import { Avatar, Button, Chip } from '@/components/ui';
+import { AREAS, CHARLOTTE_CENTER, GOALS } from '@/data/options';
 import { dataSource } from '@/data/source';
 import type { LatLng, NearbyPerson } from '@/data/types';
-import { activeFilterCount, applyFilters, defaultFilters, type Filters } from '@/lib/filters';
-import { approxDistance, deltaForMiles, distanceMi } from '@/lib/geo';
-import { canSeeDoor, doorActive, matchScore } from '@/lib/match';
+import { activeFilterCount, applyFilters, defaultFilters, isFreeToday, type Filters } from '@/lib/filters';
+import { approxDistance, deltaForMiles, distanceMi, travelTime } from '@/lib/geo';
+import { canSeeDoor, doorActive, matchPoints, matchScore, matchStrength } from '@/lib/match';
+import { useLiveLocation, type Fix } from '@/lib/useLiveLocation';
 import { useApp } from '@/state/AppState';
 import { C, R, S, T, shadow } from '@/theme';
 
-// The phone's own map: Apple Maps on iOS and Google Maps on Android. Neither needs an API key in
-// Expo Go, and both draw their own attribution. Business and transit labels are hidden so pins stand out.
+/**
+ * Connected. map style: a calm lavender-gray city with white streets, so purple network nodes and
+ * connection lines read clearly. Fully applied on Android (Google Maps). Apple Maps on iOS can't be
+ * recolored, so a soft lavender wash (the Polygon below) gives it the same feel there.
+ */
 const ANDROID_MAP_STYLE: MapStyleElement[] = [
-  { featureType: 'poi.business', stylers: [{ visibility: 'off' }] },
-  { featureType: 'poi.attraction', stylers: [{ visibility: 'off' }] },
-  { featureType: 'transit', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
-  { featureType: 'road', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { elementType: 'geometry', stylers: [{ color: '#F3F1F8' }] },
+  { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#6E6884' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#F7F6FB' }] },
+  { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
+  { featureType: 'administrative.neighborhood', elementType: 'labels.text.fill', stylers: [{ color: '#8E88A6' }] },
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  { featureType: 'poi.park', stylers: [{ visibility: 'on' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#E7EBE6' }] },
+  { featureType: 'poi.park', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#FFFFFF' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#E4E0EE' }] },
+  { featureType: 'road.arterial', elementType: 'labels.text.fill', stylers: [{ color: '#8E88A6' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#E9E3FA' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#D6CCF5' }] },
+  { featureType: 'road.local', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#D9D2F2' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#8E88A6' }] },
 ];
+const WASH = Platform.OS === 'ios' ? 'rgba(246,243,253,0.42)' : 'rgba(246,243,253,0.12)';
 const POOL_RADIUS_MI = 25;
+const MAX_LINES = 6;
+const PEEK = 150;
 
-type Perm = 'checking' | 'undetermined' | 'granted' | 'denied';
-
+type IconName = ComponentProps<typeof Ionicons>['name'];
+type Tab = 'best' | 'doors' | 'all';
 const regionFor = (c: LatLng, mi: number): Region => ({ ...c, latitudeDelta: deltaForMiles(mi), longitudeDelta: deltaForMiles(mi) });
 
 export default function MapScreen() {
   const app = useApp();
-  const { prefs, profile, blocked } = app;
+  const { prefs, profile, blocked, setHere } = app;
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
+  const [initialRegion] = useState(() => regionFor(CHARLOTTE_CENTER, prefs.travelMi));
+  const regionRef = useRef<Region>(initialRegion);
+  const followingRef = useRef(false);
+  const lastHere = useRef<LatLng | null>(null);
 
-  const [perm, setPerm] = useState<Perm>('checking');
-  const [userLoc, setUserLoc] = useState<LatLng | null>(null);
-  const [areaName, setAreaName] = useState('central Charlotte');
+  const [height, setHeight] = useState(0);
+  const [live, setLive] = useState(true);
+  const [following, setFollowing] = useState(false);
+  const [showLines, setShowLines] = useState(true);
+  const [areaName, setAreaName] = useState('Charlotte');
   const [searchCenter, setSearchCenter] = useState<LatLng>(CHARLOTTE_CENTER);
   const [mapCenter, setMapCenter] = useState<LatLng>(CHARLOTTE_CENTER);
   const [loaded, setLoaded] = useState<{ center: LatLng; people: NearbyPerson[] } | null>(null);
   const [filters, setFilters] = useState<Filters>(() => defaultFilters(prefs.travelMi));
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [sheet, setSheet] = useState<'filters' | 'list' | 'area' | null>(null);
+  const [modal, setModal] = useState<'filters' | 'area' | null>(null);
+  const [sheetIndex, setSheetIndex] = useState(0);
+  const [tab, setTab] = useState<Tab>('best');
   const [settledPinsKey, setSettledPinsKey] = useState('');
 
-  // Load everyone opted in within the pool radius of the search center. Filtering happens locally.
   useEffect(() => {
-    let live = true;
+    followingRef.current = following;
+  }, [following]);
+
+  const flyTo = useCallback((c: LatLng, mi: number, ms = 500) => {
+    mapRef.current?.animateToRegion(regionFor(c, mi), ms);
+  }, []);
+
+  // New GPS position: center on you the first time; afterwards, move with you only in follow mode.
+  const onFix = useCallback(
+    (f: Fix, first: boolean) => {
+      // Share your rough position with the meeting-spot finder (in memory only), not on every tiny move.
+      if (!lastHere.current || distanceMi(lastHere.current, f.coord) > 0.1) {
+        lastHere.current = f.coord;
+        setHere({ coord: f.coord, label: 'you', isGps: true });
+      }
+      if (first) {
+        setSearchCenter(f.coord);
+        setMapCenter(f.coord);
+        flyTo(f.coord, filters.distanceMi, 700);
+      } else if (followingRef.current) {
+        mapRef.current?.animateCamera({ center: f.coord }, { duration: 600 });
+      }
+    },
+    [filters.distanceMi, flyTo, setHere],
+  );
+  const loc = useLiveLocation(live, onFix);
+
+  // Everyone opted in within the pool radius of the search center; filtering happens locally.
+  useEffect(() => {
+    let alive = true;
     dataSource.listNearbyPeople(searchCenter, POOL_RADIUS_MI).then((ps) => {
-      if (live) setLoaded({ center: searchCenter, people: ps });
+      if (alive) setLoaded({ center: searchCenter, people: ps });
     });
-    return () => { live = false; };
+    return () => { alive = false; };
   }, [searchCenter]);
   const loading = loaded?.center !== searchCenter;
   const pool = useMemo(() => loaded?.people ?? [], [loaded]);
 
+  // Distances update live from your GPS when you're in range; otherwise from the search area.
+  const me = loc.fix && distanceMi(loc.fix.coord, searchCenter) < POOL_RADIUS_MI ? loc.fix.coord : null;
+  const origin = me ?? searchCenter;
+  const fromLabel = me ? 'away' : `from ${areaName}`;
+  const placeLabel = me ? (loc.place ?? 'Your location') : areaName;
+
   const people = useMemo(() => {
-    const list = applyFilters(pool, filters, blocked);
-    return list.sort((a, b) => matchScore(b, prefs) - matchScore(a, prefs) || a.distanceMi - b.distanceMi);
-  }, [pool, filters, blocked, prefs]);
-
-  // Distances shown to the user: from their GPS fix when nearby, otherwise from the search area.
-  const distanceRef = userLoc && distanceMi(userLoc, searchCenter) < POOL_RADIUS_MI ? userLoc : searchCenter;
-  const distanceFromLabel = distanceRef === userLoc ? 'from you' : `from ${areaName}`;
-  const withDistance = useCallback((p: NearbyPerson) => ({ ...p, distanceMi: distanceMi(distanceRef, p.coord) }), [distanceRef]);
-
+    return applyFilters(pool, filters, blocked)
+      .map((p) => ({ ...p, distanceMi: distanceMi(origin, p.coord), strength: matchStrength(p, prefs) }))
+      .sort((a, b) => matchScore(b, prefs) - matchScore(a, prefs) || a.distanceMi - b.distanceMi);
+  }, [pool, filters, blocked, prefs, origin]);
   const selected = people.find((p) => p.id === selectedId);
-  const moved = distanceMi(mapCenter, searchCenter) > 0.6;
+  const doorVisible = useCallback((p: NearbyPerson) => !!p.door && doorActive(p.door) && canSeeDoor(p.door, p, prefs, profile), [prefs, profile]);
 
-  // Custom pins re-render while they change, then stop tracking view changes for smooth panning.
-  const pinsKey = `${people.map((p) => p.id).join(',')}|${selectedId ?? ''}`;
+  const best = people.filter((p) => p.strength !== 'some');
+  const doors = people.filter(doorVisible);
+  const listed = tab === 'best' ? best : tab === 'doors' ? doors : people;
+  const strongCount = people.filter((p) => p.strength === 'strong').length;
+
+  // Your network: lines from you (or the search area) to your best nearby matches.
+  const lineTargets = useMemo(() => {
+    const t = people.filter((p) => p.strength !== 'some').slice(0, MAX_LINES);
+    if (selected && !t.some((p) => p.id === selected.id)) t.push(selected);
+    return t;
+  }, [people, selected]);
+
+  // Custom markers re-render while they change, then stop tracking for smooth panning.
+  const pinsKey = `${people.map((p) => p.id + p.strength).join(',')}|${selectedId ?? ''}`;
   const trackPins = settledPinsKey !== pinsKey;
   useEffect(() => {
     const t = setTimeout(() => setSettledPinsKey(pinsKey), 700);
     return () => clearTimeout(t);
   }, [pinsKey]);
 
-  const goTo = useCallback((c: LatLng, label: string) => {
+  const snaps = useMemo(() => (height ? [PEEK, Math.round(height * 0.52), Math.round(height - insets.top - 8)] : [PEEK]), [height, insets.top]);
+  const moved = !following && distanceMi(mapCenter, searchCenter) > 0.6;
+  const fCount = activeFilterCount(filters);
+  const nearCharlotte = distanceMi(searchCenter, CHARLOTTE_CENTER) < 40;
+
+  const select = (p: NearbyPerson) => {
+    setSelectedId(p.id);
+    setSheetIndex(1);
+    setFollowing(false);
+    const d = regionRef.current.latitudeDelta;
+    // Keep the person above the half-open sheet.
+    mapRef.current?.animateToRegion({ latitude: p.coord.latitude - d * 0.22, longitude: p.coord.longitude, latitudeDelta: d, longitudeDelta: d }, 450);
+  };
+
+  const goToArea = (c: LatLng, name: string) => {
+    setHere({ coord: c, label: name, isGps: false });
     setSearchCenter(c);
     setMapCenter(c);
-    setAreaName(label);
+    setAreaName(name);
     setSelectedId(null);
-    mapRef.current?.animateToRegion(regionFor(c, filters.distanceMi), 450);
-  }, [filters.distanceMi]);
+    setFollowing(false);
+    flyTo(c, filters.distanceMi);
+  };
 
-  /** One-time location fix. No watchers, no background updates. */
-  const fixOnce = useCallback(async () => {
-    const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-    const here = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
-    setUserLoc(here);
-    goTo(here, 'you');
-  }, [goTo]);
+  const recenter = async () => {
+    const f = loc.fix ?? (await loc.request());
+    if (!f) return setModal('area');
+    setFollowing(true);
+    setSelectedId(null);
+    setSearchCenter(f.coord);
+    setMapCenter(f.coord);
+    flyTo(f.coord, Math.min(filters.distanceMi, 3), 500);
+  };
 
-  const locateOnce = useCallback(async () => {
-    try {
-      let { status } = await Location.getForegroundPermissionsAsync();
-      if (status !== 'granted') status = (await Location.requestForegroundPermissionsAsync()).status;
-      if (status !== 'granted') return setPerm(status === 'denied' ? 'denied' : 'undetermined');
-      setPerm('granted');
-      await fixOnce();
-    } catch {
-      setPerm('denied');
-    }
-  }, [fixOnce]);
+  const closeCard = () => {
+    setSelectedId(null);
+    setSheetIndex(0);
+  };
+  const openProfile = (p: NearbyPerson) => router.push({ pathname: '/person/[id]', params: { id: p.id, d: String(p.distanceMi), from: fromLabel } });
 
-  // On first open, check (without prompting) whether location was already allowed.
-  const fixOnceRef = useRef(fixOnce);
-  useEffect(() => { fixOnceRef.current = fixOnce; }, [fixOnce]);
-  useEffect(() => {
-    let live = true;
-    Location.getForegroundPermissionsAsync()
-      .then(({ status }) => {
-        if (!live) return;
-        if (status === 'granted') {
-          setPerm('granted');
-          return fixOnceRef.current();
-        }
-        setPerm(status === 'denied' ? 'denied' : 'undetermined');
-      })
-      .catch(() => live && setPerm('denied'));
-    return () => { live = false; };
-  }, []);
-
-  const nearCharlotte = distanceMi(searchCenter, CHARLOTTE_CENTER) < 40;
   const quickGoals = GOALS.filter((g) => ['mentorship', 'advice', 'peers', 'collab'].includes(g.id));
-  const fCount = activeFilterCount(filters);
+  const wash = [
+    { latitude: origin.latitude + 3, longitude: origin.longitude - 3 },
+    { latitude: origin.latitude + 3, longitude: origin.longitude + 3 },
+    { latitude: origin.latitude - 3, longitude: origin.longitude + 3 },
+    { latitude: origin.latitude - 3, longitude: origin.longitude - 3 },
+  ];
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg2 }}>
+    <View style={{ flex: 1, backgroundColor: '#F3F1F8' }} onLayout={(e) => setHeight(e.nativeEvent.layout.height)}>
       <MapView
         ref={mapRef}
         style={StyleSheet.absoluteFill}
-        initialRegion={regionFor(CHARLOTTE_CENTER, prefs.travelMi)}
+        initialRegion={initialRegion}
         mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
         customMapStyle={Platform.OS === 'android' ? ANDROID_MAP_STYLE : undefined}
+        userInterfaceStyle="light"
         showsPointsOfInterests={false}
         showsBuildings={false}
         showsTraffic={false}
@@ -146,60 +217,97 @@ export default function MapScreen() {
         pitchEnabled={false}
         toolbarEnabled={false}
         showsCompass={false}
-        onRegionChangeComplete={(r) => setMapCenter({ latitude: r.latitude, longitude: r.longitude })}
+        mapPadding={{ top: insets.top + 120, right: 0, bottom: PEEK, left: 0 }}
+        onPanDrag={() => { if (following) setFollowing(false); }}
+        onRegionChangeComplete={(r) => {
+          regionRef.current = r;
+          setMapCenter({ latitude: r.latitude, longitude: r.longitude });
+        }}
         onPress={(e) => {
           const action = (e.nativeEvent as { action?: string }).action;
-          if (action !== 'marker-press') setSelectedId(null);
+          if (action !== 'marker-press' && selectedId) closeCard();
         }}
-        accessibilityLabel="Map of people nearby"
+        accessibilityLabel="Map of your network nearby"
       >
-        <Circle center={searchCenter} radius={filters.distanceMi * 1609.34} strokeColor="rgba(91,53,201,0.35)" fillColor="rgba(91,53,201,0.06)" strokeWidth={1} />
-        {userLoc ? (
-          <Marker coordinate={userLoc} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false} title="You" accessibilityLabel="Your location">
-            <View style={styles.youDot} />
-          </Marker>
+        <Polygon coordinates={wash} fillColor={WASH} strokeWidth={0} strokeColor="transparent" zIndex={0} tappable={false} />
+        <Circle center={searchCenter} radius={filters.distanceMi * 1609.34} strokeColor="rgba(91,53,201,0.22)" fillColor="rgba(91,53,201,0.03)" strokeWidth={1} zIndex={1} />
+        {showLines
+          ? lineTargets.map((p) => {
+              const on = p.id === selectedId;
+              return (
+                <Polyline
+                  key={`l-${p.id}`}
+                  coordinates={[origin, p.coord]}
+                  strokeColor={on ? 'rgba(91,53,201,0.9)' : p.strength === 'strong' ? 'rgba(91,53,201,0.5)' : 'rgba(91,53,201,0.3)'}
+                  strokeWidth={on ? 2.5 : 1.5}
+                  lineDashPattern={on ? undefined : [2, 6]}
+                  zIndex={2}
+                />
+              );
+            })
+          : null}
+        {loc.fix && loc.fix.accuracyM && loc.fix.accuracyM < 250 ? (
+          <Circle center={loc.fix.coord} radius={loc.fix.accuracyM} strokeColor="rgba(91,53,201,0.2)" fillColor="rgba(91,53,201,0.08)" strokeWidth={1} zIndex={3} />
         ) : null}
         {people.map((p) => {
           const on = p.id === selectedId;
-          const door = p.door && doorActive(p.door) && canSeeDoor(p.door, p, prefs, profile);
           return (
             <Marker
               key={p.id}
               coordinate={p.coord}
-              anchor={{ x: 0.5, y: 0.5 }}
+              anchor={nodeAnchor(p.strength, on)}
               tracksViewChanges={trackPins}
-              zIndex={on ? 10 : 1}
-              onPress={() => setSelectedId(p.id)}
-              accessibilityLabel={`${p.name}, ${p.role}, ${approxDistance(withDistance(p).distanceMi)} ${distanceFromLabel}`}
+              zIndex={on ? 30 : p.strength === 'strong' ? 12 : p.strength === 'good' ? 11 : 10}
+              onPress={() => select(p)}
+              accessibilityLabel={`${p.name}, ${p.role}, ${p.strength === 'strong' ? 'strong match, ' : ''}${approxDistance(p.distanceMi)} ${fromLabel}`}
             >
-              <View style={[styles.pin, on && styles.pinOn]}>
-                <Avatar name={p.name} uri={p.photo} size={on ? 44 : 34} />
-                {door ? <View style={styles.pinBadge}><Ionicons name="enter" size={10} color={C.white} /></View> : null}
-              </View>
+              <NodePin name={p.name} role={p.role} uri={p.photo} strength={p.strength} selected={on} door={doorVisible(p)} />
             </Marker>
           );
         })}
+        {loc.fix ? (
+          <Marker coordinate={loc.fix.coord} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={trackPins} zIndex={40} accessibilityLabel="You are here">
+            <YouNode live={loc.watching} />
+          </Marker>
+        ) : !loading ? (
+          <Marker coordinate={searchCenter} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false} zIndex={40} accessibilityLabel={`Search center, ${areaName}`}>
+            <View style={styles.centerMark} />
+          </Marker>
+        ) : null}
       </MapView>
 
-      {/* Top controls */}
+      {/* Header */}
       <View style={[styles.top, { paddingTop: insets.top + S.sm }]} pointerEvents="box-none">
-        <View style={[styles.bar, shadow]}>
-          <View style={{ flex: 1 }}>
-            <Text style={T.h3}>People nearby</Text>
-            <Text style={T.small} numberOfLines={1}>
-              {loading ? 'Looking…' : `${people.length} within ${filters.distanceMi} mi of ${areaName}`} · demo profiles
-            </Text>
-          </View>
-          <Pressable onPress={() => setSheet('filters')} accessibilityRole="button" accessibilityLabel={`Filters${fCount ? `, ${fCount} active` : ''}`} style={({ pressed }) => [styles.filterBtn, pressed && { backgroundColor: C.bg2 }]}>
+        <View style={[styles.header, shadow]}>
+          <Pressable onPress={() => setModal('area')} accessibilityRole="button" accessibilityLabel={`Area: ${placeLabel}. Change area`} style={styles.headerMain} hitSlop={4}>
+            <View style={styles.brand}>
+              <Text style={styles.brandWord}>Connected</Text>
+              <View style={styles.brandDot} />
+            </View>
+            <View style={styles.headerDivider} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Text style={styles.place} numberOfLines={1}>{placeLabel}</Text>
+                <Ionicons name="chevron-down" size={14} color={C.ink3} />
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                {me && loc.watching ? <View style={styles.locDot} /> : null}
+                <Text style={styles.sub} numberOfLines={1}>
+                  {loading ? 'Loading your network…' : `${strongCount} strong match${strongCount === 1 ? '' : 'es'} · ${people.length} people`}
+                </Text>
+              </View>
+            </View>
+          </Pressable>
+          <Pressable onPress={() => setModal('filters')} accessibilityRole="button" accessibilityLabel={`Filters${fCount ? `, ${fCount} on` : ''}`} style={({ pressed }) => [styles.filterBtn, pressed && { backgroundColor: C.bg2 }]}>
             <Ionicons name="options-outline" size={20} color={C.ink} />
-            <Text style={T.label}>Filters</Text>
             {fCount ? <View style={styles.count}><Text style={styles.countText}>{fCount}</Text></View> : null}
           </Pressable>
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quick} keyboardShouldPersistTaps="handled">
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quick}>
           {prefs.field ? (
             <Chip
-              label={`My field`}
+              label="My field"
               selected={filters.fields.length === 1 && filters.fields[0] === prefs.field}
               onPress={() => setFilters((f) => ({ ...f, fields: f.fields.length === 1 && f.fields[0] === prefs.field ? [] : [prefs.field!] }))}
             />
@@ -209,125 +317,180 @@ export default function MapScreen() {
             <Chip key={g.id} label={g.label} selected={filters.goals.includes(g.id)} onPress={() => setFilters((f) => ({ ...f, goals: f.goals.includes(g.id) ? f.goals.filter((x) => x !== g.id) : [...f.goals, g.id] }))} />
           ))}
         </ScrollView>
+
         {moved ? (
           <Pressable
-            onPress={() => { setSearchCenter(mapCenter); setAreaName('this area'); setSelectedId(null); }}
+            onPress={() => { setSearchCenter(mapCenter); setAreaName('this area'); setSelectedId(null); if (!loc.fix) setHere({ coord: mapCenter, label: 'this area', isGps: false }); }}
             accessibilityRole="button"
             style={({ pressed }) => [styles.searchHere, shadow, pressed && { opacity: 0.85 }]}
           >
-            <Ionicons name="search" size={16} color={C.white} />
-            <Text style={{ color: C.white, fontWeight: '600', fontSize: 15 }}>Search this area</Text>
+            <Ionicons name="refresh" size={15} color={C.accent} />
+            <Text style={styles.searchHereText}>Search this area</Text>
           </Pressable>
         ) : null}
       </View>
 
-      {/* Side controls */}
-      <View style={[styles.side, { top: insets.top + 150 }]}>
-        <IconButton icon={perm === 'granted' ? 'navigate' : 'navigate-outline'} label="Center on my location" onPress={() => (userLoc ? goTo(userLoc, 'you') : locateOnce())} style={shadow} />
-        <IconButton icon="location-outline" label="Choose an area" onPress={() => setSheet('area')} style={shadow} />
-        <IconButton icon="list-outline" label="Show people as a list" onPress={() => setSheet('list')} style={shadow} />
-      </View>
-
-      {/* Bottom: selected person, location prompt, or summary */}
-      <View style={styles.bottom} pointerEvents="box-none">
-        {selected ? (
-          <PersonCard
-            person={withDistance(selected)}
-            distanceFromLabel={distanceFromLabel}
-            prefs={prefs}
-            profile={profile}
-            onClose={() => setSelectedId(null)}
-            onOpen={() => router.push({ pathname: '/person/[id]', params: { id: selected.id, d: String(withDistance(selected).distanceMi), from: distanceFromLabel } })}
-          />
-        ) : perm === 'undetermined' || perm === 'denied' ? (
-          <View style={[styles.panel, shadow]}>
-            <Text style={T.h3}>{perm === 'denied' ? 'Location is off' : 'See who’s near you'}</Text>
-            <Text style={T.small}>
-              {perm === 'denied'
-                ? `Showing ${areaName}. Pick an area, or turn on location in your phone's settings.`
-                : 'We use your location once to center the map. It isn’t tracked or shared.'}
-            </Text>
-            <View style={{ flexDirection: 'row', gap: S.sm }}>
-              {perm === 'undetermined' ? <Button label="Use my location" icon="navigate" onPress={() => locateOnce()} style={{ flex: 1 }} small /> : <Button label="Open settings" variant="secondary" onPress={() => Linking.openSettings()} small style={{ flex: 1 }} />}
-              <Button label="Pick an area" variant="secondary" onPress={() => setSheet('area')} small style={{ flex: 1 }} />
-            </View>
-          </View>
-        ) : !loading && !people.length ? (
-          <View style={[styles.panel, shadow]}>
-            <Text style={T.h3}>{nearCharlotte ? 'No one matches here yet' : 'No one nearby yet'}</Text>
-            <Text style={T.small}>
-              {nearCharlotte ? 'Try a wider distance or fewer filters.' : 'This demo only has profiles in Charlotte, NC.'}
-            </Text>
-            <View style={{ flexDirection: 'row', gap: S.sm }}>
-              {nearCharlotte ? (
-                <Button label="Clear filters" small variant="secondary" onPress={() => setFilters(defaultFilters(POOL_RADIUS_MI))} style={{ flex: 1 }} />
-              ) : (
-                <Button label="Go to Charlotte" small onPress={() => goTo(CHARLOTTE_CENTER, 'central Charlotte')} style={{ flex: 1 }} />
-              )}
-            </View>
-          </View>
+      {/* Map controls */}
+      <View style={[styles.controls, shadow, { top: insets.top + 140 }]}>
+        <ControlButton icon={following ? 'locate' : 'locate-outline'} active={following} label={following ? 'Following your location' : 'Center on my location'} onPress={recenter} />
+        <View style={styles.controlDivider} />
+        <ControlButton icon="git-network-outline" active={showLines} label={showLines ? 'Hide connection lines' : 'Show connection lines'} onPress={() => setShowLines((v) => !v)} />
+        {loc.perm === 'granted' ? (
+          <>
+            <View style={styles.controlDivider} />
+            <ControlButton icon={live ? 'location' : 'location-outline'} active={live} label={live ? 'Pause live location' : 'Resume live location'} onPress={() => setLive((v) => !v)} />
+          </>
         ) : null}
       </View>
 
-      {loading ? <ActivityIndicator style={{ position: 'absolute', alignSelf: 'center', top: '50%' }} color={C.accent} /> : null}
+      {height ? (
+        <BottomSheet
+          containerHeight={height}
+          snaps={snaps}
+          index={Math.min(sheetIndex, snaps.length - 1)}
+          onIndexChange={setSheetIndex}
+          contentKey={selectedId ?? tab}
+          header={
+            selected ? (
+              <View style={styles.sheetHead}>
+                <Pressable onPress={closeCard} accessibilityRole="button" style={styles.backRow} hitSlop={8}>
+                  <Ionicons name="chevron-back" size={18} color={C.accent} />
+                  <Text style={[T.label, { color: C.accent }]}>Your network</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={styles.sheetHead}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Text style={styles.sheetTitle}>Your network nearby</Text>
+                  <Text style={styles.sheetMeta}>Within {filters.distanceMi} mi</Text>
+                </View>
+                <View style={styles.tabs} accessibilityRole="tablist">
+                  {([['best', 'Best matches', best.length], ['doors', 'Open Doors', doors.length], ['all', 'Everyone', people.length]] as const).map(([id, label, n]) => {
+                    const on = tab === id;
+                    return (
+                      <Pressable
+                        key={id}
+                        onPress={() => { setTab(id); if (sheetIndex === 0) setSheetIndex(1); }}
+                        accessibilityRole="tab"
+                        accessibilityState={{ selected: on }}
+                        style={[styles.tab, on && styles.tabOn]}
+                      >
+                        <Text style={[styles.tabText, on && styles.tabTextOn]}>{label}</Text>
+                        <Text style={[styles.tabCount, on && { color: C.accent }]}>{n}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                {loc.perm === 'undetermined' || loc.perm === 'denied' ? (
+                  <View style={styles.permRow}>
+                    <Ionicons name="locate-outline" size={18} color={C.accent} />
+                    <Text style={[T.small, { flex: 1, color: C.ink2 }]}>
+                      {loc.perm === 'denied' ? 'Location is off. Distances are from the area you picked.' : 'Turn on location for live distances. Only you see it.'}
+                    </Text>
+                    {loc.perm === 'undetermined'
+                      ? <Button label="Turn on" small onPress={recenter} />
+                      : <Button label="Settings" small variant="secondary" onPress={() => Linking.openSettings()} />}
+                  </View>
+                ) : null}
+              </View>
+            )
+          }
+        >
+          {selected ? (
+            <View style={{ paddingHorizontal: S.lg, paddingTop: S.sm }}>
+              <PersonCard
+                embedded
+                person={selected}
+                distanceFromLabel={fromLabel}
+                travel={travelTime(selected.distanceMi)}
+                prefs={prefs}
+                profile={profile}
+                onClose={closeCard}
+                onOpen={() => openProfile(selected)}
+              />
+            </View>
+          ) : listed.length ? (
+            <View style={{ paddingHorizontal: S.lg, paddingTop: S.xs }}>
+              {listed.map((p) => {
+                const door = doorVisible(p);
+                const tags = matchPoints(p, prefs).slice(0, 2);
+                return (
+                  <Pressable
+                    key={p.id}
+                    onPress={() => select(p)}
+                    onLongPress={() => openProfile(p)}
+                    accessibilityRole="button"
+                    accessibilityHint="Shows them on the map. Long press to open their profile."
+                    style={({ pressed }) => [styles.contact, pressed && { backgroundColor: C.bg2 }]}
+                  >
+                    <Avatar name={p.name} uri={p.photo} size={46} ring={p.strength === 'strong'} />
+                    <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={styles.contactName} numberOfLines={1}>{p.name}</Text>
+                        {p.strength === 'strong' ? <Text style={styles.strong}>Strong match</Text> : null}
+                      </View>
+                      <Text style={styles.contactRole} numberOfLines={1}>{p.role} · {p.org}</Text>
+                      {tags.length ? (
+                        <View style={styles.tagRow}>
+                          {tags.map((t) => <Text key={t.text} style={styles.tag} numberOfLines={1}>{t.text}</Text>)}
+                        </View>
+                      ) : null}
+                    </View>
+                    <View style={styles.contactRight}>
+                      <Text style={styles.dist}>{p.distanceMi < 10 ? p.distanceMi.toFixed(1) : Math.round(p.distanceMi)} mi</Text>
+                      <Text style={styles.travel}>{travelTime(p.distanceMi)}</Text>
+                      {door ? <Text style={styles.doorText}>Open Door</Text> : isFreeToday(p) ? <Text style={styles.freeText}>Free today</Text> : null}
+                    </View>
+                  </Pressable>
+                );
+              })}
+              <Text style={[T.small, { textAlign: 'center', paddingVertical: S.md }]}>Demo profiles · shown at their neighborhood, never a live location</Text>
+            </View>
+          ) : loading ? null : (
+            <View style={styles.empty}>
+              <Ionicons name={tab === 'doors' ? 'enter-outline' : 'git-network-outline'} size={32} color={C.ink3} />
+              <Text style={T.h3}>
+                {tab === 'doors' ? 'No Open Doors right now' : tab === 'best' && people.length ? 'No strong matches in range' : nearCharlotte ? 'No one matches here yet' : 'No one nearby yet'}
+              </Text>
+              <Text style={[T.small, { textAlign: 'center' }]}>
+                {tab === 'doors' ? 'Open Doors appear here when someone posts one for people like you.' : nearCharlotte ? 'Try a wider distance or fewer filters.' : 'This demo only has profiles in Charlotte, NC.'}
+              </Text>
+              {tab !== 'all' && people.length ? (
+                <Button label="See everyone" small variant="secondary" onPress={() => setTab('all')} />
+              ) : nearCharlotte ? (
+                <Button label="Clear filters" small variant="secondary" onPress={() => setFilters(defaultFilters(POOL_RADIUS_MI))} />
+              ) : (
+                <Button label="Go to Charlotte" small onPress={() => goToArea(CHARLOTTE_CENTER, 'Charlotte')} />
+              )}
+            </View>
+          )}
+        </BottomSheet>
+      ) : null}
 
       <FilterSheet
-        visible={sheet === 'filters'}
+        visible={modal === 'filters'}
         value={filters}
         resultCount={applyFilters(pool, filters, blocked).length}
         onChange={setFilters}
         onReset={() => setFilters(defaultFilters(prefs.travelMi))}
         onClose={() => {
-          setSheet(null);
-          mapRef.current?.animateToRegion(regionFor(searchCenter, filters.distanceMi), 400);
+          setModal(null);
+          flyTo(searchCenter, filters.distanceMi, 400);
         }}
       />
 
-      <Modal visible={sheet === 'list'} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setSheet(null)}>
-        <View style={{ flex: 1, backgroundColor: C.bg }}>
-          <View style={[styles.modalHead, { paddingTop: Platform.OS === 'android' ? insets.top + S.sm : S.lg }]}>
-            <View>
-              <Text style={T.h2}>{people.length} people nearby</Text>
-              <Text style={T.small}>Best matches first · demo profiles</Text>
-            </View>
-            <IconButton icon="close" label="Close list" onPress={() => setSheet(null)} />
-          </View>
-          <FlatList
-            data={people}
-            keyExtractor={(p) => p.id}
-            contentContainerStyle={{ padding: S.lg, gap: S.sm, paddingBottom: insets.bottom + S.xl }}
-            ListEmptyComponent={<Text style={T.muted}>No one matches these filters.</Text>}
-            renderItem={({ item }) => {
-              const p = withDistance(item);
-              return (
-                <Pressable
-                  onPress={() => { setSheet(null); router.push({ pathname: '/person/[id]', params: { id: p.id, d: String(p.distanceMi), from: distanceFromLabel } }); }}
-                  style={({ pressed }) => [styles.row, pressed && { backgroundColor: C.bg2 }]}
-                  accessibilityRole="button"
-                >
-                  <Avatar name={p.name} uri={p.photo} />
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={T.h3} numberOfLines={1}>{p.name}</Text>
-                    <Text style={T.small} numberOfLines={1}>{p.role} · {fieldLabel(p.field)}</Text>
-                    <Text style={[T.small, { color: C.accent }]}>{approxDistance(p.distanceMi)} {distanceFromLabel}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={C.ink3} />
-                </Pressable>
-              );
-            }}
-          />
-        </View>
-      </Modal>
-
-      <Modal visible={sheet === 'area'} transparent animationType="fade" onRequestClose={() => setSheet(null)}>
-        <Pressable style={styles.scrim} onPress={() => setSheet(null)} accessibilityLabel="Close area picker">
+      <Modal visible={modal === 'area'} transparent animationType="fade" onRequestClose={() => setModal(null)}>
+        <Pressable style={styles.scrim} onPress={() => setModal(null)} accessibilityLabel="Close">
           <Pressable style={[styles.areaBox, shadow]} onPress={() => {}}>
-            <Text style={T.h2}>Choose an area</Text>
-            <Text style={T.small}>We’ll look for people around this part of Charlotte.</Text>
-            <View style={{ gap: 4 }}>
+            <Text style={T.h2}>Where should we look?</Text>
+            <View style={{ gap: 2 }}>
+              <Pressable onPress={() => { setModal(null); recenter(); }} style={({ pressed }) => [styles.areaRow, pressed && { backgroundColor: C.bg2 }]} accessibilityRole="button">
+                <View style={[styles.areaIcon, { backgroundColor: C.accent }]}><Ionicons name="locate" size={16} color={C.white} /></View>
+                <Text style={[T.body, { fontWeight: '600' }]}>Near me</Text>
+              </Pressable>
               {AREAS.map((a) => (
-                <Pressable key={a.id} onPress={() => { setSheet(null); goTo(a.center, a.name); }} style={({ pressed }) => [styles.areaRow, pressed && { backgroundColor: C.bg2 }]} accessibilityRole="button">
-                  <Ionicons name="location-outline" size={18} color={C.accent} />
+                <Pressable key={a.id} onPress={() => { setModal(null); goToArea(a.center, a.name); }} style={({ pressed }) => [styles.areaRow, pressed && { backgroundColor: C.bg2 }]} accessibilityRole="button">
+                  <View style={styles.areaIcon}><Ionicons name="business-outline" size={16} color={C.accent} /></View>
                   <Text style={T.body}>{a.name}</Text>
                 </Pressable>
               ))}
@@ -339,24 +502,60 @@ export default function MapScreen() {
   );
 }
 
+function ControlButton({ icon, label, onPress, active }: { icon: IconName; label: string; onPress: () => void; active?: boolean }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={({ pressed }) => [styles.control, pressed && { backgroundColor: C.bg2 }]}>
+      <Ionicons name={icon} size={20} color={active ? C.accent : C.ink2} />
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
-  top: { position: 'absolute', left: 0, right: 0, top: 0, paddingHorizontal: S.md, gap: S.sm, alignItems: 'stretch' },
-  bar: { flexDirection: 'row', alignItems: 'center', gap: S.sm, backgroundColor: C.bg, borderRadius: R.md, paddingLeft: S.lg, paddingRight: S.xs, paddingVertical: S.xs, minHeight: 56 },
-  filterBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: S.md, borderRadius: R.sm },
-  count: { minWidth: 20, height: 20, borderRadius: 10, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
-  countText: { color: C.white, fontSize: 12, fontWeight: '700' },
-  quick: { gap: S.sm, paddingRight: S.md },
-  searchHere: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.ink, paddingHorizontal: S.lg, minHeight: 42, borderRadius: R.pill },
-  side: { position: 'absolute', right: S.md, gap: S.sm },
-  bottom: { position: 'absolute', left: S.md, right: S.md, bottom: 4, gap: 6 },
-  panel: { backgroundColor: C.bg, borderRadius: R.lg, padding: S.lg, gap: S.sm, borderWidth: 1, borderColor: C.line },
-  pin: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.bg, borderWidth: 3, borderColor: C.bg, alignItems: 'center', justifyContent: 'center', shadowColor: '#1B1726', shadowOpacity: 0.25, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 4 },
-  pinOn: { width: 52, height: 52, borderRadius: 26, borderColor: C.accent },
-  pinBadge: { position: 'absolute', right: -4, top: -4, width: 18, height: 18, borderRadius: 9, backgroundColor: C.blue, borderWidth: 2, borderColor: C.white, alignItems: 'center', justifyContent: 'center' },
-  youDot: { width: 18, height: 18, borderRadius: 9, backgroundColor: C.blue, borderWidth: 3, borderColor: C.white },
-  modalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: S.lg, paddingBottom: S.sm, borderBottomWidth: 1, borderBottomColor: C.line },
-  row: { flexDirection: 'row', alignItems: 'center', gap: S.md, padding: S.md, borderRadius: R.md, borderWidth: 1, borderColor: C.line },
+  top: { position: 'absolute', left: 0, right: 0, top: 0, gap: S.sm },
+  header: { flexDirection: 'row', alignItems: 'center', marginHorizontal: S.md, backgroundColor: C.bg, borderRadius: 16, paddingLeft: S.md, paddingRight: 6, minHeight: 60, borderWidth: 1, borderColor: C.line },
+  headerMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: S.md, minHeight: 56 },
+  brand: { flexDirection: 'row', alignItems: 'flex-end' },
+  brandWord: { fontSize: 17, fontWeight: '800', color: C.ink, letterSpacing: -0.5 },
+  brandDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.accent, marginLeft: 1.5, marginBottom: 4 },
+  headerDivider: { width: 1, height: 30, backgroundColor: C.line },
+  place: { fontSize: 15, fontWeight: '700', color: C.ink, flexShrink: 1 },
+  sub: { fontSize: 12, color: C.ink3, fontWeight: '500' },
+  locDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.accent },
+  filterBtn: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  count: { position: 'absolute', top: 4, right: 4, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  countText: { color: C.white, fontSize: 10, fontWeight: '800' },
+  quick: { gap: S.sm, paddingHorizontal: S.md },
+  searchHere: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.bg, paddingHorizontal: S.lg, minHeight: 38, borderRadius: R.pill, borderWidth: 1, borderColor: C.line },
+  searchHereText: { color: C.accent, fontWeight: '700', fontSize: 14 },
+  controls: { position: 'absolute', right: S.md, backgroundColor: C.bg, borderRadius: 14, borderWidth: 1, borderColor: C.line, overflow: 'hidden' },
+  control: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center' },
+  controlDivider: { height: 1, backgroundColor: C.line, marginHorizontal: 8 },
+  centerMark: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: C.accent, backgroundColor: C.white },
+  sheetHead: { paddingHorizontal: S.lg, gap: S.md, paddingBottom: S.sm },
+  sheetTitle: { fontSize: 19, fontWeight: '800', color: C.ink, letterSpacing: -0.3 },
+  sheetMeta: { fontSize: 13, color: C.ink3, fontWeight: '500' },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 36 },
+  tabs: { flexDirection: 'row', backgroundColor: C.bg2, borderRadius: 12, padding: 3 },
+  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, minHeight: 36, borderRadius: 9 },
+  tabOn: { backgroundColor: C.bg, shadowColor: '#2A1E5C', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  tabText: { fontSize: 13, fontWeight: '600', color: C.ink3 },
+  tabTextOn: { color: C.ink },
+  tabCount: { fontSize: 12, fontWeight: '700', color: C.ink3, fontVariant: ['tabular-nums'] },
+  permRow: { flexDirection: 'row', alignItems: 'center', gap: S.sm, backgroundColor: C.accentSoft, borderRadius: 12, padding: S.sm, paddingLeft: S.md },
+  contact: { flexDirection: 'row', alignItems: 'center', gap: S.md, paddingVertical: 12, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: C.line, borderRadius: 4 },
+  contactName: { fontSize: 16, fontWeight: '700', color: C.ink, flexShrink: 1 },
+  contactRole: { fontSize: 13, color: C.ink2 },
+  strong: { fontSize: 11, fontWeight: '700', color: C.accent, backgroundColor: C.accentSoft, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5, overflow: 'hidden' },
+  tagRow: { flexDirection: 'row', gap: 6, flexWrap: 'nowrap', overflow: 'hidden' },
+  tag: { fontSize: 11, color: C.ink2, borderWidth: 1, borderColor: C.line, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5, maxWidth: 150 },
+  contactRight: { alignItems: 'flex-end', gap: 2, minWidth: 64 },
+  dist: { fontSize: 15, fontWeight: '700', color: C.ink, fontVariant: ['tabular-nums'] },
+  travel: { fontSize: 11, color: C.ink3 },
+  doorText: { fontSize: 11, fontWeight: '700', color: C.blue },
+  freeText: { fontSize: 11, fontWeight: '600', color: C.ok },
+  empty: { alignItems: 'center', gap: S.sm, padding: S.xl },
   scrim: { flex: 1, backgroundColor: 'rgba(27,23,38,0.35)', justifyContent: 'center', padding: S.lg },
-  areaBox: { backgroundColor: C.bg, borderRadius: R.lg, padding: S.lg, gap: S.sm },
-  areaRow: { flexDirection: 'row', alignItems: 'center', gap: S.md, minHeight: 48, paddingHorizontal: S.sm, borderRadius: R.sm },
+  areaBox: { backgroundColor: C.bg, borderRadius: 20, padding: S.lg, gap: S.md },
+  areaRow: { flexDirection: 'row', alignItems: 'center', gap: S.md, minHeight: 50, paddingHorizontal: S.sm, borderRadius: R.md },
+  areaIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
 });

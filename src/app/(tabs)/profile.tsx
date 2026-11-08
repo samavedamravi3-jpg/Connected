@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Avatar, Button, Card, ChipGroup, KV, Note, Row, Section, Tag } from '@/components/ui';
-import { AVAILABILITY, MEET_MODES, audienceLabel, challengeLabel, fieldLabel, goalLabel, statusLabel, traitLabel, venueById } from '@/data/options';
+import { AVAILABILITY, MEET_MODES, audienceLabel, challengeLabel, dietLabel, fieldLabel, foodLabel, goalLabel, statusLabel, traitLabel, venueById } from '@/data/options';
 import { dataSource } from '@/data/source';
 import type { AvailabilityId } from '@/data/types';
 import { doorState } from '@/lib/match';
@@ -88,6 +88,7 @@ export default function ProfileTab() {
           <KV k="In my way" v={prefs.challenges.map(challengeLabel).join('; ') || 'Not set'} />
           <KV k="Click with" v={prefs.wantTraits.map(traitLabel).join(', ') || 'Anyone'} />
           <KV k="Languages" v={prefs.languages.join(', ') || 'Not set'} />
+          <KV k="Food & drink" v={[...prefs.foods.map(foodLabel), ...prefs.diet.map(dietLabel)].join(', ') || 'Not set'} />
           <KV k="Looking for" v={prefs.goals.map((g) => (g === 'other' && prefs.goalOther ? prefs.goalOther : goalLabel(g))).join(', ') || 'Not set'} />
           <KV k="Interests" v={prefs.interests.join(', ') || 'Not set'} />
           <KV k="Skills" v={prefs.skills.join(', ') || 'Not set'} />

@@ -17,5 +17,12 @@ export function approxDistance(mi: number): string {
   return `about ${Math.round(mi)} mi`;
 }
 
+/** Rough travel time: walking (about 3 mph) for short hops, otherwise driving in town (about 22 mph). */
+export function travelTime(mi: number): string {
+  const walk = (mi / 3) * 60;
+  if (walk <= 25) return `${Math.max(1, Math.round(walk))} min walk`;
+  return `${Math.max(5, Math.round(((mi / 22) * 60) / 5) * 5)} min drive`;
+}
+
 /** Latitude delta that shows roughly `mi` miles from center to edge on a phone. */
 export const deltaForMiles = (mi: number) => Math.max(0.02, (mi / 69) * 2.4);

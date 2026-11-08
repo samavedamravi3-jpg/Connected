@@ -2,14 +2,34 @@
  * DEMO DATA. Every person and event here is fictional. Coordinates are approximate neighborhood
  * points (rounded), never anyone's live location. Replace via src/data/source.ts with a real backend.
  */
-import type { AudienceId, ChallengeId, CommunityEvent, IncomingRequest, Person, TraitId } from './types';
+import type { AudienceId, ChallengeId, CommunityEvent, DietId, FoodId, IncomingRequest, Person, TraitId } from './types';
 
 const MIN = 60_000;
 const quarter = () => Math.round(Date.now() / (15 * MIN)) * 15 * MIN;
 
 type DoorSeed = { venueId: string; from: number; to: number; lengthMin: number; topics: string[]; audience: AudienceId[] };
 type Extra = Pick<Person, 'bio' | 'traits' | 'helpTags' | 'languages' | 'yearsExp'>;
-type Seed = Omit<Person, 'door' | 'isDemo' | keyof Extra | 'photo'> & { doorSeed?: DoorSeed };
+type Seed = Omit<Person, 'door' | 'isDemo' | keyof Extra | 'photo' | 'foods' | 'diet'> & { doorSeed?: DoorSeed };
+
+/** What each demo person enjoys when meeting someone, and any dietary needs. */
+const FOOD: Record<string, { foods: FoodId[]; diet: DietId[] }> = {
+  maya: { foods: ['coffee', 'mediterranean', 'indian'], diet: [] },
+  daniel: { foods: ['mexican', 'coffee', 'american'], diet: [] },
+  noor: { foods: ['mediterranean', 'coffee', 'tea'], diet: ['halal'] },
+  priya: { foods: ['indian', 'coffee', 'tea'], diet: ['vegetarian'] },
+  marcus: { foods: ['american', 'coffee', 'italian'], diet: [] },
+  grace: { foods: ['chinese', 'tea', 'bakery'], diet: [] },
+  jordan: { foods: ['japanese', 'coffee', 'american'], diet: [] },
+  sofia: { foods: ['mexican', 'coffee', 'bakery'], diet: [] },
+  tomasz: { foods: ['american', 'coffee', 'italian'], diet: [] },
+  ade: { foods: ['caribbean', 'coffee', 'mediterranean'], diet: ['no_alcohol'] },
+  elena: { foods: ['coffee', 'bakery', 'mediterranean'], diet: [] },
+  hannah: { foods: ['coffee', 'american', 'mexican'], diet: [] },
+  aisha: { foods: ['mediterranean', 'tea', 'thai'], diet: ['halal'] },
+  kevin: { foods: ['japanese', 'thai', 'tea'], diet: [] },
+  rosa: { foods: ['mexican', 'coffee', 'bakery'], diet: [] },
+  samuel: { foods: ['coffee', 'caribbean', 'italian'], diet: [] },
+};
 
 const x = (bio: string, traits: TraitId[], helpTags: ChallengeId[], languages: string[], yearsExp: number): Extra => ({ bio, traits, helpTags, languages, yearsExp });
 
@@ -206,6 +226,7 @@ export function buildDemoPeople(): Person[] {
   return SEEDS.map(({ doorSeed, ...p }) => ({
     ...p,
     ...EXTRA[p.id],
+    ...FOOD[p.id],
     isDemo: true as const,
     door: doorSeed
       ? {
