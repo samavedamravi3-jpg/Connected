@@ -6,13 +6,13 @@ import MapView, { Circle, Marker, Polygon, Polyline, type MapStyleElement, type 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheet } from '@/components/BottomSheet';
 import { FilterSheet } from '@/components/FilterSheet';
-import { NodePin, YouNode, nodeAnchor } from '@/components/MapPins';
+import { EventPin, NodePin, YouNode, nodeAnchor } from '@/components/MapPins';
 import { PersonCard } from '@/components/PersonCard';
 import { Avatar, Button, Chip } from '@/components/ui';
 import { HOTSPOTS, HOTSPOT_LEVELS, type Hotspot } from '@/data/hotspots';
 import { AREAS, CHARLOTTE_CENTER, GOALS } from '@/data/options';
 import { dataSource } from '@/data/source';
-import type { LatLng, NearbyPerson } from '@/data/types';
+import type { CommunityEvent, LatLng, NearbyPerson } from '@/data/types';
 import { activeFilterCount, applyFilters, defaultFilters, isFreeToday, type Filters } from '@/lib/filters';
 import { approxDistance, deltaForMiles, distanceMi, travelTime } from '@/lib/geo';
 import { canSeeDoor, doorActive, matchPoints, matchScore, matchStrength } from '@/lib/match';
@@ -98,6 +98,8 @@ export default function MapScreen() {
   const [hotspotId, setHotspotId] = useState<string | null>(null);
   const [settledPinsKey, setSettledPinsKey] = useState('');
   const [realOnly, setRealOnly] = useState(false);
+  const [showEvents, setShowEvents] = useState(false);
+  const [allEvents, setAllEvents] = useState<CommunityEvent[]>([]);
   const [refreshTick, setRefreshTick] = useState(0);
   const [hideShareCard, setHideShareCard] = useState(false);
 
@@ -179,6 +181,18 @@ export default function MapScreen() {
   // Distances update live from your GPS when you're in range; otherwise from the search area.
   const me = loc.fix && distanceMi(loc.fix.coord, searchCenter) < POOL_RADIUS_MI ? loc.fix.coord : null;
   const origin = me ?? searchCenter;
+
+  // In-person events (live + demo) inside your travel distance, only while the Events chip is on.
+  useEffect(() => {
+    if (!showEvents) return;
+    let alive = true;
+    dataSource.listEvents({ withDemo: true }).then((r) => alive && setAllEvents(r.events.filter((e) => e.end > Date.now()))).catch(() => {});
+    return () => { alive = false; };
+  }, [showEvents]);
+  const mapEvents = useMemo(
+    () => (showEvents ? allEvents.filter((e) => !e.online && distanceMi(origin, e.coord) <= filters.distanceMi) : []),
+    [showEvents, allEvents, origin, filters.distanceMi],
+  );
   const fromLabel = me ? 'away' : `from ${areaName}`;
   const placeLabel = me ? (loc.place ?? 'Your location') : areaName;
 
@@ -231,7 +245,7 @@ export default function MapScreen() {
   }, [people, selected]);
 
   // Custom markers re-render while they change, then stop tracking for smooth panning.
-  const pinsKey = `${people.map((p) => p.id + p.strength + p.coord.latitude + p.coord.longitude).join(',')}|${selectedId ?? ''}|${showHotspots}|${hotspotId ?? ''}`;
+  const pinsKey = `${people.map((p) => p.id + p.strength + p.coord.latitude + p.coord.longitude).join(',')}|${selectedId ?? ''}|${showHotspots}|${hotspotId ?? ''}|${mapEvents.map((e) => e.id).join(',')}`;
   const hotspot = HOTSPOTS.find((h) => h.id === hotspotId);
   const peopleIn = (h: Hotspot) => people.filter((p) => distanceMi(h.center, p.coord) <= h.radiusMi).length;
   const trackPins = settledPinsKey !== pinsKey;
@@ -334,6 +348,19 @@ export default function MapScreen() {
       >
         {look === 'network' ? <Polygon coordinates={wash} fillColor={WASH} strokeWidth={0} strokeColor="transparent" zIndex={0} tappable={false} /> : null}
         <Circle center={searchCenter} radius={filters.distanceMi * 1609.34} strokeColor="rgba(91,53,201,0.22)" fillColor="rgba(91,53,201,0.03)" strokeWidth={1} zIndex={1} />
+        {mapEvents.map((e) => (
+          <Marker
+            key={`ev-${e.id}`}
+            coordinate={e.coord}
+            anchor={{ x: 0.5, y: 0.9 }}
+            tracksViewChanges={trackPins}
+            zIndex={8}
+            onPress={() => router.push({ pathname: '/event/[id]', params: { id: e.id } })}
+            accessibilityLabel={`${e.title}, event at ${e.venue}`}
+          >
+            <EventPin category={e.category} />
+          </Marker>
+        ))}
         {showHotspots
           ? HOTSPOTS.map((h) => {
               const lv = HOTSPOT_LEVELS[h.level];
@@ -460,6 +487,7 @@ export default function MapScreen() {
             />
           ) : null}
           <Chip label={`Real people${realCount ? ` (${realCount})` : ''}`} selected={realOnly} onPress={() => setRealOnly((v) => !v)} />
+          <Chip label={`Events${showEvents && mapEvents.length ? ` (${mapEvents.length})` : ''}`} selected={showEvents} onPress={() => setShowEvents((v) => !v)} />
           <Chip label="Free today" selected={filters.availability === 'today'} onPress={() => setFilters((f) => ({ ...f, availability: f.availability === 'today' ? 'any' : 'today' }))} />
           {quickGoals.map((g) => (
             <Chip key={g.id} label={g.label} selected={filters.goals.includes(g.id)} onPress={() => setFilters((f) => ({ ...f, goals: f.goals.includes(g.id) ? f.goals.filter((x) => x !== g.id) : [...f.goals, g.id] }))} />

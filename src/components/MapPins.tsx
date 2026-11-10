@@ -1,5 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image, StyleSheet, Text, View } from 'react-native';
+import { EVENT_STYLE } from '@/data/eventVisuals';
+import type { EventCategory } from '@/data/types';
 import { initials } from '@/lib/match';
 import { C } from '@/theme';
 
@@ -66,6 +68,19 @@ export function NodePin({ name, role, uri, strength, selected, door, real }: { n
   );
 }
 
+/** An in-person event: a rounded-square badge with the category icon, clearly different from round people nodes. */
+export function EventPin({ category }: { category: EventCategory }) {
+  const st = EVENT_STYLE[category];
+  return (
+    <View collapsable={false} style={{ padding: 4 }}>
+      <View style={[styles.eventPin, { backgroundColor: st.solid }]}>
+        <Ionicons name={st.icon} size={16} color={C.white} />
+      </View>
+      <View style={[styles.eventTip, { borderTopColor: st.solid }]} />
+    </View>
+  );
+}
+
 /** You: the center node of your network, like the intro animation. */
 export function YouNode({ live }: { live: boolean }) {
   return (
@@ -79,6 +94,8 @@ export function YouNode({ live }: { live: boolean }) {
 }
 
 const styles = StyleSheet.create({
+  eventPin: { width: 32, height: 32, borderRadius: 9, borderWidth: 2, borderColor: C.white, alignItems: 'center', justifyContent: 'center' },
+  eventTip: { alignSelf: 'center', width: 0, height: 0, marginTop: -1, borderLeftWidth: 5, borderRightWidth: 5, borderTopWidth: 6, borderLeftColor: 'transparent', borderRightColor: 'transparent' },
   node: {
     alignItems: 'center',
     justifyContent: 'center',
