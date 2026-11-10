@@ -3,6 +3,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Avatar, Button, Card, ChipGroup, KV, Note, Row, Section, Tag } from '@/components/ui';
+import { VerifiedBadge } from '@/components/VerifiedBadge';
 import { AVAILABILITY, MEET_MODES, audienceLabel, challengeLabel, dietLabel, fieldLabel, foodLabel, goalLabel, statusLabel, traitLabel, venueById } from '@/data/options';
 import { dataSource } from '@/data/source';
 import { enableNearbyAlerts } from '@/lib/nearbyAlerts';
@@ -53,7 +54,10 @@ export default function ProfileTab() {
             <Avatar name={fullName(profile) || '?'} uri={profile.photoUri} size={88} />
             <View style={styles.camBadge}><Ionicons name={profile.photoUri ? 'pencil' : 'camera'} size={13} color={C.white} /></View>
           </Pressable>
-          <Text style={styles.name}>{fullName(profile) || 'Your profile'}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.name}>{fullName(profile) || 'Your profile'}</Text>
+            {app.verification.verified ? <VerifiedBadge size={20} kind={app.verification.kind} /> : null}
+          </View>
           <Text style={T.muted}>{statusLabel(profile.status)}{profile.org ? ` · ${profile.org}` : ''}{prefs.field ? ` · ${fieldLabel(prefs.field)}` : ''}</Text>
           {profile.intro ? <Text style={styles.intro} numberOfLines={3}>{profile.intro}</Text> : null}
           <View style={styles.stats}>
@@ -92,6 +96,15 @@ export default function ProfileTab() {
                     ])
                   }
                 />
+              </View>
+              <View style={styles.switchRow}>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={T.label}>{app.verification.verified ? 'Verified' : 'Get verified'}</Text>
+                  <Text style={T.small}>
+                    {app.verification.verified ? `Confirmed with a ${app.verification.kind ?? ''} email. People in your field can get nearby alerts about you.` : 'Confirm a school or work email to get a check. Only verified people trigger nearby alerts.'}
+                  </Text>
+                </View>
+                {app.verification.verified ? <VerifiedBadge label size={18} /> : <Button label="Verify" small onPress={() => router.push('/verify')} />}
               </View>
               <Text style={T.small}>
                 {prefs.shareMode === 'area'

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MeetSpots } from '@/components/MeetSpots';
+import { VerifiedBadge } from '@/components/VerifiedBadge';
 import { Avatar, Button, IconButton, Segmented, Tag } from '@/components/ui';
 import { audienceLabel, availabilityLabel, fieldLabel, venueById } from '@/data/options';
 import { dataSource } from '@/data/source';
@@ -144,7 +145,10 @@ export default function PersonScreen() {
           </View>
           <Avatar name={p.name} uri={p.photo} size={108} ring={!!door && seeDoor} />
           <View style={{ alignItems: 'center', gap: 4 }}>
-            <Text style={styles.name} accessibilityRole="header">{p.name}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.name} accessibilityRole="header">{p.name}</Text>
+              {p.verified ? <VerifiedBadge size={20} /> : null}
+            </View>
             <Text style={styles.role}>{p.role}</Text>
             <Text style={T.small}>{p.org} · {p.areaName}</Text>
           </View>

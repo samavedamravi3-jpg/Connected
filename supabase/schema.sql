@@ -307,6 +307,47 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Verified badge (phase 1: school or work email by one-time code)
+-- ---------------------------------------------------------------------------
+-- Only true/false, the date and the kind are stored. Never the email address, and never ID photos.
+-- Clients cannot set these columns: the verify-email edge function does it with the service role
+-- (supabase/functions/verify-email). The trigger below resets any attempt from the app.
+
+alter table public.profiles add column if not exists verified boolean not null default false;
+alter table public.profiles add column if not exists verified_at timestamptz;
+alter table public.profiles add column if not exists verified_kind text;
+alter table public.profiles drop constraint if exists profiles_verified_kind_check;
+alter table public.profiles add constraint profiles_verified_kind_check check (verified_kind is null or verified_kind in ('school', 'work', 'id'));
+
+create or replace function public.profiles_protect_verified()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  -- Runs as the caller, so current_user is 'authenticated' for app requests and a privileged
+  -- role (service_role, postgres) for the edge function and the SQL editor.
+  if current_user in ('authenticated', 'anon') then
+    if tg_op = 'INSERT' then
+      new.verified := false;
+      new.verified_at := null;
+      new.verified_kind := null;
+    else
+      new.verified := old.verified;
+      new.verified_at := old.verified_at;
+      new.verified_kind := old.verified_kind;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_protect_verified on public.profiles;
+create trigger profiles_protect_verified
+  before insert or update on public.profiles
+  for each row execute function public.profiles_protect_verified();
+
+-- ---------------------------------------------------------------------------
 -- Content guardrails
 -- ---------------------------------------------------------------------------
 

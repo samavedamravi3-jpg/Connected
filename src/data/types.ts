@@ -66,6 +66,8 @@ export type Person = {
   demoResponse?: 'accept' | 'decline';
   /** True for built-in demo profiles; false for real people from the backend. */
   isDemo: boolean;
+  /** True once a real member proved a school or work email (or ID, later). Never set on demo people. */
+  verified?: boolean;
   /** Real users who share "public places only" have no area; `coord` is then a placeholder. */
   areaHidden?: boolean;
 };

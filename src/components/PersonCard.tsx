@@ -7,6 +7,7 @@ import { canSeeDoor, doorActive, doorState, matchPoints, matchStrength } from '@
 import { fmtTime, fmtWindow } from '@/lib/time';
 import { C, R, S, T, shadow } from '@/theme';
 import { Avatar, Button, IconButton } from './ui';
+import { VerifiedBadge } from './VerifiedBadge';
 
 type Props = {
   person: NearbyPerson;
@@ -36,6 +37,7 @@ export function PersonCard({ person: p, distanceFromLabel, prefs, profile, onOpe
         <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Text style={styles.name} numberOfLines={1}>{p.name}</Text>
+            {p.verified ? <VerifiedBadge /> : null}
             {strength === 'strong' ? <Text style={styles.badge}>Strong match</Text> : null}
           </View>
           <Text style={T.small} numberOfLines={1}>{p.role}, {p.org}</Text>

@@ -2,6 +2,7 @@
  * "Someone is nearby" alerts. Runs only while the map is open and live location is on:
  * no background location, no push server. Each real member alerts at most once every 3 hours.
  * Alerts are same-field only: your field must be set, and a person or event must match it.
+ * Only verified people trigger person alerts.
  */
 import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
@@ -36,10 +37,10 @@ export async function enableNearbyAlerts(): Promise<boolean> {
   }
 }
 
-/** Real (non-demo) members in your own field who share an area within 1 mile of `me`. */
+/** Real, verified members in your own field who share an area within 1 mile of `me`. */
 export function peopleWithin(me: LatLng, people: Person[], myField: FieldId | null | undefined, mi = ALERT_RADIUS_MI) {
   if (!myField) return [];
-  return people.filter((p) => !p.isDemo && !p.areaHidden && p.field === myField && distanceMi(me, p.coord) <= mi);
+  return people.filter((p) => !p.isDemo && !!p.verified && !p.areaHidden && p.field === myField && distanceMi(me, p.coord) <= mi);
 }
 
 /** Live, in-person events in your field that start within the hour and are within 1 mile of `me`. */

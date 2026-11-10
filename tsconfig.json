@@ -15,6 +15,7 @@
   "exclude": [
     "server",
     "scripts",
+    "supabase/functions",
     "node_modules"
   ]
 }

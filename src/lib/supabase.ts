@@ -20,6 +20,11 @@ export const supabase: SupabaseClient | null =
 
 export const backendEnabled = !!supabase;
 
+/** A throwaway client that keeps nothing: used to prove an email address without touching your session. */
+export function createEphemeralClient(): SupabaseClient | null {
+  return url && key ? createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }) : null;
+}
+
 // Refresh the session only while the app is on screen.
 if (supabase) {
   AppState.addEventListener('change', (state) => {

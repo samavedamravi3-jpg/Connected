@@ -8,6 +8,7 @@ import {
   sendRemoteMessage, sendRemoteRequest, setRemoteRequestStatus, subscribeToMine, unblockRemote, type RemoteMessage, type RemoteRequest,
 } from '@/lib/backend';
 import { assertClean } from '@/lib/moderation';
+import { NOT_VERIFIED, toVerification, type Verification } from '@/lib/verification';
 import { backendEnabled, supabase } from '@/lib/supabase';
 
 const KEY = 'opendoor.state.v1';
@@ -70,6 +71,9 @@ type Ctx = Omit<AppData, 'requests' | 'messages'> & {
   backendEnabled: boolean;
   session: Session | null;
   authReady: boolean;
+  /** Your verified status, from the server. Cannot be changed from the app. */
+  verification: Verification;
+  refreshVerification: () => Promise<void>;
   signUp: (email: string, password: string) => Promise<{ needsConfirmation: boolean }>;
   signIn: (email: string, password: string) => Promise<{ hasProfile: boolean }>;
   signOut: () => Promise<void>;
@@ -105,6 +109,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [here, setHere] = useState<Here | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(!backendEnabled);
+  const [verification, setVerification] = useState<Verification>(NOT_VERIFIED);
+  const sessionUserId = session?.userId;
+  const refreshVerification = useCallback(async () => {
+    if (!sessionUserId) return setVerification(NOT_VERIFIED);
+    const row = await loadMyRow(sessionUserId).catch(() => null);
+    setVerification(toVerification(row));
+  }, [sessionUserId]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    refreshVerification();
+  }, [refreshVerification]);
   const [remote, setRemote] = useState<{ requests: RemoteRequest[]; messages: RemoteMessage[] }>({ requests: [], messages: [] });
   const dataRef = useRef(data);
   useEffect(() => {
@@ -277,6 +292,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       backendEnabled,
       session,
       authReady,
+      verification,
+      refreshVerification,
       refreshRemote: () => {
         loadRemote();
       },
@@ -372,7 +389,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setData(fresh());
       },
     }),
-    [data, merged, hydrated, now, here, session, authReady, setPrefs, setProfile, resolve, loadRemote],
+    [data, merged, hydrated, now, here, session, authReady, verification, refreshVerification, setPrefs, setProfile, resolve, loadRemote],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
