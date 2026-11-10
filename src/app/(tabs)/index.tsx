@@ -185,11 +185,11 @@ export default function MapScreen() {
 
   // In-person events (live + demo) inside your travel distance, only while the Events chip is on.
   useEffect(() => {
-    if (!showEvents) return;
+    if (!showEvents && !app.nearbyAlerts) return;
     let alive = true;
     dataSource.listEvents({ withDemo: true }).then((r) => alive && setAllEvents(r.events.filter((e) => e.end > Date.now()))).catch(() => {});
     return () => { alive = false; };
-  }, [showEvents]);
+  }, [showEvents, app.nearbyAlerts]);
   const mapEvents = useMemo(
     () => sortMyFieldFirst(showEvents ? allEvents.filter((e) => !e.online && distanceMi(origin, e.coord) <= filters.distanceMi) : [], prefs.field),
     [showEvents, allEvents, origin, filters.distanceMi, prefs.field],
@@ -207,8 +207,8 @@ export default function MapScreen() {
   // "Someone is nearby" alerts: real members within 1 mile of your live position, while the map is open.
   const alertPool = useMemo(() => pool.filter((p) => !blocked.includes(p.id)), [pool, blocked]);
   const liveMe = live && loc.fix ? loc.fix.coord : null;
-  useNearbyAlerts(app.nearbyAlerts, liveMe, alertPool);
-  const closeBy = liveMe ? peopleWithin(liveMe, alertPool).length : 0;
+  useNearbyAlerts(app.nearbyAlerts, liveMe, alertPool, prefs.field, allEvents);
+  const closeBy = liveMe ? peopleWithin(liveMe, alertPool, prefs.field).length : 0;
   const toggleAlerts = async () => {
     if (app.nearbyAlerts) return app.setNearbyAlerts(false);
     const ok = await enableNearbyAlerts();
@@ -220,7 +220,7 @@ export default function MapScreen() {
       return;
     }
     app.setNearbyAlerts(true);
-    Alert.alert('Nearby alerts on', `You'll get a notification when a Connected member is within ${ALERT_RADIUS_MI} mile, while the map is open with live location on.`);
+    Alert.alert('Nearby alerts on', `You'll get a notification when a Connected member in your field is within ${ALERT_RADIUS_MI} mile, or a same-field event is about to start nearby, while the map is open with live location on.`);
   };
   const shareCard =
     !hideShareCard && app.backendEnabled
@@ -522,7 +522,7 @@ export default function MapScreen() {
         {app.nearbyAlerts && closeBy ? (
           <View style={[styles.nearPill, shadow]} accessibilityLiveRegion="polite">
             <View style={styles.nearDot} />
-            <Text style={styles.nearText}>{closeBy} member{closeBy === 1 ? '' : 's'} within {ALERT_RADIUS_MI} mile</Text>
+            <Text style={styles.nearText}>{closeBy} same-field member{closeBy === 1 ? '' : 's'} within {ALERT_RADIUS_MI} mile</Text>
           </View>
         ) : null}
 
