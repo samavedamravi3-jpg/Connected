@@ -7,6 +7,7 @@ import { Avatar } from '@/components/ui';
 import { CHARLOTTE_CENTER, FIELDS } from '@/data/options';
 import { dataSource, type SearchHit } from '@/data/source';
 import { approxDistance, distanceMi } from '@/lib/geo';
+import { BLOCKED_MESSAGE, checkText } from '@/lib/moderation';
 import { matchStrength } from '@/lib/match';
 import { useApp } from '@/state/AppState';
 import { C, R, S, T } from '@/theme';
@@ -24,7 +25,7 @@ export default function SearchScreen() {
   useEffect(() => {
     let alive = true;
     const query = q.trim();
-    if (!query) return;
+    if (!query || !checkText(query).ok) return;
     dataSource.searchPeople(query).then((hits) => {
       if (alive) setResult({ q: query, hits: hits.filter((h) => !app.blocked.includes(h.person.id)) });
     });
@@ -33,7 +34,8 @@ export default function SearchScreen() {
 
   const query = q.trim();
   const hits = query && result?.q === query ? result.hits : [];
-  const searching = !!query && result?.q !== query;
+  const blockedQuery = !!query && !checkText(query).ok;
+  const searching = !!query && !blockedQuery && result?.q !== query;
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
@@ -99,7 +101,13 @@ export default function SearchScreen() {
             hits.length ? <Text style={[T.small, { paddingVertical: S.md }]}>{hits.length} {hits.length === 1 ? 'person' : 'people'}</Text> : undefined
           }
           ListEmptyComponent={
-            searching ? undefined : (
+            searching ? undefined : blockedQuery ? (
+              <View style={styles.empty}>
+                <Ionicons name="hand-left-outline" size={32} color={C.ink3} />
+                <Text style={T.h3}>Let’s keep it respectful</Text>
+                <Text style={[T.small, { textAlign: 'center' }]}>{BLOCKED_MESSAGE}</Text>
+              </View>
+            ) : (
               <View style={styles.empty}>
                 <Ionicons name="search-outline" size={32} color={C.ink3} />
                 <Text style={T.h3}>No one matches “{query}”</Text>

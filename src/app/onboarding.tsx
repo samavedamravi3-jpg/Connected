@@ -12,6 +12,8 @@ import { AVAILABILITY, CHALLENGES, CHARLOTTE_CENTER, DIETS, FIELDS, FOODS, GOALS
 import { dataSource } from '@/data/source';
 import type { NearbyPerson } from '@/data/types';
 import { fullName, matchPoints, matchScore } from '@/lib/match';
+import { BLOCKED_MESSAGE, checkAll, checkText } from '@/lib/moderation';
+import { allowedNow } from '@/lib/guard';
 import { pickProfilePhoto } from '@/lib/photo';
 import { useApp } from '@/state/AppState';
 import { C, R, S, T } from '@/theme';
@@ -56,6 +58,8 @@ export default function Onboarding() {
     if (step === 'goals' && !prefs.goals.length) return 'Pick at least one thing you’re hoping to find.';
     if (step === 'goals' && prefs.goals.includes('other') && !prefs.goalOther.trim()) return 'Tell us briefly what you’re looking for.';
     if (step === 'challenges' && !prefs.challenges.length) return 'Pick at least one. It’s the biggest factor in who we suggest.';
+    if (step === 'goals' && !checkText(prefs.goalOther).ok) return BLOCKED_MESSAGE;
+    if (step === 'profile' && !checkAll(profile.name, profile.lastName, profile.org, profile.intro, profile.offer).ok) return BLOCKED_MESSAGE;
     if (step === 'profile' && !profile.name.trim()) return 'Add your first name.';
     if (step === 'profile' && !profile.lastName.trim()) return 'Add your last name. It helps people recognize you when you meet.';
     return '';
@@ -265,9 +269,9 @@ export default function Onboarding() {
                   style={[styles.input, { flex: 1 }]}
                   accessibilityLabel="Add another skill"
                   returnKeyType="done"
-                  onSubmitEditing={() => { const s = customSkill.trim(); if (s && !prefs.skills.includes(s)) setPrefs({ skills: [...prefs.skills, s] }); setCustomSkill(''); }}
+                  onSubmitEditing={() => { const s = customSkill.trim(); if (s && !allowedNow(s)) return; if (s && !prefs.skills.includes(s)) setPrefs({ skills: [...prefs.skills, s] }); setCustomSkill(''); }}
                 />
-                <Button label="Add" variant="secondary" onPress={() => { const s = customSkill.trim(); if (s && !prefs.skills.includes(s)) setPrefs({ skills: [...prefs.skills, s] }); setCustomSkill(''); }} />
+                <Button label="Add" variant="secondary" onPress={() => { const s = customSkill.trim(); if (s && !allowedNow(s)) return; if (s && !prefs.skills.includes(s)) setPrefs({ skills: [...prefs.skills, s] }); setCustomSkill(''); }} />
               </View>
             </View>
           </>

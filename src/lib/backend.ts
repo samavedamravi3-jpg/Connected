@@ -7,6 +7,7 @@ import type {
   AvailabilityId, ChallengeId, DietId, FieldId, FoodId, GoalId, LatLng, MeetMode, Mode, Person, Prefs, Profile, RequestStatus, ShareMode, StatusId, TraitId,
 } from '@/data/types';
 import { fieldLabelShort } from './match';
+import { assertClean, dbError } from './moderation';
 import { supabase } from './supabase';
 
 export type ProfileRow = {
@@ -159,8 +160,9 @@ export async function loadMyRow(userId: string): Promise<ProfileRow | null> {
 }
 
 export async function saveMyRow(row: MyRow): Promise<void> {
+  assertClean(row.first_name, row.last_name, row.org, row.intro, row.offer);
   const { error } = await db().from('profiles').upsert(row);
-  if (error) throw error;
+  if (error) throw dbError(error);
 }
 
 export async function fetchNearby(center: LatLng, radiusMi: number): Promise<Person[]> {
@@ -194,8 +196,9 @@ export async function fetchMyRequests(): Promise<RemoteRequest[]> {
 }
 
 export async function sendRemoteRequest(toUser: string, message: string): Promise<RemoteRequest> {
+  assertClean(message);
   const { data, error } = await db().from('connection_requests').insert({ to_user: toUser, message: message.slice(0, 600) }).select('*').single();
-  if (error) throw error;
+  if (error) throw dbError(error);
   return data as RemoteRequest;
 }
 
@@ -212,8 +215,9 @@ export async function fetchMessages(requestIds: string[]): Promise<RemoteMessage
 }
 
 export async function sendRemoteMessage(requestId: string, body: string): Promise<void> {
+  assertClean(body);
   const { error } = await db().from('messages').insert({ request_id: requestId, body: body.slice(0, 2000) });
-  if (error) throw error;
+  if (error) throw dbError(error);
 }
 
 export async function blockRemote(personId: string): Promise<void> {

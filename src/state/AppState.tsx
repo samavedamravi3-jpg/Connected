@@ -7,6 +7,7 @@ import {
   blockRemote, fetchMessages, fetchMyRequests, fetchPeopleByIds, isRemoteId, loadMyRow, myRow, reportRemote, rowToMine, saveMyRow,
   sendRemoteMessage, sendRemoteRequest, setRemoteRequestStatus, subscribeToMine, unblockRemote, type RemoteMessage, type RemoteRequest,
 } from '@/lib/backend';
+import { assertClean } from '@/lib/moderation';
 import { backendEnabled, supabase } from '@/lib/supabase';
 
 const KEY = 'opendoor.state.v1';
@@ -308,6 +309,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       finishOnboarding: () => setData((d) => ({ ...d, onboarded: true })),
       loadSample: () => setData((d) => ({ ...d, ...SAMPLE, onboarded: true })),
       sendRequest: async (personId, message) => {
+        assertClean(message);
         if (isRemoteId(personId)) {
           await sendRemoteRequest(personId, message);
           await loadRemote();
@@ -335,6 +337,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       simulateReply: (id, status) => resolve(id, status, Date.now()),
       sendMessage: async (requestId, text) => {
+        assertClean(text);
         if (isRemoteId(requestId)) {
           await sendRemoteMessage(requestId, text);
           await loadRemote();

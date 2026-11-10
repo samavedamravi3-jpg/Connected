@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MeetSpots } from '@/components/MeetSpots';
 import { Button, IconButton, Note } from '@/components/ui';
 import { dataSource } from '@/data/source';
+import { allowed } from '@/lib/guard';
 import { firstName } from '@/lib/match';
 import { fmtTime } from '@/lib/time';
 import { useApp } from '@/state/AppState';
@@ -28,6 +29,7 @@ export default function Chat() {
   const send = async () => {
     const body = text.trim();
     if (!body || sending) return;
+    if (!(await allowed(body))) return;
     setSending(true);
     try {
       await app.sendMessage(req.id, body);

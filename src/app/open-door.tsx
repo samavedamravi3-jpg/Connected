@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, Button, Chip, ChipGroup, Choice, KV, Note, Segmented } from '@/components/ui';
 import { AUDIENCES, VENUES, audienceLabel, fieldLabel, statusLabel, venueById } from '@/data/options';
 import type { AudienceId, OpenDoor } from '@/data/types';
+import { allowedNow } from '@/lib/guard';
 import { fullName } from '@/lib/match';
 import { fmtTime, fmtWindow } from '@/lib/time';
 import { useApp } from '@/state/AppState';
@@ -159,7 +160,7 @@ export default function OpenDoorScreen() {
           </View>
           <View style={{ flexDirection: 'row', gap: S.sm }}>
             <TextInput value={custom} onChangeText={setCustom} placeholder="Add your own topic" placeholderTextColor={C.ink3} style={styles.input} accessibilityLabel="Add your own topic" />
-            <Button label="Add" variant="secondary" small onPress={() => { const t = custom.trim(); if (t && !topics.includes(t)) setTopics([...topics, t]); setCustom(''); }} />
+            <Button label="Add" variant="secondary" small onPress={() => { const t = custom.trim(); if (t && !allowedNow(t)) return; if (t && !topics.includes(t)) setTopics([...topics, t]); setCustom(''); }} />
           </View>
         </Block>
 

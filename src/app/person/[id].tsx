@@ -10,6 +10,7 @@ import { audienceLabel, availabilityLabel, fieldLabel, venueById } from '@/data/
 import { dataSource } from '@/data/source';
 import type { Person } from '@/data/types';
 import { approxDistance } from '@/lib/geo';
+import { allowed } from '@/lib/guard';
 import {
   canSeeDoor, conversationStarter, doorActive, doorState, firstName, matchPoints, matchStrength, sharedInterests, sharedLanguages, sharedSkills, type Tone,
 } from '@/lib/match';
@@ -90,6 +91,7 @@ export default function PersonScreen() {
       Alert.alert('Add a little more', `A sentence or two helps ${first} know what you'd like to talk about.`);
       return;
     }
+    if (!(await allowed(msg))) return;
     try {
       await app.sendRequest(p.id, msg.trim());
     } catch (e) {

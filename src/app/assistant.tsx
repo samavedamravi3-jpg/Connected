@@ -8,6 +8,7 @@ import { Avatar } from '@/components/ui';
 import { dataSource } from '@/data/source';
 import type { Person } from '@/data/types';
 import { STARTER_SUGGESTIONS, builtInReply, claudeConfigured, claudeReply, type AssistantAction, type AssistantContext, type AssistantMsg } from '@/lib/assistant';
+import { allowed } from '@/lib/guard';
 import { firstName, matchStrength } from '@/lib/match';
 import { useApp } from '@/state/AppState';
 import { C, R, S, T } from '@/theme';
@@ -41,6 +42,7 @@ export default function AssistantScreen() {
   const send = async (raw: string) => {
     const q = raw.trim();
     if (!q || thinking) return;
+    if (!(await allowed(q))) return;
     // The conversation only grows, so its length makes a unique id.
     const userMsg: AssistantMsg = { id: `u${msgs.length}`, role: 'user', text: q };
     const history = [...msgs, userMsg];
