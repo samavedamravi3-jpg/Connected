@@ -14,6 +14,7 @@ import { AREAS, CHARLOTTE_CENTER, GOALS } from '@/data/options';
 import { dataSource } from '@/data/source';
 import type { CommunityEvent, LatLng, NearbyPerson } from '@/data/types';
 import { activeFilterCount, applyFilters, defaultFilters, isFreeToday, type Filters } from '@/lib/filters';
+import { sortMyFieldFirst } from '@/lib/fieldClassifier';
 import { approxDistance, deltaForMiles, distanceMi, travelTime } from '@/lib/geo';
 import { canSeeDoor, doorActive, matchPoints, matchScore, matchStrength } from '@/lib/match';
 import { ALERT_RADIUS_MI, enableNearbyAlerts, peopleWithin, useNearbyAlerts } from '@/lib/nearbyAlerts';
@@ -190,8 +191,8 @@ export default function MapScreen() {
     return () => { alive = false; };
   }, [showEvents]);
   const mapEvents = useMemo(
-    () => (showEvents ? allEvents.filter((e) => !e.online && distanceMi(origin, e.coord) <= filters.distanceMi) : []),
-    [showEvents, allEvents, origin, filters.distanceMi],
+    () => sortMyFieldFirst(showEvents ? allEvents.filter((e) => !e.online && distanceMi(origin, e.coord) <= filters.distanceMi) : [], prefs.field),
+    [showEvents, allEvents, origin, filters.distanceMi, prefs.field],
   );
   const fromLabel = me ? 'away' : `from ${areaName}`;
   const placeLabel = me ? (loc.place ?? 'Your location') : areaName;
@@ -199,7 +200,7 @@ export default function MapScreen() {
   const people = useMemo(() => {
     return applyFilters(realOnly ? pool.filter((p) => !p.isDemo) : pool, filters, blocked)
       .map((p) => ({ ...p, distanceMi: distanceMi(origin, p.coord), strength: matchStrength(p, prefs) }))
-      .sort((a, b) => matchScore(b, prefs) - matchScore(a, prefs) || a.distanceMi - b.distanceMi);
+      .sort((a, b) => Number(!!prefs.field && b.field === prefs.field) - Number(!!prefs.field && a.field === prefs.field) || matchScore(b, prefs) - matchScore(a, prefs) || a.distanceMi - b.distanceMi);
   }, [pool, filters, blocked, prefs, origin, realOnly]);
   const realCount = people.filter((p) => !p.isDemo).length;
 
@@ -354,7 +355,7 @@ export default function MapScreen() {
             coordinate={e.coord}
             anchor={{ x: 0.5, y: 0.9 }}
             tracksViewChanges={trackPins}
-            zIndex={8}
+            zIndex={prefs.field && e.field === prefs.field ? 9 : 8}
             onPress={() => router.push({ pathname: '/event/[id]', params: { id: e.id } })}
             accessibilityLabel={`${e.title}, event at ${e.venue}`}
           >

@@ -5,7 +5,8 @@
  * Results are cached for 10 minutes. If both sources fail, the Events tab offers demo events instead.
  */
 import { CHARLOTTE_CENTER } from '@/data/options';
-import type { CommunityEvent, EventCategory } from '@/data/types';
+import type { CommunityEvent, EventCategory, FieldId } from '@/data/types';
+import { FIELD_QUERIES, classifyField } from './fieldClassifier';
 
 const MEETUP = 'https://api.meetup.com/gql-ext';
 const DEVPOST = 'https://devpost.com/api/hackathons';
@@ -50,7 +51,7 @@ const MEETUP_QUERY = `query($q: String!) { eventSearch(filter: {query: $q, lat: 
     featuredEventPhoto { id baseUrl highResUrl }
     venue { name address city state lat lon } group { name } feeSettings { amount currency } } } } }`;
 
-async function meetup(q: string, category: EventCategory): Promise<CommunityEvent[]> {
+async function meetup(q: string, category: EventCategory, field?: FieldId): Promise<CommunityEvent[]> {
   const res = await withTimeout(MEETUP, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...UA },
@@ -79,6 +80,8 @@ async function meetup(q: string, category: EventCategory): Promise<CommunityEven
       url: n.eventUrl,
       source: 'Meetup',
       online,
+      // The text decides first; the search that found it is the fallback.
+      field: classifyField(n.title, n.description ?? '') ?? field,
     };
   });
 }
@@ -146,6 +149,7 @@ function devpostToEvent(h: DevpostHack, coord: { latitude: number; longitude: nu
     image: thumb && !thumb.includes('thumbnail-placeholder') ? thumb : undefined,
     url: h.url,
     source: 'Devpost',
+    field: classifyField(h.title, (h.themes ?? []).map((t) => t.name).join(' ')) ?? 'tech',
     online,
   };
 }
@@ -184,10 +188,19 @@ export async function fetchLiveEvents(force = false): Promise<LiveResult> {
     }
   };
 
-  const [networking, career, tech, local, online] = await Promise.all([
-    settle('Meetup', meetup('networking', 'networking'), []),
-    settle('Meetup', meetup('career', 'career'), []),
-    settle('Meetup', meetup('tech meetup', 'networking'), []),
+  const fields = Object.keys(FIELD_QUERIES) as FieldId[];
+  // One search per field query, in small batches so Meetup is not hammered.
+  const jobs = [
+    ...fields.flatMap((f) => FIELD_QUERIES[f].map((q) => ({ q, f, category: (/career|job|hiring/i.test(q) ? 'career' : 'networking') as EventCategory }))),
+    { q: 'networking', f: undefined, category: 'networking' as EventCategory },
+    { q: 'career', f: undefined, category: 'career' as EventCategory },
+  ];
+  const meetupResults: CommunityEvent[][] = [];
+  for (let i = 0; i < jobs.length; i += 6) {
+    const batch = await Promise.all(jobs.slice(i, i + 6).map((j) => settle('Meetup', meetup(j.q, j.category, j.f), [] as CommunityEvent[])));
+    meetupResults.push(...batch);
+  }
+  const [local, online] = await Promise.all([
     settle('Devpost', devpost('search=charlotte'), [] as DevpostHack[]),
     settle('Devpost', devpost('challenge_type[]=online&order_by=deadline'), [] as DevpostHack[]),
   ]);
@@ -207,7 +220,7 @@ export async function fetchLiveEvents(force = false): Promise<LiveResult> {
 
   const seen = new Set<string>();
   const now = Date.now();
-  const events = [...networking, ...career, ...tech, ...localEvents, ...onlineEvents]
+  const events = [...meetupResults.flat(), ...localEvents, ...onlineEvents]
     .filter((e) => {
       // The same listing can come back from several searches, or twice under different ids.
       const key = `${e.title.toLowerCase()}|${new Date(e.start).toDateString()}`;

@@ -65,8 +65,8 @@ export default function Events() {
       .map((e) => ({ ...e, mi: e.online ? 0 : distanceMi(origin, e.coord) }))
       .filter((e) => (cat === 'all' || cat === 'saved' || e.category === cat) && (cat !== 'saved' || app.savedEvents.includes(e.id)))
       .filter((e) => e.start <= limit && e.mi <= maxMi)
-      .sort((a, b) => a.start - b.start);
-  }, [all, cat, when, maxMi, app.savedEvents, app.now, origin]);
+      .sort((a, b) => Number(b.field === app.prefs.field && !!app.prefs.field) - Number(a.field === app.prefs.field && !!app.prefs.field) || a.start - b.start);
+  }, [all, cat, when, maxMi, app.savedEvents, app.now, origin, app.prefs.field]);
 
   const noLive = !!res && !res.liveCount && !withDemo;
   const thisWeek = list.filter((e) => e.start <= app.now + 7 * 864e5);
