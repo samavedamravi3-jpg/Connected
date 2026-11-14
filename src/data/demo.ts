@@ -2,7 +2,7 @@
  * DEMO DATA. Every person and event here is fictional. Coordinates are approximate neighborhood
  * points (rounded), never anyone's live location. Replace via src/data/source.ts with a real backend.
  */
-import type { AudienceId, ChallengeId, CommunityEvent, DietId, FoodId, IncomingRequest, Person, TraitId } from './types';
+import type { AudienceId, ChallengeId, CommunityEvent, DietId, Experience, FoodId, IncomingRequest, Person, TraitId } from './types';
 
 const MIN = 60_000;
 const quarter = () => Math.round(Date.now() / (15 * MIN)) * 15 * MIN;
@@ -304,6 +304,53 @@ const SEEDS: Seed[] = [
   },
 ];
 
+/** Sample work history for the demo people (fictional). Shared employers and skills make matching visible. */
+const ex = (id: string, title: string, org: string, start: string, end: string | null, description: string, skills: string[]): Experience => ({ id, title, org, start, end, description, skills });
+const EXPERIENCE: Record<string, Experience[]> = {
+  maya: [
+    ex('maya-1', 'VP, Commercial Banking', 'Large bank, Uptown', '2019-03', null, 'Lead a team covering mid-size business clients and mentor first-year analysts.', ['Financial modeling', 'Excel', 'Public speaking']),
+    ex('maya-2', 'Credit Analyst', 'Large bank, Uptown', '2013-07', '2019-02', 'Underwrote commercial loans after joining through the analyst program.', ['Excel', 'Credit analysis']),
+  ],
+  daniel: [
+    ex('daniel-1', 'Senior Software Engineer', 'Logistics software company', '2020-01', null, 'Build routing services and mentor new hires.', ['JavaScript', 'Python', 'SQL']),
+    ex('daniel-2', 'Software Engineer', 'Retail tech startup', '2016-06', '2019-12', 'Full-stack web work after a coding bootcamp.', ['JavaScript', 'React']),
+  ],
+  priya: [
+    ex('priya-1', 'Nurse Practitioner', 'Community health clinic', '2018-08', null, 'Primary care for a mostly uninsured patient base; precept NP students.', ['Clinical care', 'Research', 'Spanish']),
+    ex('priya-2', 'Registered Nurse', 'Regional hospital system', '2012-06', '2018-07', 'Med-surg and ER nursing.', ['Clinical care']),
+  ],
+  marcus: [ex('marcus-1', 'Talent Acquisition Lead', 'Regional hospital system', '2017-05', null, 'Hire nurses, techs and administrators; run career fairs.', ['Recruiting', 'Public speaking'])],
+  grace: [
+    ex('grace-1', 'CPA, Financial Planner', 'Independent practice', '2016-01', null, 'Tax and planning for families and small businesses.', ['Excel', 'Financial modeling', 'Tax']),
+    ex('grace-2', 'Auditor', 'Large bank, Uptown', '2010-09', '2015-12', 'Internal audit rotation.', ['Excel', 'Auditing']),
+  ],
+  jordan: [
+    ex('jordan-1', 'Risk Analyst', 'Large bank, Uptown', '2024-07', null, 'Monitor portfolio risk and build weekly reporting.', ['Excel', 'SQL', 'Financial modeling']),
+    ex('jordan-2', 'Finance Intern', 'Community credit union', '2023-06', '2023-08', 'Helped the branch team with loan reporting.', ['Excel', 'Customer service']),
+  ],
+  noor: [ex('noor-1', 'Security Analyst', 'City IT department', '2024-02', null, 'Triage alerts and run phishing training for city staff.', ['Python', 'Security', 'SQL'])],
+  sofia: [
+    ex('sofia-1', 'QA Engineer', 'Healthcare software startup', '2024-05', null, 'Own test plans for a patient scheduling app.', ['JavaScript', 'Testing', 'Spanish']),
+    ex('sofia-2', 'Support Specialist', 'Retail tech startup', '2022-09', '2024-04', 'Moved into QA from customer support.', ['Customer service', 'Testing']),
+  ],
+  tomasz: [ex('tomasz-1', 'Project Manager', 'Regional utility', '2015-04', null, 'Deliver grid modernization projects on schedule.', ['Project management', 'Excel'])],
+  ade: [
+    ex('ade-1', 'Clinical Research Coordinator', 'Academic medical center', '2023-03', null, 'Coordinate trials while moving from a lab career.', ['Research', 'Clinical care']),
+    ex('ade-2', 'Lab Technician', 'University', '2018-08', '2023-02', 'Ran assays for a biology lab.', ['Research']),
+  ],
+  elena: [
+    ex('elena-1', 'Data Analyst', 'Public transit agency', '2023-09', null, 'Dashboards on ridership and on-time performance.', ['SQL', 'Python', 'Excel']),
+    ex('elena-2', 'Accountant', 'Independent practice', '2016-02', '2023-08', 'Bookkeeping before switching to data.', ['Excel', 'Tax']),
+  ],
+  hannah: [ex('hannah-1', 'Workforce Program Manager', 'County workforce office', '2016-08', null, 'Run job-readiness programs for career changers.', ['Public speaking', 'Program management', 'Recruiting'])],
+  aisha: [ex('aisha-1', 'Senior Product Designer', 'Fintech startup', '2021-04', null, 'Design flows for first-time investors.', ['Figma', 'User research', 'Public speaking'])],
+  kevin: [ex('kevin-1', 'Marketing Intern', 'Creative agency', '2025-06', '2025-08', 'Campaign research and social reporting.', ['Social media', 'Excel'])],
+  rosa: [
+    ex('rosa-1', 'Branch Manager', 'Community credit union', '2018-10', null, 'Lead a branch serving many first-time bank customers.', ['Customer service', 'Spanish', 'Excel']),
+    ex('rosa-2', 'Teller', 'Community credit union', '2011-05', '2018-09', 'Started as a teller and grew into management.', ['Customer service', 'Spanish']),
+  ],
+};
+
 /** Builds demo people with Open Door times relative to now, so the demo always has something live. */
 export function buildDemoPeople(): Person[] {
   const base = quarter();
@@ -311,6 +358,7 @@ export function buildDemoPeople(): Person[] {
     ...p,
     ...EXTRA[p.id],
     ...FOOD[p.id],
+    experience: EXPERIENCE[p.id],
     isDemo: true as const,
     door: doorSeed
       ? {

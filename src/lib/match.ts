@@ -2,6 +2,7 @@ import type Ionicons from '@expo/vector-icons/Ionicons';
 import type { ComponentProps } from 'react';
 import { CHALLENGES, FIELDS, GOALS, foodLabel, venueById } from '@/data/options';
 import type { ChallengeId, OpenDoor, Person, Prefs, Profile, TraitId } from '@/data/types';
+import { effectiveSkills, titleWords } from './experience';
 
 export type DoorState = 'live' | 'upcoming' | 'expired' | 'ended';
 
@@ -26,7 +27,21 @@ export function canSeeDoor(d: OpenDoor, host: Person, prefs: Prefs, profile: Pro
 
 const lower = (xs: string[]) => xs.map((x) => x.toLowerCase());
 export const sharedInterests = (p: Person, prefs: Prefs) => p.interests.filter((i) => lower(prefs.interests).includes(i.toLowerCase()));
-export const sharedSkills = (p: Person, prefs: Prefs) => p.skills.filter((s) => lower(prefs.skills).includes(s.toLowerCase()));
+/** Skills on both sides count whether they were declared or came from listed experience. */
+export const sharedSkills = (p: Person, prefs: Prefs) => {
+  const have = lower(effectiveSkills(prefs.skills, prefs.experience));
+  return effectiveSkills(p.skills, p.experience).filter((s) => have.includes(s.toLowerCase()));
+};
+/** Organizations you both list, e.g. the same employer or school. */
+export const sharedOrgs = (p: Person, prefs: Prefs) => {
+  const theirs = new Set((p.experience ?? []).map((e) => e.org.trim().toLowerCase()).filter(Boolean));
+  return [...new Set(prefs.experience.map((e) => e.org.trim()).filter((o) => theirs.has(o.toLowerCase())))];
+};
+/** Job-title words you both have held ("analyst", "nursing"). */
+export const sharedRoleWords = (p: Person, prefs: Prefs) => {
+  const theirs = new Set((p.experience ?? []).flatMap((e) => titleWords(e.title)));
+  return [...new Set(prefs.experience.flatMap((e) => titleWords(e.title)).filter((w) => theirs.has(w)))];
+};
 export const goalOverlap = (p: Person, prefs: Prefs) => prefs.goals.filter((g) => p.offers.includes(g));
 export const challengeOverlap = (p: Person, prefs: Prefs) => prefs.challenges.filter((c) => p.helpTags.includes(c));
 export const traitOverlap = (p: Person, prefs: Prefs) => prefs.wantTraits.filter((t) => p.traits.includes(t));
@@ -62,6 +77,12 @@ export function matchPoints(p: Person, prefs: Prefs): MatchPoint[] {
   if (g && g !== 'other') out.push({ icon: 'hand-left-outline', text: `Open to ${GOALS.find((x) => x.id === g)!.label.toLowerCase()}` });
   const si = sharedInterests(p, prefs)[0];
   if (si) out.push({ icon: 'heart-outline', text: `Also into ${si.toLowerCase()}` });
+  const org = sharedOrgs(p, prefs)[0];
+  if (org) out.push({ icon: 'business-outline', text: `Also worked at ${org}` });
+  const skill = sharedSkills(p, prefs)[0];
+  if (skill) out.push({ icon: 'construct-outline', text: `Also skilled in ${skill}` });
+  const role = sharedRoleWords(p, prefs)[0];
+  if (role && !org) out.push({ icon: 'briefcase-outline', text: `Has worked in ${role}` });
   const food = prefs.foods.find((f) => p.foods.includes(f));
   if (food) out.push({ icon: 'restaurant-outline', text: `Both like ${foodLabel(food).toLowerCase()}` });
   return out;
@@ -76,7 +97,9 @@ export function matchScore(p: Person, prefs: Prefs): number {
     sharedLanguages(p, prefs).length * 1.5 +
     sharedInterests(p, prefs).length * 0.75 +
     prefs.foods.filter((f) => p.foods.includes(f)).length * 0.4 +
-    sharedSkills(p, prefs).length * 0.25
+    Math.min(4, sharedSkills(p, prefs).length) * 0.5 +
+    Math.min(2, sharedOrgs(p, prefs).length) * 1.5 +
+    Math.min(2, sharedRoleWords(p, prefs).length) * 0.5
   );
 }
 

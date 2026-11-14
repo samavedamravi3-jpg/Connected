@@ -32,6 +32,17 @@ export type OpenDoor = {
   endedAt?: number;
 };
 
+/** One entry in someone's work or school history. Dates are 'YYYY-MM'; `end` null means present. */
+export type Experience = {
+  id: string;
+  title: string;
+  org: string;
+  start: string;
+  end: string | null;
+  description: string;
+  skills: string[];
+};
+
 /** A person who opted in to nearby discovery. `coord` is an approximate area, never a live location. */
 export type Person = {
   id: string;
@@ -62,6 +73,8 @@ export type Person = {
   /** Profile photo URL, when the person uploaded one. Demo profiles have none. */
   photo?: string;
   door?: OpenDoor;
+  /** Work or school history, when they chose to show it. */
+  experience?: Experience[];
   /** Demo only: how the simulated reply goes. */
   demoResponse?: 'accept' | 'decline';
   /** True for built-in demo profiles; false for real people from the backend. */
@@ -138,6 +151,10 @@ export type Prefs = {
   diet: DietId[];
   interests: string[];
   skills: string[];
+  /** Your work or school history. Its skills, employers and titles feed matching. */
+  experience: Experience[];
+  /** Let signed-in members see your experience. */
+  showExperience: boolean;
   goals: GoalId[];
   goalOther: string;
   travelMi: number;
