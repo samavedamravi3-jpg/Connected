@@ -15,7 +15,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import { fieldLabel } from '@/data/options';
 import type { CommunityEvent, FieldId, LatLng, Person, Prefs } from '@/data/types';
-import { fetchAlertCandidates, setMyArea } from './backend';
+import { fetchAlertCandidates, setMyArea, type AlertHit } from './backend';
 import { distanceMi } from './geo';
 import { matchPoints } from './match';
 
@@ -56,13 +56,6 @@ export async function alertPermission(): Promise<AlertPermission> {
   }
 }
 
-/** Real, verified members in your own field who share an area within 1 mile of `me`. */
-export function peopleWithin(me: LatLng, people: Person[], myField: FieldId | null | undefined, mi = ALERT_RADIUS_MI) {
-  if (!myField) return [];
-  // Demo people never alert, except the one "Simulate a nearby match" places next to you.
-  return people.filter((p) => (!p.isDemo || p.simulated) && !!p.verified && !p.areaHidden && p.field === myField && distanceMi(me, p.coord) <= mi);
-}
-
 /** Live, in-person events in your field that start within the hour and are within 1 mile of `me`. */
 export function eventsStartingSoon(me: LatLng, events: CommunityEvent[], myField: FieldId | null | undefined, now: number, mi = ALERT_RADIUS_MI) {
   if (!myField) return [];
@@ -83,17 +76,17 @@ export async function sendLocal(title: string, body: string, data: Record<string
 }
 
 /** The notification for a nearby member. Shared by the real path and the demo so both look identical. */
-export function notifyNearby(p: Person, prefs: Prefs | undefined, mi: number, demo = false): Promise<boolean> {
+export function notifyNearby(p: Person | AlertHit, prefs: Prefs | undefined, mi: number, demo = false): Promise<boolean> {
   // Lead with why they fit (shared skill, employer or role from experience) when there is one.
-  const why = prefs ? matchPoints(p, prefs).find((x) => /^(Also worked at|Also skilled in|Has worked in)/.test(x.text))?.text : undefined;
+  const why = prefs && 'skills' in p ? matchPoints(p, prefs).find((x) => /^(Also worked at|Also skilled in|Has worked in)/.test(x.text))?.text : undefined;
   return sendLocal(
     `${demo ? 'Demo · ' : ''}${p.name} is nearby · ${fieldLabel(p.field)}`,
-    `${why ? `${why}. ` : ''}${p.role}${p.org ? ` at ${p.org}` : ''} · ${mi < 0.3 ? 'right around you' : `about ${mi.toFixed(1)} mi away`}.${demo ? ' (Simulated for the demo.)' : ''} Tap to say hi.`,
+    `${why ? `${why}. ` : ''}${'role' in p ? `${p.role}${p.org ? ` at ${p.org}` : ''} · ` : ''}${mi < 0.3 ? 'right around you' : `about ${mi.toFixed(1)} mi away`}.${demo ? ' (Simulated for the demo.)' : ''} Tap to say hi.`,
     { personId: p.id },
   );
 }
 
-export function useNearbyAlerts(enabled: boolean, me: LatLng | null, people: Person[], myField: FieldId | null | undefined, events: CommunityEvent[] = [], prefs?: Prefs) {
+export function useNearbyAlerts(enabled: boolean, me: LatLng | null, people: AlertHit[], myField: FieldId | null | undefined, events: CommunityEvent[] = [], prefs?: Prefs) {
   const lastAlert = useRef(new Map<string, number>());
   const lat = me?.latitude;
   const lng = me?.longitude;
@@ -102,11 +95,12 @@ export function useNearbyAlerts(enabled: boolean, me: LatLng | null, people: Per
     if (!enabled || lat == null || lng == null || !myField) return;
     const here = { latitude: lat, longitude: lng };
     const now = Date.now();
-    for (const p of peopleWithin(here, people, myField)) {
+    // The server already filtered by field, verified and radius.
+    for (const p of people) {
       if (now - (lastAlert.current.get(p.id) ?? 0) < COOLDOWN_MS) continue;
       lastAlert.current.set(p.id, now);
       // A failed send must not burn the 3-hour cooldown.
-      void notifyNearby(p, prefs, distanceMi(here, p.coord)).then((ok) => { if (!ok) lastAlert.current.delete(p.id); });
+      void notifyNearby(p, prefs, p.distanceMi).then((ok) => { if (!ok) lastAlert.current.delete(p.id); });
     }
     for (const e of eventsStartingSoon(here, events, myField, now)) {
       const key = `event:${e.id}`;
@@ -131,7 +125,7 @@ export function useNearbyAlerts(enabled: boolean, me: LatLng | null, people: Per
 const PRESENCE_EVERY_MS = 60_000;
 const PRESENCE_MIN_GAP_MS = 20_000;
 
-export type Presence = { candidates: Person[]; error: string | null; syncedAt: number | null };
+export type Presence = { candidates: AlertHit[]; error: string | null; syncedAt: number | null };
 
 /**
  * Real path. While `active` (map open, live location on, signed in): saves your rounded position and loads

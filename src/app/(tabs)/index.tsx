@@ -21,7 +21,7 @@ import { sortMyFieldFirst } from '@/lib/fieldClassifier';
 import { useClusters, type MapView as MapRegion } from '@/lib/cluster';
 import { approxDistance, deltaForMiles, distanceMi, travelTime } from '@/lib/geo';
 import { canSeeDoor, doorActive, matchPoints, matchScore, matchStrength } from '@/lib/match';
-import { ALERT_RADIUS_MI, alertPermission, enableNearbyAlerts, notifyNearby, peopleWithin, useNearbyAlerts, useNearbyPresence, type AlertPermission } from '@/lib/nearbyAlerts';
+import { ALERT_RADIUS_MI, alertPermission, enableNearbyAlerts, notifyNearby, useNearbyAlerts, useNearbyPresence, type AlertPermission } from '@/lib/nearbyAlerts';
 import { useLiveLocation, type Fix } from '@/lib/useLiveLocation';
 import { useApp } from '@/state/AppState';
 import { C, R, S, T, shadow } from '@/theme';
@@ -235,7 +235,7 @@ export default function MapScreen() {
   }, [presence.candidates, blocked]);
   useNearbyAlerts(app.nearbyAlerts, liveMe, alertPeople, prefs.field, allEvents, prefs);
   const countAt = liveMe ?? (sim ? origin : null);
-  const closeBy = countAt ? peopleWithin(countAt, sim ? [sim, ...alertPeople] : alertPeople, prefs.field).length : 0;
+  const closeBy = countAt ? alertPeople.length + (sim ? 1 : 0) : 0;
 
   const [notifPerm, setNotifPerm] = useState<AlertPermission>('undetermined');
   useEffect(() => {

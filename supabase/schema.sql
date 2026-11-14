@@ -588,14 +588,43 @@ begin
 end;
 $$;
 
-create or replace function public.alert_candidates(lat double precision, lng double precision, radius_mi double precision default 1)
-returns setof public.profiles
-language sql
-stable
+-- Per-user call counter for alert_candidates (own row only, RLS).
+create table if not exists public.alert_rate (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  window_start timestamptz not null default now(),
+  calls int not null default 0
+);
+alter table public.alert_rate enable row level security;
+drop policy if exists alert_rate_own on public.alert_rate;
+create policy alert_rate_own on public.alert_rate for all to authenticated
+  using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+
+-- Returns only id, first name + last initial, field and distance rounded to 0.1 mi. Max 12 calls a minute per user.
+drop function if exists public.alert_candidates(double precision, double precision, double precision);
+create function public.alert_candidates(lat double precision, lng double precision, radius_mi double precision default 1)
+returns table (id uuid, name text, field text, distance_mi numeric)
+language plpgsql
+volatile
 security invoker
 set search_path = public, extensions
 as $$
-  select p.*
+declare n int;
+begin
+  if auth.uid() is null then raise exception 'not signed in'; end if;
+  insert into public.alert_rate as r (user_id, window_start, calls) values (auth.uid(), now(), 1)
+  on conflict (user_id) do update set
+    window_start = case when r.window_start < now() - interval '1 minute' then now() else r.window_start end,
+    calls = case when r.window_start < now() - interval '1 minute' then 1 else r.calls + 1 end
+  returning calls into n;
+  if n > 12 then raise exception 'rate limit exceeded' using errcode = '54000'; end if;
+
+  return query
+  select p.id,
+         trim(p.first_name || ' ' || left(p.last_name, 1) || case when p.last_name <> '' then '.' else '' end),
+         p.field,
+         round((st_distance(
+           st_setsrid(st_makepoint(p.area_lng, p.area_lat), 4326)::geography,
+           st_setsrid(st_makepoint(me.area_lng, me.area_lat), 4326)::geography) / 1609.344)::numeric, 1)
   from public.profiles p
   join public.profiles me on me.id = auth.uid()
   where me.field is not null
@@ -613,10 +642,9 @@ as $$
           st_setsrid(st_makepoint(me.area_lng, me.area_lat), 4326)::geography,
           least(greatest(coalesce(radius_mi, 1), 0), 5) * 1609.344
         )
-  order by st_distance(
-          st_setsrid(st_makepoint(p.area_lng, p.area_lat), 4326)::geography,
-          st_setsrid(st_makepoint(me.area_lng, me.area_lat), 4326)::geography)
+  order by 4
   limit 100;
+end;
 $$;
 
 revoke all on function public.set_my_area(double precision, double precision) from public, anon;

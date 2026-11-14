@@ -193,10 +193,12 @@ export async function setMyArea(at: LatLng): Promise<void> {
 }
 
 /** Verified, same-field members within `radiusMi` who recently had the map open (PostGIS on the server). RLS applies. */
-export async function fetchAlertCandidates(at: LatLng, radiusMi = 1): Promise<Person[]> {
+export type AlertHit = { id: string; name: string; field: FieldId; distanceMi: number };
+
+export async function fetchAlertCandidates(at: LatLng, radiusMi = 1): Promise<AlertHit[]> {
   const { data, error } = await db().rpc('alert_candidates', { lat: at.latitude, lng: at.longitude, radius_mi: radiusMi });
   if (error) throw error;
-  return withExperience(((data ?? []) as ProfileRow[]).map(rowToPerson));
+  return ((data ?? []) as { id: string; name: string; field: FieldId; distance_mi: number }[]).map((r) => ({ id: r.id, name: r.name, field: r.field, distanceMi: Number(r.distance_mi) }));
 }
 
 export async function fetchPeopleByIds(ids: string[]): Promise<Person[]> {
