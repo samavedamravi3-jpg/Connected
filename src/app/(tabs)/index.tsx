@@ -1,20 +1,24 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
+import GorhomSheet, { BottomSheetScrollView, BottomSheetView } from '@gorhom/bottom-sheet';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Alert, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated, { Extrapolation, FadeIn, FadeInUp, FadeOut, FadeOutUp, interpolate, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import MapView, { Circle, Marker, Polygon, Polyline, type MapStyleElement, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BottomSheet } from '@/components/BottomSheet';
 import { FilterSheet } from '@/components/FilterSheet';
-import { EventPin, NodePin, YouNode, nodeAnchor } from '@/components/MapPins';
+import { LayersSheet } from '@/components/LayersSheet';
+import { ClusterPin, EventPin, NodePin, YouNode, nodeAnchor } from '@/components/MapPins';
 import { PersonCard } from '@/components/PersonCard';
 import { Avatar, Button, Chip } from '@/components/ui';
 import { HOTSPOTS, HOTSPOT_LEVELS, type Hotspot } from '@/data/hotspots';
-import { AREAS, CHARLOTTE_CENTER, GOALS } from '@/data/options';
+import { AREAS, CHARLOTTE_CENTER } from '@/data/options';
 import { dataSource } from '@/data/source';
 import type { CommunityEvent, LatLng, NearbyPerson } from '@/data/types';
 import { activeFilterCount, applyFilters, defaultFilters, isFreeToday, type Filters } from '@/lib/filters';
 import { sortMyFieldFirst } from '@/lib/fieldClassifier';
+import { useClusters, type MapView as MapRegion } from '@/lib/cluster';
 import { approxDistance, deltaForMiles, distanceMi, travelTime } from '@/lib/geo';
 import { canSeeDoor, doorActive, matchPoints, matchScore, matchStrength } from '@/lib/match';
 import { ALERT_RADIUS_MI, enableNearbyAlerts, peopleWithin, useNearbyAlerts } from '@/lib/nearbyAlerts';
@@ -51,16 +55,22 @@ const ANDROID_MAP_STYLE: MapStyleElement[] = [
 const WASH = Platform.OS === 'ios' ? 'rgba(246,243,253,0.42)' : 'rgba(246,243,253,0.12)';
 const POOL_RADIUS_MI = 25;
 const MAX_LINES = 6;
-const PEEK = 150;
+const PEEK_MIN = 96;
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 type MapLook = 'network' | 'city3d' | 'satellite';
 
-const LOOKS: { id: MapLook; label: string; hint: string; icon: IconName }[] = [
-  { id: 'network', label: 'Network', hint: 'Clean, flat, people first', icon: 'git-network-outline' },
-  { id: 'city3d', label: '3D City', hint: 'Tilted view with buildings', icon: 'business-outline' },
-  { id: 'satellite', label: 'Satellite 3D', hint: Platform.OS === 'ios' ? 'Photo-real 3D where available' : 'Satellite, tilted', icon: 'earth-outline' },
+const LOOKS: { id: MapLook; label: string; icon: IconName }[] = [
+  { id: 'network', label: 'Standard', icon: 'map-outline' },
+  { id: 'city3d', label: '3D city', icon: 'business-outline' },
+  { id: 'satellite', label: 'Satellite', icon: 'earth-outline' },
 ];
+
+/** Short place name for the header: first part before a comma, trimmed to fit. */
+const shortPlace = (name: string) => {
+  const first = name.split(',')[0].trim();
+  return first.length > 16 ? `${first.slice(0, 15).trimEnd()}…` : first;
+};
 
 /** Approximate camera zoom for a region's latitude span (Apple uses altitude, Google uses zoom). */
 const zoomFor = (latDelta: number) => ({
@@ -93,7 +103,11 @@ export default function MapScreen() {
   const [filters, setFilters] = useState<Filters>(() => defaultFilters(prefs.travelMi));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [modal, setModal] = useState<'filters' | 'area' | null>(null);
+  const sheetRef = useRef<GorhomSheet>(null);
+  const sheetY = useSharedValue(0);
   const [sheetIndex, setSheetIndex] = useState(0);
+  const [region, setRegion] = useState<MapRegion | null>(null);
+  const [chipEdge, setChipEdge] = useState({ start: true, end: false });
   const [tab, setTab] = useState<Tab>('best');
   const [showHotspots, setShowHotspots] = useState(true);
   const [hotspotId, setHotspotId] = useState<string | null>(null);
@@ -110,7 +124,7 @@ export default function MapScreen() {
 
   // Map look: flat "network" map, tilted 3D city with buildings, or 3D satellite.
   const [look, setLook] = useState<MapLook>('network');
-  const [showLooks, setShowLooks] = useState(false);
+  const [showLayers, setShowLayers] = useState(false);
   const lookRef = useRef<MapLook>('network');
   useEffect(() => {
     lookRef.current = look;
@@ -130,7 +144,7 @@ export default function MapScreen() {
   }, [moveTo]);
 
   const changeLook = (next: MapLook) => {
-    setShowLooks(false);
+    setShowLayers(false);
     setLook(next);
     lookRef.current = next;
     const r = regionRef.current;
@@ -238,15 +252,22 @@ export default function MapScreen() {
   const listed = tab === 'best' ? best : tab === 'doors' ? doors : people;
   const strongCount = people.filter((p) => p.strength === 'strong').length;
 
+  // Nearby pins merge into numbered clusters (supercluster); the selected person always stays visible.
+  const keep = useMemo(() => (selectedId ? [selectedId] : []), [selectedId]);
+  const peopleClusters = useClusters(people, region, keep);
+  const eventClusters = useClusters(mapEvents, region);
+  const lonePeople = useMemo(() => new Set(peopleClusters.clusters.flatMap((c) => (c.kind === 'item' ? [c.item.id] : []))), [peopleClusters.clusters]);
+  const zoomInto = (center: LatLng, z: number) => moveTo(center, Math.max(0.002, (360 / 2 ** z) * 1.05), 450);
+
   // Your network: lines from you (or the search area) to your best nearby matches.
   const lineTargets = useMemo(() => {
-    const t = people.filter((p) => p.strength !== 'some').slice(0, MAX_LINES);
+    const t = people.filter((p) => p.strength !== 'some' && lonePeople.has(p.id)).slice(0, MAX_LINES);
     if (selected && !t.some((p) => p.id === selected.id)) t.push(selected);
     return t;
-  }, [people, selected]);
+  }, [people, selected, lonePeople]);
 
   // Custom markers re-render while they change, then stop tracking for smooth panning.
-  const pinsKey = `${people.map((p) => p.id + p.strength + p.coord.latitude + p.coord.longitude).join(',')}|${selectedId ?? ''}|${showHotspots}|${hotspotId ?? ''}|${mapEvents.map((e) => e.id).join(',')}`;
+  const pinsKey = `${people.map((p) => p.id + p.strength + p.coord.latitude + p.coord.longitude).join(',')}|${selectedId ?? ''}|${showHotspots}|${hotspotId ?? ''}|${peopleClusters.clusters.map((c) => (c.kind === 'item' ? c.item.id : `c${c.id}:${c.count}`)).join(',')}|${eventClusters.clusters.map((c) => (c.kind === 'item' ? c.item.id : `c${c.id}:${c.count}`)).join(',')}`;
   const hotspot = HOTSPOTS.find((h) => h.id === hotspotId);
   const peopleIn = (h: Hotspot) => people.filter((p) => distanceMi(h.center, p.coord) <= h.radiusMi).length;
   const trackPins = settledPinsKey !== pinsKey;
@@ -255,7 +276,20 @@ export default function MapScreen() {
     return () => clearTimeout(t);
   }, [pinsKey]);
 
-  const snaps = useMemo(() => (height ? [PEEK, Math.round(height * 0.52), Math.round(height - insets.top - 8)] : [PEEK]), [height, insets.top]);
+  const peek = Math.max(PEEK_MIN, Math.round(height * 0.15));
+  const snaps = useMemo(() => [peek, Math.round(height * 0.5), Math.round(Math.min(height * 0.9, height - insets.top - 8))], [peek, height, insets.top]);
+  const snap = useCallback((i: number) => sheetRef.current?.snapToIndex(i), []);
+  // The map buttons and hotspot key sit 12px above the sheet and fade out as it opens past half way.
+  const railStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(sheetY.value, [height * 0.12, height * 0.34], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateY: sheetY.value - height - 12 }],
+  }));
+  const chipDims = useRef({ w: 0, c: 0, x: 0 });
+  const updateChipEdge = () => {
+    const { w, c, x } = chipDims.current;
+    const next = { start: x <= 4, end: c - w - x > 4 };
+    setChipEdge((prev) => (prev.start === next.start && prev.end === next.end ? prev : next));
+  };
   const moved = !following && distanceMi(mapCenter, searchCenter) > 0.6;
   const fCount = activeFilterCount(filters);
   const nearCharlotte = distanceMi(searchCenter, CHARLOTTE_CENTER) < 40;
@@ -263,7 +297,7 @@ export default function MapScreen() {
   const selectHotspot = (h: Hotspot) => {
     setSelectedId(null);
     setHotspotId(h.id);
-    setSheetIndex(1);
+    snap(1);
     setFollowing(false);
     const d = Math.max(0.04, (h.radiusMi / 69) * 3.2);
     moveTo({ latitude: h.center.latitude - (look === 'network' ? d * 0.22 : 0), longitude: h.center.longitude }, d, 450);
@@ -272,7 +306,7 @@ export default function MapScreen() {
   const select = (p: NearbyPerson) => {
     setHotspotId(null);
     setSelectedId(p.id);
-    setSheetIndex(1);
+    snap(1);
     setFollowing(false);
     const d = regionRef.current.latitudeDelta;
     // Keep the person above the half-open sheet.
@@ -302,11 +336,10 @@ export default function MapScreen() {
   const closeCard = () => {
     setSelectedId(null);
     setHotspotId(null);
-    setSheetIndex(0);
+    snap(0);
   };
   const openProfile = (p: NearbyPerson) => router.push({ pathname: '/person/[id]', params: { id: p.id, d: String(p.distanceMi), from: fromLabel } });
 
-  const quickGoals = GOALS.filter((g) => ['mentorship', 'advice', 'peers', 'collab'].includes(g.id));
   const wash = [
     { latitude: origin.latitude + 3, longitude: origin.longitude - 3 },
     { latitude: origin.latitude + 3, longitude: origin.longitude + 3 },
@@ -335,10 +368,11 @@ export default function MapScreen() {
         pitchEnabled={look !== 'network'}
         toolbarEnabled={false}
         showsCompass={look !== 'network'}
-        mapPadding={{ top: insets.top + 120, right: 0, bottom: PEEK, left: 0 }}
+        mapPadding={{ top: insets.top + 110, right: 0, bottom: peek, left: 0 }}
         onPanDrag={() => { if (following) setFollowing(false); }}
         onRegionChangeComplete={(r) => {
           regionRef.current = r;
+          setRegion({ latitude: r.latitude, longitude: r.longitude, latitudeDelta: r.latitudeDelta, longitudeDelta: r.longitudeDelta });
           setMapCenter({ latitude: r.latitude, longitude: r.longitude });
         }}
         onPress={(e) => {
@@ -349,19 +383,33 @@ export default function MapScreen() {
       >
         {look === 'network' ? <Polygon coordinates={wash} fillColor={WASH} strokeWidth={0} strokeColor="transparent" zIndex={0} tappable={false} /> : null}
         <Circle center={searchCenter} radius={filters.distanceMi * 1609.34} strokeColor="rgba(91,53,201,0.22)" fillColor="rgba(91,53,201,0.03)" strokeWidth={1} zIndex={1} />
-        {mapEvents.map((e) => (
-          <Marker
-            key={`ev-${e.id}`}
-            coordinate={e.coord}
-            anchor={{ x: 0.5, y: 0.9 }}
-            tracksViewChanges={trackPins}
-            zIndex={prefs.field && e.field === prefs.field ? 9 : 8}
-            onPress={() => router.push({ pathname: '/event/[id]', params: { id: e.id } })}
-            accessibilityLabel={`${e.title}, event at ${e.venue}`}
-          >
-            <EventPin category={e.category} />
-          </Marker>
-        ))}
+        {eventClusters.clusters.map((c) =>
+          c.kind === 'cluster' ? (
+            <Marker
+              key={`evc-${c.id}`}
+              coordinate={c.coord}
+              anchor={{ x: 0.5, y: 0.5 }}
+              tracksViewChanges={trackPins}
+              zIndex={9}
+              onPress={() => zoomInto(c.coord, eventClusters.expansionZoom(c.id))}
+              accessibilityLabel={`${c.count} events. Zoom in`}
+            >
+              <ClusterPin count={c.count} tone="events" />
+            </Marker>
+          ) : (
+            <Marker
+              key={`ev-${c.item.id}`}
+              coordinate={c.item.coord}
+              anchor={{ x: 0.5, y: 0.9 }}
+              tracksViewChanges={trackPins}
+              zIndex={prefs.field && c.item.field === prefs.field ? 9 : 8}
+              onPress={() => router.push({ pathname: '/event/[id]', params: { id: c.item.id } })}
+              accessibilityLabel={`${c.item.title}, event at ${c.item.venue}`}
+            >
+              <EventPin category={c.item.category} />
+            </Marker>
+          ),
+        )}
         {showHotspots
           ? HOTSPOTS.map((h) => {
               const lv = HOTSPOT_LEVELS[h.level];
@@ -419,7 +467,23 @@ export default function MapScreen() {
         {loc.fix && loc.fix.accuracyM && loc.fix.accuracyM < 250 ? (
           <Circle center={loc.fix.coord} radius={loc.fix.accuracyM} strokeColor="rgba(91,53,201,0.2)" fillColor="rgba(91,53,201,0.08)" strokeWidth={1} zIndex={3} />
         ) : null}
-        {people.map((p) => {
+        {peopleClusters.clusters.map((c) => {
+          if (c.kind === 'cluster') {
+            return (
+              <Marker
+                key={`pc-${c.id}`}
+                coordinate={c.coord}
+                anchor={{ x: 0.5, y: 0.5 }}
+                tracksViewChanges={trackPins}
+                zIndex={13}
+                onPress={() => zoomInto(c.coord, peopleClusters.expansionZoom(c.id))}
+                accessibilityLabel={`${c.count} people. Zoom in`}
+              >
+                <ClusterPin count={c.count} />
+              </Marker>
+            );
+          }
+          const p = c.item;
           const on = p.id === selectedId;
           return (
             <Marker
@@ -446,8 +510,8 @@ export default function MapScreen() {
         ) : null}
       </MapView>
 
-      {/* Header */}
-      <View style={[styles.top, { paddingTop: insets.top + S.sm }]} pointerEvents="box-none">
+      {/* Header: brand, short place, search, filters. Counts live in the sheet. */}
+      <View style={[styles.top, { paddingTop: insets.top + S.xs }]} pointerEvents="box-none">
         <View style={[styles.header, shadow]}>
           <Pressable onPress={() => setModal('area')} accessibilityRole="button" accessibilityLabel={`Area: ${placeLabel}. Change area`} style={styles.headerMain} hitSlop={4}>
             <View style={styles.brand}>
@@ -455,19 +519,10 @@ export default function MapScreen() {
               <View style={styles.brandDot} />
             </View>
             <View style={styles.headerDivider} />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Text style={styles.place} numberOfLines={1}>{placeLabel}</Text>
-                <Ionicons name="chevron-down" size={14} color={C.ink3} />
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                {me && loc.watching ? <View style={styles.locDot} /> : null}
-                <Text style={styles.sub} numberOfLines={1}>
-                  {loading
-                    ? 'Loading your network…'
-                    : `${strongCount} strong · ${realCount} real member${realCount === 1 ? '' : 's'}${people.length > realCount ? ` · ${people.length - realCount} demo` : ''}`}
-                </Text>
-              </View>
+            <View style={styles.placeRow}>
+              {me && loc.watching ? <View style={styles.locDot} /> : null}
+              <Text style={styles.place} numberOfLines={1}>{shortPlace(placeLabel)}</Text>
+              <Ionicons name="chevron-down" size={14} color={C.ink3} />
             </View>
           </Pressable>
           <Pressable onPress={() => router.push('/search')} accessibilityRole="button" accessibilityLabel="Search people" style={({ pressed }) => [styles.filterBtn, pressed && { backgroundColor: C.bg2 }]}>
@@ -479,138 +534,113 @@ export default function MapScreen() {
           </Pressable>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quick}>
-          {prefs.field ? (
-            <Chip
-              label="My field"
-              selected={filters.fields.length === 1 && filters.fields[0] === prefs.field}
-              onPress={() => setFilters((f) => ({ ...f, fields: f.fields.length === 1 && f.fields[0] === prefs.field ? [] : [prefs.field!] }))}
-            />
-          ) : null}
-          <Chip label={`Real people${realCount ? ` (${realCount})` : ''}`} selected={realOnly} onPress={() => setRealOnly((v) => !v)} />
-          <Chip label={`Events${showEvents && mapEvents.length ? ` (${mapEvents.length})` : ''}`} selected={showEvents} onPress={() => setShowEvents((v) => !v)} />
-          <Chip label="Free today" selected={filters.availability === 'today'} onPress={() => setFilters((f) => ({ ...f, availability: f.availability === 'today' ? 'any' : 'today' }))} />
-          {quickGoals.map((g) => (
-            <Chip key={g.id} label={g.label} selected={filters.goals.includes(g.id)} onPress={() => setFilters((f) => ({ ...f, goals: f.goals.includes(g.id) ? f.goals.filter((x) => x !== g.id) : [...f.goals, g.id] }))} />
-          ))}
-        </ScrollView>
-
-        {shareCard ? (
-          <View style={[styles.shareCard, shadow]}>
-            <View style={styles.shareIcon}><Ionicons name={shareCard === 'signin' ? 'people' : 'eye-off'} size={18} color={C.accent} /></View>
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={styles.shareTitle}>{shareCard === 'signin' ? 'See real people near you' : 'You’re not on the map'}</Text>
-              <Text style={styles.shareBody}>
-                {shareCard === 'signin'
-                  ? 'Sign in so you and other members show up on each other’s maps.'
-                  : 'Other members can’t see you until you share your rough area (about 1 km, never your address).'}
-              </Text>
-              <Pressable
-                onPress={() => (shareCard === 'signin' ? router.push('/auth') : app.setPrefs({ shareMode: 'area', discoverable: true }))}
-                accessibilityRole="button"
-                style={styles.shareBtn}
-              >
-                <Text style={styles.shareBtnText}>{shareCard === 'signin' ? 'Sign in' : 'Show my rough area'}</Text>
-              </Pressable>
-            </View>
-            <Pressable onPress={() => setHideShareCard(true)} accessibilityRole="button" accessibilityLabel="Dismiss" hitSlop={10}>
-              <Ionicons name="close" size={18} color={C.ink3} />
-            </Pressable>
-          </View>
-        ) : null}
-
-        {app.nearbyAlerts && closeBy ? (
-          <View style={[styles.nearPill, shadow]} accessibilityLiveRegion="polite">
-            <View style={styles.nearDot} />
-            <Text style={styles.nearText}>{closeBy} same-field member{closeBy === 1 ? '' : 's'} within {ALERT_RADIUS_MI} mile</Text>
-          </View>
-        ) : null}
-
-        {moved ? (
-          <Pressable
-            onPress={() => { setSearchCenter(mapCenter); setAreaName('this area'); setSelectedId(null); if (!loc.fix) setHere({ coord: mapCenter, label: 'this area', isGps: false }); }}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.searchHere, shadow, pressed && { opacity: 0.85 }]}
+        {/* One row of four quick filters. Everything else (goals, fields, interests) is in Filters. */}
+        <View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.quick}
+            scrollEventThrottle={32}
+            onLayout={(e) => { chipDims.current.w = e.nativeEvent.layout.width; updateChipEdge(); }}
+            onContentSizeChange={(w) => { chipDims.current.c = w; updateChipEdge(); }}
+            onScroll={(e) => { chipDims.current.x = e.nativeEvent.contentOffset.x; updateChipEdge(); }}
           >
-            <Ionicons name="refresh" size={15} color={C.accent} />
-            <Text style={styles.searchHereText}>Search this area</Text>
-          </Pressable>
-        ) : null}
-      </View>
-
-      {/* Map controls */}
-      <View style={[styles.controls, shadow, { top: insets.top + 140 }]}>
-        <Pressable onPress={() => router.push('/assistant')} accessibilityRole="button" accessibilityLabel="Ask the Connected assistant" style={({ pressed }) => [styles.control, styles.askBtn, pressed && { opacity: 0.85 }]}>
-          <Ionicons name="sparkles" size={19} color={C.white} />
-        </Pressable>
-        <ControlButton icon={following ? 'locate' : 'locate-outline'} active={following} label={following ? 'Following your location' : 'Center on my location'} onPress={recenter} />
-        <View style={styles.controlDivider} />
-        <ControlButton icon="git-network-outline" active={showLines} label={showLines ? 'Hide connection lines' : 'Show connection lines'} onPress={() => setShowLines((v) => !v)} />
-        <View style={styles.controlDivider} />
-        <ControlButton icon={app.nearbyAlerts ? 'notifications' : 'notifications-outline'} active={app.nearbyAlerts} label={app.nearbyAlerts ? 'Turn off nearby alerts' : 'Alert me when someone is within 1 mile'} onPress={toggleAlerts} />
-        <View style={styles.controlDivider} />
-        <ControlButton icon={showHotspots ? 'flame' : 'flame-outline'} active={showHotspots} label={showHotspots ? 'Hide hotspots' : 'Show hotspots'} onPress={() => { setShowHotspots((v) => !v); setHotspotId(null); }} />
-        <View style={styles.controlDivider} />
-        <ControlButton icon={look === 'network' ? 'layers-outline' : 'cube'} active={look !== 'network' || showLooks} label="Map style" onPress={() => setShowLooks((v) => !v)} />
-        {loc.perm === 'granted' ? (
-          <>
-            <View style={styles.controlDivider} />
-            <ControlButton icon={live ? 'location' : 'location-outline'} active={live} label={live ? 'Pause live location' : 'Resume live location'} onPress={() => setLive((v) => !v)} />
-          </>
-        ) : null}
-      </View>
-
-      {/* Map style picker */}
-      {showLooks ? (
-        <View style={[styles.looks, shadow, { top: insets.top + 140 }]} accessibilityRole="radiogroup" accessibilityLabel="Map style">
-          {LOOKS.map((l) => {
-            const on = look === l.id;
-            return (
-              <Pressable
-                key={l.id}
-                onPress={() => changeLook(l.id)}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: on }}
-                style={({ pressed }) => [styles.lookRow, on && styles.lookRowOn, pressed && !on && { backgroundColor: C.bg2 }]}
-              >
-                <View style={[styles.lookIcon, on && { backgroundColor: C.accent }]}>
-                  <Ionicons name={l.icon} size={18} color={on ? C.white : C.accent} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.lookLabel, on && { color: C.accent }]}>{l.label}</Text>
-                  <Text style={styles.lookHint}>{l.hint}</Text>
-                </View>
-                {on ? <Ionicons name="checkmark" size={18} color={C.accent} /> : null}
-              </Pressable>
-            );
-          })}
-          {look !== 'network' ? <Text style={styles.lookTip}>Twist or tilt with two fingers.</Text> : null}
+            {prefs.field ? (
+              <Chip
+                label="My field"
+                selected={filters.fields.length === 1 && filters.fields[0] === prefs.field}
+                onPress={() => setFilters((f) => ({ ...f, fields: f.fields.length === 1 && f.fields[0] === prefs.field ? [] : [prefs.field!] }))}
+              />
+            ) : null}
+            <Chip label="Events" selected={showEvents} onPress={() => setShowEvents((v) => !v)} />
+            <Chip label="Real people" selected={realOnly} onPress={() => setRealOnly((v) => !v)} />
+            <Chip label="Free today" selected={filters.availability === 'today'} onPress={() => setFilters((f) => ({ ...f, availability: f.availability === 'today' ? 'any' : 'today' }))} />
+          </ScrollView>
+          {!chipEdge.start ? (
+            <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(150)} style={[styles.fade, { left: 0 }]} pointerEvents="none">
+              <LinearGradient colors={['rgba(243,241,248,0.95)', 'rgba(243,241,248,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+            </Animated.View>
+          ) : null}
+          {chipEdge.end ? (
+            <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(150)} style={[styles.fade, { right: 0 }]} pointerEvents="none">
+              <LinearGradient colors={['rgba(243,241,248,0)', 'rgba(243,241,248,0.95)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+            </Animated.View>
+          ) : null}
         </View>
-      ) : null}
 
-      {/* Hotspot key */}
-      {showHotspots && !moved ? (
-        <View style={[styles.key, shadow, { top: insets.top + 140 }]} pointerEvents="none">
-          <Text style={styles.keyTitle}>Hotspots</Text>
+        {/* A single status slot under the chips, so nothing stacks over the map. */}
+        {moved ? (
+          <Animated.View entering={FadeInUp.duration(180)} exiting={FadeOutUp.duration(140)} style={{ alignSelf: 'center' }}>
+            <Pressable
+              onPress={() => { setSearchCenter(mapCenter); setAreaName('this area'); setSelectedId(null); if (!loc.fix) setHere({ coord: mapCenter, label: 'this area', isGps: false }); }}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.pill, shadow, pressed && { opacity: 0.85 }]}
+            >
+              <Ionicons name="refresh" size={15} color={C.accent} />
+              <Text style={styles.pillAccent}>Search this area</Text>
+            </Pressable>
+          </Animated.View>
+        ) : shareCard ? (
+          <Animated.View entering={FadeInUp.duration(180)} exiting={FadeOutUp.duration(140)} style={[styles.pill, shadow, styles.sharePill]}>
+            <Pressable
+              onPress={() => (shareCard === 'signin' ? router.push('/auth') : app.setPrefs({ shareMode: 'area', discoverable: true }))}
+              accessibilityRole="button"
+              accessibilityLabel={shareCard === 'signin' ? 'Sign in to appear on the map' : 'Show my rough area on the map'}
+              style={styles.shareMain}
+            >
+              <Ionicons name={shareCard === 'signin' ? 'person-add-outline' : 'eye-outline'} size={15} color={C.accent} />
+              <Text style={styles.pillAccent} numberOfLines={1}>{shareCard === 'signin' ? 'Sign in to appear on the map' : 'Show me on the map'}</Text>
+            </Pressable>
+            <Pressable onPress={() => setHideShareCard(true)} accessibilityRole="button" accessibilityLabel="Dismiss" hitSlop={10} style={styles.shareClose}>
+              <Ionicons name="close" size={16} color={C.ink3} />
+            </Pressable>
+          </Animated.View>
+        ) : app.nearbyAlerts && closeBy ? (
+          <Animated.View entering={FadeInUp.duration(180)} exiting={FadeOutUp.duration(140)} style={[styles.pill, shadow, { alignSelf: 'center' }]} accessibilityLiveRegion="polite">
+            <View style={styles.nearDot} />
+            <Text style={styles.pillText}>{closeBy} same-field member{closeBy === 1 ? '' : 's'} within {ALERT_RADIUS_MI} mile</Text>
+          </Animated.View>
+        ) : null}
+      </View>
+
+      {/* Two map buttons, plus the assistant. They ride just above the sheet and fade out when it opens. */}
+      <Animated.View style={[styles.rail, railStyle]} pointerEvents="box-none">
+        <Pressable onPress={() => router.push('/assistant')} accessibilityRole="button" accessibilityLabel="Ask the Connected assistant" style={({ pressed }) => [styles.askBtn, shadow, pressed && { opacity: 0.85 }]}>
+          <Ionicons name="sparkles" size={17} color={C.white} />
+        </Pressable>
+        <View style={[styles.controls, shadow]}>
+          <ControlButton icon={following ? 'locate' : 'locate-outline'} active={following} label={following ? 'Following your location' : 'Center on my location'} onPress={recenter} />
+          <View style={styles.controlDivider} />
+          <ControlButton icon="layers-outline" active={showLayers || look !== 'network'} label="Layers" onPress={() => setShowLayers(true)} />
+        </View>
+      </Animated.View>
+
+      {/* Hotspot key: only while hotspots are on; compact, bottom-left above the sheet. */}
+      {showHotspots ? (
+        <Animated.View style={[styles.key, shadow, railStyle]} pointerEvents="none">
           {(['high', 'medium', 'emerging'] as const).map((lvl) => (
             <View key={lvl} style={styles.keyRow}>
               <View style={[styles.keySwatch, { backgroundColor: HOTSPOT_LEVELS[lvl].fill, borderColor: HOTSPOT_LEVELS[lvl].color }]} />
               <Text style={styles.keyText}>{HOTSPOT_LEVELS[lvl].label}</Text>
             </View>
           ))}
-          <Text style={styles.keyNote}>Demo estimates · tap a name</Text>
-        </View>
+        </Animated.View>
       ) : null}
 
       {height ? (
-        <BottomSheet
-          containerHeight={height}
-          snaps={snaps}
-          index={Math.min(sheetIndex, snaps.length - 1)}
-          onIndexChange={setSheetIndex}
-          contentKey={selectedId ?? hotspotId ?? tab}
-          header={
-            selected || hotspot ? (
+        <GorhomSheet
+          ref={sheetRef}
+          index={0}
+          snapPoints={snaps}
+          animatedPosition={sheetY}
+          enableDynamicSizing={false}
+          onChange={setSheetIndex}
+          backgroundStyle={styles.sheetBg}
+          handleIndicatorStyle={styles.handle}
+          handleStyle={styles.handleHit}
+        >
+          <BottomSheetView style={{ flex: 1 }}>
+            {selected || hotspot ? (
               <View style={styles.sheetHead}>
                 <Pressable onPress={closeCard} accessibilityRole="button" style={styles.backRow} hitSlop={8}>
                   <Ionicons name="chevron-back" size={18} color={C.accent} />
@@ -623,13 +653,16 @@ export default function MapScreen() {
                   <Text style={styles.sheetTitle}>Your network nearby</Text>
                   <Text style={styles.sheetMeta}>Within {filters.distanceMi} mi</Text>
                 </View>
+                <Text style={styles.sheetCounts} numberOfLines={1}>
+                  {loading ? 'Loading your network…' : `${strongCount} strong · ${realCount} real member${realCount === 1 ? '' : 's'}${people.length > realCount ? ` · ${people.length - realCount} demo` : ''}`}
+                </Text>
                 <View style={styles.tabs} accessibilityRole="tablist">
                   {([['best', 'Best matches', best.length], ['doors', 'Open Doors', doors.length], ['all', 'Everyone', people.length]] as const).map(([id, label, n]) => {
                     const on = tab === id;
                     return (
                       <Pressable
                         key={id}
-                        onPress={() => { setTab(id); if (sheetIndex === 0) setSheetIndex(1); }}
+                        onPress={() => { setTab(id); if (sheetIndex === 0) snap(1); }}
                         accessibilityRole="tab"
                         accessibilityState={{ selected: on }}
                         style={[styles.tab, on && styles.tabOn]}
@@ -652,9 +685,8 @@ export default function MapScreen() {
                   </View>
                 ) : null}
               </View>
-            )
-          }
-        >
+            )}
+            <BottomSheetScrollView key={selectedId ?? hotspotId ?? tab} contentContainerStyle={{ paddingBottom: 48 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {selected ? (
             <View style={{ paddingHorizontal: S.lg, paddingTop: S.sm }}>
               <PersonCard
@@ -699,7 +731,7 @@ export default function MapScreen() {
                   setHotspotId(null);
                   setTab('all');
                   goToArea(hotspot.center, hotspot.name);
-                  setSheetIndex(1);
+                  snap(1);
                 }}
               />
               <Text style={T.small}>Hub levels are demo estimates of where offices, campuses and meetups cluster. The people count comes from opted-in profiles.</Text>
@@ -743,24 +775,43 @@ export default function MapScreen() {
             </View>
           ) : loading ? null : (
             <View style={styles.empty}>
-              <Ionicons name={tab === 'doors' ? 'enter-outline' : 'git-network-outline'} size={32} color={C.ink3} />
-              <Text style={T.h3}>
-                {tab === 'doors' ? 'No Open Doors right now' : tab === 'best' && people.length ? 'No strong matches in range' : nearCharlotte ? 'No one matches here yet' : 'No one nearby yet'}
-              </Text>
-              <Text style={[T.small, { textAlign: 'center' }]}>
-                {tab === 'doors' ? 'Open Doors appear here when someone posts one for people like you.' : nearCharlotte ? 'Try a wider distance or fewer filters.' : 'This demo only has profiles in Charlotte, NC.'}
-              </Text>
+              <Ionicons name={tab === 'doors' ? 'enter-outline' : 'git-network-outline'} size={22} color={C.ink3} />
+              <View style={{ flex: 1, gap: 1 }}>
+                <Text style={styles.emptyTitle}>
+                  {tab === 'doors' ? 'No Open Doors right now' : tab === 'best' && people.length ? 'No strong matches in range' : nearCharlotte ? 'No one matches here yet' : 'No one nearby yet'}
+                </Text>
+                <Text style={T.small}>
+                  {tab === 'doors' ? 'They appear when someone posts one for people like you.' : nearCharlotte ? 'Try a wider distance or fewer filters.' : 'This demo only has profiles in Charlotte, NC.'}
+                </Text>
+              </View>
               {tab !== 'all' && people.length ? (
                 <Button label="See everyone" small variant="secondary" onPress={() => setTab('all')} />
               ) : nearCharlotte ? (
-                <Button label="Clear filters" small variant="secondary" onPress={() => setFilters(defaultFilters(POOL_RADIUS_MI))} />
+                <Button label="Clear" small variant="secondary" onPress={() => setFilters(defaultFilters(POOL_RADIUS_MI))} />
               ) : (
-                <Button label="Go to Charlotte" small onPress={() => goToArea(CHARLOTTE_CENTER, 'Charlotte')} />
+                <Button label="Charlotte" small onPress={() => goToArea(CHARLOTTE_CENTER, 'Charlotte')} />
               )}
             </View>
           )}
-        </BottomSheet>
+            </BottomSheetScrollView>
+          </BottomSheetView>
+        </GorhomSheet>
       ) : null}
+
+      <LayersSheet
+        visible={showLayers}
+        onClose={() => setShowLayers(false)}
+        looks={LOOKS}
+        look={look}
+        onLook={(id) => changeLook(id as MapLook)}
+        toggles={[
+          { id: 'hot', label: 'Hotspots', hint: 'Where your field gathers', icon: 'flame-outline', value: showHotspots, onChange: (v) => { setShowHotspots(v); setHotspotId(null); } },
+          { id: 'lines', label: 'Connection lines', hint: 'Lines to your best matches', icon: 'git-network-outline', value: showLines, onChange: setShowLines },
+          { id: 'events', label: 'Events', hint: 'In-person events nearby', icon: 'calendar-outline', value: showEvents, onChange: setShowEvents },
+          { id: 'alerts', label: 'Nearby alerts', hint: 'Same-field people within 1 mile', icon: 'notifications-outline', value: app.nearbyAlerts, onChange: () => { setShowLayers(false); void toggleAlerts(); } },
+          ...(loc.perm === 'granted' ? [{ id: 'live', label: 'Live location', hint: 'Keeps your position current', icon: 'location-outline' as const, value: live, onChange: setLive }] : []),
+        ]}
+      />
 
       <FilterSheet
         visible={modal === 'filters'}
@@ -807,44 +858,38 @@ function ControlButton({ icon, label, onPress, active }: { icon: IconName; label
 
 const styles = StyleSheet.create({
   top: { position: 'absolute', left: 0, right: 0, top: 0, gap: S.sm },
-  header: { flexDirection: 'row', alignItems: 'center', marginHorizontal: S.md, backgroundColor: C.bg, borderRadius: 16, paddingLeft: S.md, paddingRight: 6, minHeight: 60, borderWidth: 1, borderColor: C.line },
-  headerMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: S.md, minHeight: 56 },
+  header: { flexDirection: 'row', alignItems: 'center', marginHorizontal: S.md, backgroundColor: C.bg, borderRadius: 16, paddingLeft: S.md, paddingRight: 6, minHeight: 52, borderWidth: 1, borderColor: C.line },
+  headerMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: S.md, minHeight: 48 },
   brand: { flexDirection: 'row', alignItems: 'flex-end' },
   brandWord: { fontSize: 17, fontWeight: '800', color: C.ink, letterSpacing: -0.5 },
   brandDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.accent, marginLeft: 1.5, marginBottom: 4 },
-  headerDivider: { width: 1, height: 30, backgroundColor: C.line },
+  headerDivider: { width: 1, height: 24, backgroundColor: C.line },
   place: { fontSize: 15, fontWeight: '700', color: C.ink, flexShrink: 1 },
-  sub: { fontSize: 12, color: C.ink3, fontWeight: '500' },
   locDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.accent },
   filterBtn: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   count: { position: 'absolute', top: 4, right: 4, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
   countText: { color: C.white, fontSize: 10, fontWeight: '800' },
   quick: { gap: S.sm, paddingHorizontal: S.md },
-  searchHere: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.bg, paddingHorizontal: S.lg, minHeight: 38, borderRadius: R.pill, borderWidth: 1, borderColor: C.line },
-  searchHereText: { color: C.accent, fontWeight: '700', fontSize: 14 },
-  shareCard: { flexDirection: 'row', alignItems: 'flex-start', gap: S.md, backgroundColor: C.bg, borderRadius: R.lg, padding: S.md, marginTop: S.sm, borderWidth: 1, borderColor: C.line },
-  shareIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
-  shareTitle: { fontSize: 14, fontWeight: '800', color: C.ink },
-  shareBody: { fontSize: 12, color: C.ink2, lineHeight: 17 },
-  shareBtn: { alignSelf: 'flex-start', marginTop: 6, backgroundColor: C.accent, paddingHorizontal: 12, paddingVertical: 6, borderRadius: R.pill },
-  shareBtnText: { color: C.white, fontWeight: '700', fontSize: 13 },
-  nearPill: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.bg, paddingHorizontal: S.md, minHeight: 32, borderRadius: R.pill, marginTop: S.sm, borderWidth: 1, borderColor: C.line },
   nearDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#1FB860' },
-  nearText: { fontSize: 13, fontWeight: '700', color: C.ink },
-  askBtn: { backgroundColor: C.accent },
-  looks: { position: 'absolute', right: S.md + 56, width: 236, backgroundColor: C.bg, borderRadius: 16, borderWidth: 1, borderColor: C.line, padding: 6, gap: 2 },
-  lookRow: { flexDirection: 'row', alignItems: 'center', gap: S.sm, padding: 8, borderRadius: 12 },
-  lookRowOn: { backgroundColor: C.accentSoft },
-  lookIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
-  lookLabel: { fontSize: 15, fontWeight: '700', color: C.ink },
-  lookHint: { fontSize: 12, color: C.ink3 },
-  lookTip: { fontSize: 11, color: C.ink3, textAlign: 'center', paddingVertical: 4 },
-  key: { position: 'absolute', left: S.md, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: 12, borderWidth: 1, borderColor: C.line, paddingHorizontal: 10, paddingVertical: 8, gap: 5 },
-  keyTitle: { fontSize: 12, fontWeight: '800', color: C.ink, letterSpacing: 0.2 },
+  askBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
+  rail: { position: 'absolute', right: S.md, bottom: 0, alignItems: 'center', gap: S.sm },
+  fade: { position: 'absolute', top: 0, bottom: 0, width: 28 },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.bg, paddingHorizontal: S.md, minHeight: 36, borderRadius: R.pill, borderWidth: 1, borderColor: C.line },
+  pillAccent: { color: C.accent, fontWeight: '700', fontSize: 14, flexShrink: 1 },
+  pillText: { fontSize: 13, fontWeight: '700', color: C.ink },
+  sharePill: { alignSelf: 'flex-start', marginLeft: S.md, paddingRight: 4, maxWidth: '88%' },
+  shareMain: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, minHeight: 36 },
+  shareClose: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  placeRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  sheetBg: { backgroundColor: C.bg, borderTopLeftRadius: 26, borderTopRightRadius: 26 },
+  handle: { width: 40, height: 5, backgroundColor: C.line2 },
+  handleHit: { paddingTop: 10, paddingBottom: 6 },
+  sheetCounts: { fontSize: 13, color: C.ink3, fontWeight: '500', marginTop: -S.sm },
+  emptyTitle: { fontSize: 15, fontWeight: '700', color: C.ink },
+  key: { position: 'absolute', left: S.md, bottom: 0, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: R.pill, borderWidth: 1, borderColor: C.line, paddingHorizontal: 12, minHeight: 32 },
   keyRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   keySwatch: { width: 14, height: 14, borderRadius: 7, borderWidth: 1.5 },
   keyText: { fontSize: 12, color: C.ink2, fontWeight: '600' },
-  keyNote: { fontSize: 10, color: C.ink3, marginTop: 1 },
   hotLabel: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 8, borderWidth: 1.5, borderColor: 'transparent', paddingHorizontal: 7, paddingVertical: 3, shadowColor: '#2A1E5C', shadowOpacity: 0.12, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
   hotDot: { width: 7, height: 7, borderRadius: 4 },
   hotText: { fontSize: 11, fontWeight: '700', color: C.ink },
@@ -855,7 +900,7 @@ const styles = StyleSheet.create({
   hotFactNum: { fontSize: 20, fontWeight: '800', color: C.ink, fontVariant: ['tabular-nums'] },
   hotFactLabel: { fontSize: 12, color: C.ink3, textAlign: 'center' },
   hotFactDivider: { width: 1, backgroundColor: C.line },
-  controls: { position: 'absolute', right: S.md, backgroundColor: C.bg, borderRadius: 14, borderWidth: 1, borderColor: C.line, overflow: 'hidden' },
+  controls: { backgroundColor: C.bg, borderRadius: 14, borderWidth: 1, borderColor: C.line, overflow: 'hidden' },
   control: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center' },
   controlDivider: { height: 1, backgroundColor: C.line, marginHorizontal: 8 },
   centerMark: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: C.accent, backgroundColor: C.white },
@@ -881,7 +926,7 @@ const styles = StyleSheet.create({
   travel: { fontSize: 11, color: C.ink3 },
   doorText: { fontSize: 11, fontWeight: '700', color: C.blue },
   freeText: { fontSize: 11, fontWeight: '600', color: C.ok },
-  empty: { alignItems: 'center', gap: S.sm, padding: S.xl },
+  empty: { flexDirection: 'row', alignItems: 'center', gap: S.md, paddingHorizontal: S.lg, paddingVertical: S.md },
   scrim: { flex: 1, backgroundColor: 'rgba(27,23,38,0.35)', justifyContent: 'center', padding: S.lg },
   areaBox: { backgroundColor: C.bg, borderRadius: 20, padding: S.lg, gap: S.md },
   areaRow: { flexDirection: 'row', alignItems: 'center', gap: S.md, minHeight: 50, paddingHorizontal: S.sm, borderRadius: R.md },

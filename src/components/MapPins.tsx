@@ -81,6 +81,18 @@ export function EventPin({ category }: { category: EventCategory }) {
   );
 }
 
+/** A group of nearby pins. Tap to zoom in and break it apart. */
+export function ClusterPin({ count, tone = 'people' }: { count: number; tone?: 'people' | 'events' }) {
+  const size = count > 99 ? 48 : count > 9 ? 44 : 38;
+  return (
+    <View collapsable={false} style={{ padding: 4 }}>
+      <View style={[styles.cluster, { width: size, height: size, borderRadius: size / 2, backgroundColor: tone === 'people' ? C.accent : C.blue }]}>
+        <Text style={styles.clusterText}>{count > 99 ? '99+' : count}</Text>
+      </View>
+    </View>
+  );
+}
+
 /** You: the center node of your network, like the intro animation. */
 export function YouNode({ live }: { live: boolean }) {
   return (
@@ -94,6 +106,8 @@ export function YouNode({ live }: { live: boolean }) {
 }
 
 const styles = StyleSheet.create({
+  cluster: { borderWidth: 3, borderColor: 'rgba(255,255,255,0.95)', alignItems: 'center', justifyContent: 'center', shadowColor: '#2A1E5C', shadowOpacity: 0.25, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
+  clusterText: { color: C.white, fontSize: 14, fontWeight: '800', fontVariant: ['tabular-nums'] },
   eventPin: { width: 32, height: 32, borderRadius: 9, borderWidth: 2, borderColor: C.white, alignItems: 'center', justifyContent: 'center' },
   eventTip: { alignSelf: 'center', width: 0, height: 0, marginTop: -1, borderLeftWidth: 5, borderRightWidth: 5, borderTopWidth: 6, borderLeftColor: 'transparent', borderRightColor: 'transparent' },
   node: {

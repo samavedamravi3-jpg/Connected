@@ -3,6 +3,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Intro } from '@/components/Intro';
 import { AppProvider } from '@/state/AppState';
@@ -15,6 +16,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 export default function RootLayout() {
   const [introDone, setIntroDone] = useState(false);
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <SafeAreaProvider>
       <AppProvider>
         <StatusBar style={introDone ? 'dark' : 'light'} />
@@ -43,5 +45,6 @@ export default function RootLayout() {
         </View>
       </AppProvider>
     </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
