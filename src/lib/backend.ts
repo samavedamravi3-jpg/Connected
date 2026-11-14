@@ -186,6 +186,19 @@ export async function fetchVisible(myId: string): Promise<Person[]> {
   return withExperience(((data ?? []) as ProfileRow[]).map(rowToPerson));
 }
 
+/** Saves your position for alerts. The database rounds it (about a mile) and ignores it for "public places only". */
+export async function setMyArea(at: LatLng): Promise<void> {
+  const { error } = await db().rpc('set_my_area', { lat: at.latitude, lng: at.longitude });
+  if (error) throw error;
+}
+
+/** Verified, same-field members within `radiusMi` who recently had the map open (PostGIS on the server). RLS applies. */
+export async function fetchAlertCandidates(at: LatLng, radiusMi = 1): Promise<Person[]> {
+  const { data, error } = await db().rpc('alert_candidates', { lat: at.latitude, lng: at.longitude, radius_mi: radiusMi });
+  if (error) throw error;
+  return withExperience(((data ?? []) as ProfileRow[]).map(rowToPerson));
+}
+
 export async function fetchPeopleByIds(ids: string[]): Promise<Person[]> {
   if (!ids.length) return [];
   const { data, error } = await db().from('profiles').select('*').in('id', ids);

@@ -81,6 +81,8 @@ export type Person = {
   isDemo: boolean;
   /** True once a real member proved a school or work email (or ID, later). Never set on demo people. */
   verified?: boolean;
+  /** Demo only: a demo person placed near you by "Simulate a nearby match" so alerts can be shown without real members. */
+  simulated?: boolean;
   /** Real users who share "public places only" have no area; `coord` is then a placeholder. */
   areaHidden?: boolean;
 };

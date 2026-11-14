@@ -8,20 +8,20 @@ import Animated, { Extrapolation, FadeIn, FadeInUp, FadeOut, FadeOutUp, interpol
 import MapView, { Circle, Marker, Polygon, Polyline, type MapStyleElement, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FilterSheet } from '@/components/FilterSheet';
-import { LayersSheet } from '@/components/LayersSheet';
+import { LayersSheet, type AlertsPanel } from '@/components/LayersSheet';
 import { ClusterPin, EventPin, NodePin, YouNode, nodeAnchor } from '@/components/MapPins';
 import { PersonCard } from '@/components/PersonCard';
 import { Avatar, Button, Chip } from '@/components/ui';
 import { HOTSPOTS, HOTSPOT_LEVELS, type Hotspot } from '@/data/hotspots';
 import { AREAS, CHARLOTTE_CENTER } from '@/data/options';
-import { dataSource } from '@/data/source';
+import { clearSimulatedMatches, dataSource, simulateNearbyMatch } from '@/data/source';
 import type { CommunityEvent, LatLng, NearbyPerson } from '@/data/types';
 import { activeFilterCount, applyFilters, defaultFilters, isFreeToday, type Filters } from '@/lib/filters';
 import { sortMyFieldFirst } from '@/lib/fieldClassifier';
 import { useClusters, type MapView as MapRegion } from '@/lib/cluster';
 import { approxDistance, deltaForMiles, distanceMi, travelTime } from '@/lib/geo';
 import { canSeeDoor, doorActive, matchPoints, matchScore, matchStrength } from '@/lib/match';
-import { ALERT_RADIUS_MI, enableNearbyAlerts, peopleWithin, useNearbyAlerts } from '@/lib/nearbyAlerts';
+import { ALERT_RADIUS_MI, alertPermission, enableNearbyAlerts, notifyNearby, peopleWithin, useNearbyAlerts, useNearbyPresence, type AlertPermission } from '@/lib/nearbyAlerts';
 import { useLiveLocation, type Fix } from '@/lib/useLiveLocation';
 import { useApp } from '@/state/AppState';
 import { C, R, S, T, shadow } from '@/theme';
@@ -191,11 +191,16 @@ export default function MapScreen() {
     return () => clearInterval(t);
   }, [sessionId]);
   const loading = loaded?.center !== searchCenter;
-  const pool = useMemo(() => loaded?.people ?? [], [loaded]);
+  const loadedPool = useMemo(() => loaded?.people ?? [], [loaded]);
 
   // Distances update live from your GPS when you're in range; otherwise from the search area.
   const me = loc.fix && distanceMi(loc.fix.coord, searchCenter) < POOL_RADIUS_MI ? loc.fix.coord : null;
   const origin = me ?? searchCenter;
+
+  // DEMO: "Simulate a nearby match" puts one same-field demo person 0.2 mi from you. Never persisted.
+  const [sim, setSim] = useState<NearbyPerson | null>(null);
+  useEffect(() => () => clearSimulatedMatches(), []);
+  const pool = useMemo(() => (sim ? [sim, ...loadedPool.filter((p) => p.id !== sim.id)] : loadedPool), [loadedPool, sim]);
 
   // In-person events (live + demo) inside your travel distance, only while the Events chip is on.
   useEffect(() => {
@@ -218,14 +223,63 @@ export default function MapScreen() {
   }, [pool, filters, blocked, prefs, origin, realOnly]);
   const realCount = people.filter((p) => !p.isDemo).length;
 
-  // "Someone is nearby" alerts: real members within 1 mile of your live position, while the map is open.
-  const alertPool = useMemo(() => pool.filter((p) => !blocked.includes(p.id)), [pool, blocked]);
+  // "Someone is nearby" alerts: verified same-field members within 1 mile of your live position, while the map is open.
+  // Real path: while the map is open we save your rounded position and ask Supabase (PostGIS) who is within 1 mile.
   const liveMe = live && loc.fix ? loc.fix.coord : null;
-  useNearbyAlerts(app.nearbyAlerts, liveMe, alertPool, prefs.field, allEvents, prefs);
-  const closeBy = liveMe ? peopleWithin(liveMe, alertPool, prefs.field).length : 0;
+  const mapOpen = loc.watching;
+  const presence = useNearbyPresence(mapOpen && !!app.session, liveMe, app.session?.userId, prefs.shareMode === 'area');
+  const alertPeople = useMemo(() => {
+    const ids = new Set<string>();
+    // Only fresh server results alert: map-loaded people may carry old saved areas.
+    return presence.candidates.filter((p) => !blocked.includes(p.id) && !ids.has(p.id) && ids.add(p.id));
+  }, [presence.candidates, blocked]);
+  useNearbyAlerts(app.nearbyAlerts, liveMe, alertPeople, prefs.field, allEvents, prefs);
+  const countAt = liveMe ?? (sim ? origin : null);
+  const closeBy = countAt ? peopleWithin(countAt, sim ? [sim, ...alertPeople] : alertPeople, prefs.field).length : 0;
+
+  const [notifPerm, setNotifPerm] = useState<AlertPermission>('undetermined');
+  useEffect(() => {
+    if (showLayers) alertPermission().then(setNotifPerm);
+  }, [showLayers]);
+  const toggleSim = async (on: boolean) => {
+    if (!on) {
+      clearSimulatedMatches();
+      setSim(null);
+      return;
+    }
+    if (!prefs.field) return Alert.alert('Set your field first', 'Alerts are same-field only. Pick the field you want to grow in under Profile > Preferences, then try again.');
+    const at = liveMe ?? origin;
+    const person = simulateNearbyMatch(prefs.field, at, 0.2);
+    if (!person) return Alert.alert('No demo person', 'There isn’t a demo person in your field to place nearby.');
+    setSim({ ...person, distanceMi: 0.2 });
+    setShowLayers(false);
+    flyTo(at, 0.6, 600);
+    const granted = (await alertPermission()) === 'granted' || (await enableNearbyAlerts());
+    setNotifPerm(granted ? 'granted' : 'denied');
+    if (!granted) return Alert.alert('Notifications are off', 'The demo person is on the map, but allow notifications in Settings to see the alert.', [{ text: 'Not now', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }]);
+    if (!(await notifyNearby(person, prefs, 0.2, true))) Alert.alert('Couldn’t send the notification', 'The demo person is on the map, but the notification failed. Check notification settings for this app.');
+  };
+  const alertsPanel: AlertsPanel = {
+    items: [
+      { id: 'notif', label: 'Notifications allowed', state: notifPerm === 'granted' ? 'ok' : 'off', hint: notifPerm === 'granted' ? undefined : notifPerm === 'denied' ? 'Turn them on in Settings.' : 'Switch on Nearby alerts to allow them.' },
+      { id: 'on', label: 'Nearby alerts switched on', state: app.nearbyAlerts ? 'ok' : 'off' },
+      { id: 'signed', label: 'Signed in', state: app.session ? 'ok' : 'off', hint: app.session ? undefined : 'Real members only appear once you’re signed in.' },
+      { id: 'verified', label: 'You’re verified', state: app.verification.verified ? 'ok' : 'warn', hint: app.verification.verified ? undefined : 'Not needed for you to get alerts, but others only get alerts about verified members.' },
+      { id: 'share', label: 'Sharing your area', state: prefs.shareMode === 'area' ? 'ok' : 'off', hint: prefs.shareMode === 'area' ? undefined : 'You only see who’s nearby if you share your area (about 1 mile). Change it in Preferences.' },
+      { id: 'field', label: 'Field set', state: prefs.field ? 'ok' : 'off', hint: prefs.field ? undefined : 'Alerts are same-field only. Set it in Preferences.' },
+      {
+        id: 'map', label: 'Map open with live location', state: mapOpen ? 'ok' : 'off',
+        hint: mapOpen ? undefined : loc.perm !== 'granted' ? 'Allow location while using the app.' : !live ? 'Turn on Live location above.' : 'Keep this tab open with the app on screen.',
+      },
+    ],
+    nearby: countAt ? closeBy : null,
+    error: presence.error,
+    demo: { value: !!sim, onChange: (v) => void toggleSim(v) },
+  };
   const toggleAlerts = async () => {
     if (app.nearbyAlerts) return app.setNearbyAlerts(false);
     const ok = await enableNearbyAlerts();
+    setNotifPerm(ok ? 'granted' : 'denied');
     if (!ok) {
       Alert.alert('Notifications are off', 'Allow notifications for this app in Settings to get nearby alerts.', [
         { text: 'Not now', style: 'cancel' },
@@ -595,7 +649,7 @@ export default function MapScreen() {
               <Ionicons name="close" size={16} color={C.ink3} />
             </Pressable>
           </Animated.View>
-        ) : app.nearbyAlerts && closeBy ? (
+        ) : (app.nearbyAlerts || sim) && closeBy ? (
           <Animated.View entering={FadeInUp.duration(180)} exiting={FadeOutUp.duration(140)} style={[styles.pill, shadow, { alignSelf: 'center' }]} accessibilityLiveRegion="polite">
             <View style={styles.nearDot} />
             <Text style={styles.pillText}>{closeBy} same-field member{closeBy === 1 ? '' : 's'} within {ALERT_RADIUS_MI} mile</Text>
@@ -804,6 +858,7 @@ export default function MapScreen() {
         looks={LOOKS}
         look={look}
         onLook={(id) => changeLook(id as MapLook)}
+        alerts={alertsPanel}
         toggles={[
           { id: 'hot', label: 'Hotspots', hint: 'Where your field gathers', icon: 'flame-outline', value: showHotspots, onChange: (v) => { setShowHotspots(v); setHotspotId(null); } },
           { id: 'lines', label: 'Connection lines', hint: 'Lines to your best matches', icon: 'git-network-outline', value: showLines, onChange: setShowLines },

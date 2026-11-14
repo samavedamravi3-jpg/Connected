@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ComponentProps } from 'react';
-import { Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, R, S, T } from '@/theme';
@@ -10,6 +10,17 @@ type IconName = ComponentProps<typeof Ionicons>['name'];
 export type LookOption = { id: string; label: string; icon: IconName };
 export type LayerToggle = { id: string; label: string; hint: string; icon: IconName; value: boolean; onChange: (v: boolean) => void };
 
+/** One line of the "Alerts status" checklist. `warn` means worth knowing but not blocking. */
+export type StatusItem = { id: string; label: string; state: 'ok' | 'off' | 'warn'; hint?: string };
+export type AlertsPanel = {
+  items: StatusItem[];
+  /** Same-field verified people within 1 mile right now (the count alerts are based on). */
+  nearby: number | null;
+  /** Server problem finding nearby members, shown so a failure isn't silent. */
+  error?: string | null;
+  demo: { value: boolean; onChange: (v: boolean) => void };
+};
+
 type Props = {
   visible: boolean;
   onClose: () => void;
@@ -17,18 +28,20 @@ type Props = {
   look: string;
   onLook: (id: string) => void;
   toggles: LayerToggle[];
+  alerts?: AlertsPanel;
 };
 
 /** One place for everything that changes what the map shows: map style plus on/off layers. */
-export function LayersSheet({ visible, onClose, looks, look, onLook, toggles }: Props) {
+export function LayersSheet({ visible, onClose, looks, look, onLook, toggles, alerts }: Props) {
   const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
       <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)} style={styles.scrim}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close layers" />
       </Animated.View>
       <View style={styles.anchor} pointerEvents="box-none">
-        <Animated.View entering={SlideInDown.duration(240)} exiting={SlideOutDown.duration(180)} style={[styles.sheet, { paddingBottom: insets.bottom + S.md }]}>
+        <Animated.View entering={SlideInDown.duration(240)} exiting={SlideOutDown.duration(180)} style={[styles.sheet, { paddingBottom: insets.bottom + S.md, maxHeight: height * 0.88 }]}>
           <View style={styles.head}>
             <Text style={T.h2} accessibilityRole="header">Layers</Text>
             <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close layers" hitSlop={10} style={styles.close}>
@@ -36,6 +49,7 @@ export function LayersSheet({ visible, onClose, looks, look, onLook, toggles }: 
             </Pressable>
           </View>
 
+          <ScrollView contentContainerStyle={{ gap: S.md }} showsVerticalScrollIndicator={false}>
           <View style={styles.looks} accessibilityRole="radiogroup" accessibilityLabel="Map style">
             {looks.map((l) => {
               const on = l.id === look;
@@ -60,6 +74,41 @@ export function LayersSheet({ visible, onClose, looks, look, onLook, toggles }: 
               </View>
             ))}
           </View>
+
+          {alerts ? (
+            <View style={styles.status} accessibilityLabel="Alerts status">
+              <Text style={styles.statusTitle} accessibilityRole="header">Alerts status</Text>
+              {alerts.items.map((it) => (
+                <View key={it.id} style={styles.statusRow} accessible accessibilityLabel={`${it.label}: ${it.state === 'ok' ? 'yes' : it.state === 'warn' ? 'optional' : 'no'}${it.hint ? `. ${it.hint}` : ''}`}>
+                  <Ionicons
+                    name={it.state === 'ok' ? 'checkmark-circle' : it.state === 'warn' ? 'alert-circle' : 'close-circle'}
+                    size={20}
+                    color={it.state === 'ok' ? C.ok : it.state === 'warn' ? C.warn : C.bad}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.rowLabel}>{it.label}</Text>
+                    {it.hint ? <Text style={styles.rowHint}>{it.hint}</Text> : null}
+                  </View>
+                </View>
+              ))}
+              <View style={styles.statusRow}>
+                <Ionicons name="people-outline" size={20} color={C.accent} />
+                <Text style={[styles.rowLabel, { flex: 1 }]}>
+                  Same-field people within 1 mile: {alerts.nearby == null ? 'waiting for your location' : alerts.nearby}
+                </Text>
+              </View>
+              {alerts.error ? <Text style={[styles.rowHint, { color: C.bad }]}>Couldn’t check for nearby members: {alerts.error}</Text> : null}
+              <View style={[styles.row, styles.rowBorder, { paddingHorizontal: 0 }]}>
+                <Ionicons name="flask-outline" size={20} color={alerts.demo.value ? C.accent : C.ink3} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.rowLabel}>Demo: simulate a nearby match</Text>
+                  <Text style={styles.rowHint}>Demo only. Puts a same-field demo person 0.2 mi away and sends a real notification.</Text>
+                </View>
+                <Switch value={alerts.demo.value} onValueChange={alerts.demo.onChange} trackColor={{ true: C.accent, false: C.line2 }} accessibilityLabel="Demo: simulate a nearby match" />
+              </View>
+            </View>
+          ) : null}
+          </ScrollView>
         </Animated.View>
       </View>
     </Modal>
@@ -78,6 +127,9 @@ const styles = StyleSheet.create({
   lookText: { fontSize: 13, fontWeight: '700', color: C.ink2 },
   row: { flexDirection: 'row', alignItems: 'center', gap: S.md, minHeight: 56, paddingVertical: 6 },
   rowBorder: { borderTopWidth: 1, borderTopColor: C.line },
+  status: { borderWidth: 1, borderColor: C.line, borderRadius: R.md, padding: S.md, gap: S.sm, backgroundColor: C.bg2 },
+  statusTitle: { fontSize: 13, fontWeight: '700', color: C.ink2, textTransform: 'uppercase', letterSpacing: 0.6 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: S.md, minHeight: 32 },
   rowLabel: { fontSize: 15, fontWeight: '600', color: C.ink },
   rowHint: { fontSize: 12, color: C.ink3 },
 });

@@ -36,6 +36,8 @@ const events = buildDemoEvents();
 let myId: string | null = null;
 let showDemo = true;
 const remoteCache = new Map<string, Person>();
+// The demo person "Simulate a nearby match" has placed next to you (by id), so profile links open the same copy.
+const simulated = new Map<string, Person>();
 export function setBackendUser(id: string | null) {
   myId = id;
   if (!id) remoteCache.clear();
@@ -48,6 +50,27 @@ export function rememberPeople(ps: Person[]) {
 }
 
 const demos = () => (showDemo ? demoPeople : []);
+
+/**
+ * DEMO ONLY. A copy of a same-field demo person, marked verified and placed `miles` north of `origin`, so
+ * nearby alerts can be shown to judges without real members. Always flagged `simulated` (and still `isDemo`).
+ */
+export function simulateNearbyMatch(field: Person['field'], origin: LatLng, miles = 0.2): Person | undefined {
+  const base = demoPeople.find((p) => p.field === field && p.experience?.length) ?? demoPeople.find((p) => p.field === field);
+  if (!base) return undefined;
+  const sim: Person = {
+    ...base,
+    coord: { latitude: origin.latitude + miles / 69, longitude: origin.longitude },
+    areaHidden: false,
+    verified: true,
+    simulated: true,
+  };
+  simulated.set(sim.id, sim);
+  return sim;
+}
+export function clearSimulatedMatches() {
+  simulated.clear();
+}
 
 async function remote<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
   if (!myId) return fallback;
@@ -121,7 +144,7 @@ export const dataSource: DataSource = {
     rememberPeople(real);
     return [...real, ...demos()];
   },
-  getPerson: (id) => demoPeople.find((p) => p.id === id) ?? remoteCache.get(id),
+  getPerson: (id) => simulated.get(id) ?? demoPeople.find((p) => p.id === id) ?? remoteCache.get(id),
   async fetchPerson(id) {
     const known = dataSource.getPerson(id);
     if (known) return known;

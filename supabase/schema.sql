@@ -144,6 +144,14 @@ begin
     new.area_lat := round(new.area_lat::numeric, 2)::double precision;
     new.area_lng := round(new.area_lng::numeric, 2)::double precision;
   end if;
+  if tg_op = 'INSERT' then
+    new.area_seen_at := null;
+  elsif new.area_seen_at is distinct from old.area_seen_at and coalesce(current_setting('app.area_write', true), '') <> '1' then
+    new.area_seen_at := old.area_seen_at;
+  end if;
+  if new.share_mode = 'public' or not new.discoverable then
+    new.area_seen_at := null;
+  end if;
   new.updated_at := now();
   return new;
 end;
@@ -546,3 +554,72 @@ drop trigger if exists experiences_before_write on public.experiences;
 create trigger experiences_before_write
   before insert or update on public.experiences
   for each row execute function public.experiences_before_write();
+
+-- ---------------------------------------------------------------------------
+-- Nearby alerts (real path): PostGIS radius search over rounded positions
+-- The app calls set_my_area while the map is open; profiles_before_write rounds it to 0.01 degrees
+-- (about a mile) and clears it for "public places only". alert_candidates returns verified members in the
+-- caller's own field within the radius who had the map open in the last 30 minutes. Runs as the caller, so RLS
+-- (blocks, discoverable) still applies.
+-- ---------------------------------------------------------------------------
+
+create extension if not exists postgis with schema extensions;
+
+alter table public.profiles add column if not exists area_seen_at timestamptz;
+
+create index if not exists profiles_area_geog_idx on public.profiles
+  using gist ((extensions.st_setsrid(extensions.st_makepoint(area_lng, area_lat), 4326)::extensions.geography))
+  where area_lat is not null and area_lng is not null;
+
+create or replace function public.set_my_area(lat double precision, lng double precision)
+returns void
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  if lat is null or lng is null or lat not between -90 and 90 or lng not between -180 and 180 then
+    raise exception 'invalid coordinates';
+  end if;
+  perform set_config('app.area_write', '1', true);
+  update public.profiles
+     set area_lat = lat, area_lng = lng, area_seen_at = now()
+   where id = auth.uid() and share_mode = 'area' and discoverable;
+end;
+$$;
+
+create or replace function public.alert_candidates(lat double precision, lng double precision, radius_mi double precision default 1)
+returns setof public.profiles
+language sql
+stable
+security invoker
+set search_path = public, extensions
+as $$
+  select p.*
+  from public.profiles p
+  join public.profiles me on me.id = auth.uid()
+  where me.field is not null
+    and me.share_mode = 'area' and me.discoverable
+    and me.area_lat is not null and me.area_lng is not null
+    and me.area_seen_at > now() - interval '30 minutes'
+    and p.field = me.field
+    and p.id <> me.id
+    and p.verified
+    and p.discoverable
+    and p.area_lat is not null and p.area_lng is not null
+    and p.area_seen_at > now() - interval '30 minutes'
+    and st_dwithin(
+          st_setsrid(st_makepoint(p.area_lng, p.area_lat), 4326)::geography,
+          st_setsrid(st_makepoint(me.area_lng, me.area_lat), 4326)::geography,
+          least(greatest(coalesce(radius_mi, 1), 0), 5) * 1609.344
+        )
+  order by st_distance(
+          st_setsrid(st_makepoint(p.area_lng, p.area_lat), 4326)::geography,
+          st_setsrid(st_makepoint(me.area_lng, me.area_lat), 4326)::geography)
+  limit 100;
+$$;
+
+revoke all on function public.set_my_area(double precision, double precision) from public, anon;
+revoke all on function public.alert_candidates(double precision, double precision, double precision) from public, anon;
+grant execute on function public.set_my_area(double precision, double precision) to authenticated;
+grant execute on function public.alert_candidates(double precision, double precision, double precision) to authenticated;
