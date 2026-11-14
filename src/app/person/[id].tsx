@@ -11,6 +11,7 @@ import { audienceLabel, availabilityLabel, fieldLabel, venueById } from '@/data/
 import { dataSource } from '@/data/source';
 import type { Person } from '@/data/types';
 import { approxDistance } from '@/lib/geo';
+import { effectiveSkills, fmtRange, sortExperiences } from '@/lib/experience';
 import { allowed } from '@/lib/guard';
 import {
   canSeeDoor, conversationStarter, doorActive, doorState, firstName, matchPoints, matchStrength, sharedInterests, sharedLanguages, sharedSkills, type Tone,
@@ -67,6 +68,7 @@ export default function PersonScreen() {
   const req = latestRequest(app.requests, p.id);
   const isBlocked = app.blocked.includes(p.id);
   const shared = new Set([...sharedInterests(p, app.prefs), ...sharedSkills(p, app.prefs), ...sharedLanguages(p, app.prefs)]);
+  const experience = sortExperiences(p.experience ?? []);
   const venue = door ? venueById(door.venueId) : undefined;
 
   const canSuggest = !isBlocked && (!req || req.status === 'accepted');
@@ -223,12 +225,24 @@ export default function PersonScreen() {
 
           <Block title="Skills, interests & languages" hint={shared.size ? 'Purple = you share it' : undefined}>
             <View style={styles.chips}>
-              {[...p.skills, ...p.interests, ...p.languages.filter((l) => l !== 'English')].map((x) => (
+              {[...effectiveSkills(p.skills, p.experience), ...p.interests, ...p.languages.filter((l) => l !== 'English')].map((x) => (
                 <Text key={x} style={[styles.chip, shared.has(x) && styles.chipOn]}>{x}</Text>
               ))}
             </View>
             <Text style={T.small}>{fieldLabel(p.field)}</Text>
           </Block>
+
+          {experience.length ? (
+            <Block title="Experience">
+              {experience.map((e) => (
+                <View key={e.id} style={{ gap: 2 }}>
+                  <Text style={T.h3}>{e.title}</Text>
+                  <Text style={T.muted}>{e.org} · {fmtRange(e)}</Text>
+                  {e.description ? <Text style={T.body}>{e.description}</Text> : null}
+                </View>
+              ))}
+            </Block>
+          ) : null}
 
           <Block title="Where you two could meet">
             <MeetSpots person={p} onUse={canSuggest ? useSpot : undefined} useLabel={req?.status === 'accepted' ? 'Suggest in chat' : 'Add to message'} />

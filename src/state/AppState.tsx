@@ -2,11 +2,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DEMO_INCOMING } from '@/data/demo';
 import { dataSource, rememberPeople, setBackendUser, setShowDemo } from '@/data/source';
-import type { ConnectionRequest, IncomingRequest, LatLng, Message, OpenDoor, Prefs, Profile, RequestStatus } from '@/data/types';
+import type { ConnectionRequest, Experience, IncomingRequest, LatLng, Message, OpenDoor, Prefs, Profile, RequestStatus } from '@/data/types';
 import {
   blockRemote, fetchMessages, fetchMyExperiences, syncMyExperiences, fetchMyRequests, fetchPeopleByIds, isRemoteId, loadMyRow, myRow, reportRemote, rowToMine, saveMyRow,
   sendRemoteMessage, sendRemoteRequest, setRemoteRequestStatus, subscribeToMine, unblockRemote, type RemoteMessage, type RemoteRequest,
 } from '@/lib/backend';
+import { EXP_LIMITS, sortExperiences } from '@/lib/experience';
 import { assertClean } from '@/lib/moderation';
 import { NOT_VERIFIED, toVerification, type Verification } from '@/lib/verification';
 import { backendEnabled, supabase } from '@/lib/supabase';
@@ -80,6 +81,9 @@ type Ctx = Omit<AppData, 'requests' | 'messages'> & {
   refreshRemote: () => void;
   setPrefs: (p: Partial<Prefs>) => void;
   setProfile: (p: Partial<Profile>) => void;
+  /** Add or replace experience entries (matched by id). */
+  saveExperiences: (xs: Experience[]) => void;
+  removeExperience: (id: string) => void;
   setShowDemoPeople: (v: boolean) => void;
   setShowDemoEvents: (v: boolean) => void;
   setNearbyAlerts: (v: boolean) => void;
@@ -348,6 +352,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       setPrefs,
       setProfile,
+      saveExperiences: (xs) =>
+        setData((d) => {
+          const byId = new Map(d.prefs.experience.map((e) => [e.id, e]));
+          xs.forEach((e) => byId.set(e.id, e));
+          return { ...d, prefs: { ...d.prefs, experience: sortExperiences([...byId.values()]).slice(0, EXP_LIMITS.entries) } };
+        }),
+      removeExperience: (id) => setData((d) => ({ ...d, prefs: { ...d.prefs, experience: d.prefs.experience.filter((e) => e.id !== id) } })),
       setShowDemoPeople: (v) => setData((d) => ({ ...d, showDemo: v })),
       setShowDemoEvents: (v) => setData((d) => ({ ...d, showDemoEvents: v })),
       setNearbyAlerts: (v) => setData((d) => ({ ...d, nearbyAlerts: v })),

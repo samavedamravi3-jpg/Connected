@@ -1,13 +1,17 @@
 import { router } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Avatar, Button, Card, ChipGroup, KV, Note, Row, Section, Tag } from '@/components/ui';
+import { ExperienceEditor, ResumeReview } from '@/components/ExperienceEditor';
 import { VerifiedBadge } from '@/components/VerifiedBadge';
 import { AVAILABILITY, MEET_MODES, audienceLabel, challengeLabel, dietLabel, fieldLabel, foodLabel, goalLabel, statusLabel, traitLabel, venueById } from '@/data/options';
 import { dataSource } from '@/data/source';
 import { enableNearbyAlerts } from '@/lib/nearbyAlerts';
-import type { AvailabilityId } from '@/data/types';
+import type { AvailabilityId, Experience } from '@/data/types';
+import { emptyExperience, fmtRange, sortExperiences } from '@/lib/experience';
+import { importResumePdf } from '@/lib/resumeImport';
 import { doorState, fullName } from '@/lib/match';
 import { pickProfilePhoto, removeProfilePhoto } from '@/lib/photo';
 import { fmtWindow } from '@/lib/time';
@@ -34,6 +38,26 @@ export default function ProfileTab() {
           { text: 'Cancel', style: 'cancel' },
         ])
       : changePhoto();
+
+  const [editing, setEditing] = useState<Experience | null>(null);
+  const [drafts, setDrafts] = useState<Experience[] | null>(null);
+  const [importing, setImporting] = useState(false);
+  const experience = sortExperiences(prefs.experience);
+
+  const importResume = async () => {
+    setImporting(true);
+    const res = await importResumePdf();
+    setImporting(false);
+    if (res.status === 'cancelled') return;
+    if (res.status === 'ok') return setDrafts(res.drafts);
+    // Proxy off or failed: tell them, then fall back to manual entry.
+    Alert.alert('Couldn’t import', res.message, [{ text: 'Add by hand', onPress: () => setEditing(emptyExperience()) }, { text: 'Not now', style: 'cancel' }]);
+  };
+  const confirmDelete = (e: Experience) =>
+    Alert.alert('Delete this experience?', `${e.title} at ${e.org}`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => app.removeExperience(e.id) },
+    ]);
 
   const toggleAvail = (id: AvailabilityId) =>
     app.setPrefs({ availability: prefs.availability.includes(id) ? prefs.availability.filter((x) => x !== id) : [...prefs.availability, id] });
@@ -223,6 +247,44 @@ export default function ProfileTab() {
           {profile.offer ? <KV k="Can offer" v={profile.offer} /> : null}
         </View>
       </Section>
+
+      <Section title="Experience" right={<Button label="Add" variant="secondary" small icon="add" onPress={() => setEditing(emptyExperience())} />}>
+        {experience.length ? (
+          experience.map((e) => (
+            <Card key={e.id} style={{ gap: S.xs }}>
+              <Text style={T.h3}>{e.title}</Text>
+              <Text style={T.muted}>{e.org} · {fmtRange(e)}</Text>
+              {e.description ? <Text style={T.body}>{e.description}</Text> : null}
+              {e.skills.length ? <Row style={{ marginTop: S.xs }}>{e.skills.map((s) => <Tag key={s} label={s} tone="blue" />)}</Row> : null}
+              <Row style={{ marginTop: S.xs }}>
+                <Button label="Edit" variant="secondary" small onPress={() => setEditing(e)} />
+                <Button label="Delete" variant="danger" small onPress={() => confirmDelete(e)} />
+              </Row>
+            </Card>
+          ))
+        ) : (
+          <Note icon="briefcase-outline">Add jobs, internships or school. The skills, employers and roles you list help us find people who’ve been where you are.</Note>
+        )}
+        <Row>
+          <Button label={importing ? 'Reading your resume…' : 'Import from resume (PDF)'} variant="secondary" small icon="document-text-outline" disabled={importing} onPress={importResume} />
+          {importing ? <ActivityIndicator color={C.accent} /> : null}
+        </Row>
+        <Row style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={T.label}>Show my experience</Text>
+            <Text style={T.small}>Signed-in members who can see your profile can see these entries. Turn off to keep them private. They still help your own matches.</Text>
+          </View>
+          <Switch value={prefs.showExperience} onValueChange={(v) => app.setPrefs({ showExperience: v })} accessibilityLabel="Show my experience" trackColor={{ true: C.accent }} />
+        </Row>
+        {experience.length ? <Text style={T.small}>Resume text is sent to our assistant server only to read it, and isn’t stored.</Text> : null}
+      </Section>
+
+      {editing ? (
+        <ExperienceEditor initial={editing} onClose={() => setEditing(null)} onSave={(e) => { app.saveExperiences([e]); setEditing(null); }} />
+      ) : null}
+      {drafts ? (
+        <ResumeReview initial={drafts} onClose={() => setDrafts(null)} onSaveAll={(xs) => { app.saveExperiences(xs); setDrafts(null); }} />
+      ) : null}
 
       <Section title="Privacy">
         <Note icon="lock-closed-outline">
