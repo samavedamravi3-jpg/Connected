@@ -463,3 +463,86 @@ create trigger messages_moderation
   before insert on public.messages
   for each row execute function public.messages_moderation();
 -- <<< moderation
+
+-- ---------------------------------------------------------------------------
+-- Experience (work and school history)
+-- Visible to the owner, and to signed-in members who can already see the owner's profile
+-- when the owner left "Show my experience" on. Only the owner can write.
+-- ---------------------------------------------------------------------------
+
+alter table public.profiles add column if not exists show_experience boolean not null default true;
+
+create table if not exists public.experiences (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  title text not null,
+  org text not null,
+  start_month text not null,
+  end_month text,
+  description text not null default '',
+  skills text[] not null default '{}',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint experiences_title_len check (char_length(title) between 1 and 120),
+  constraint experiences_org_len check (char_length(org) between 1 and 120),
+  constraint experiences_desc_len check (char_length(description) <= 1000),
+  constraint experiences_skills_len check (coalesce(cardinality(skills), 0) <= 15),
+  constraint experiences_start_fmt check (start_month ~ '^\d{4}-(0[1-9]|1[0-2])$'),
+  constraint experiences_end_fmt check (end_month is null or (end_month ~ '^\d{4}-(0[1-9]|1[0-2])$' and end_month >= start_month))
+);
+
+create index if not exists experiences_user_idx on public.experiences (user_id);
+
+alter table public.experiences enable row level security;
+
+drop policy if exists "experiences: read own or shown" on public.experiences;
+create policy "experiences: read own or shown" on public.experiences
+  for select to authenticated
+  using (
+    user_id = (select auth.uid())
+    or (
+      not public.is_blocked((select auth.uid()), user_id)
+      and exists (
+        select 1 from public.profiles p
+        where p.id = experiences.user_id
+          and p.show_experience
+          and (p.discoverable or public.has_connection((select auth.uid()), p.id))
+      )
+    )
+  );
+
+drop policy if exists "experiences: insert own" on public.experiences;
+create policy "experiences: insert own" on public.experiences
+  for insert to authenticated with check (user_id = (select auth.uid()));
+
+drop policy if exists "experiences: update own" on public.experiences;
+create policy "experiences: update own" on public.experiences
+  for update to authenticated using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+
+drop policy if exists "experiences: delete own" on public.experiences;
+create policy "experiences: delete own" on public.experiences
+  for delete to authenticated using (user_id = (select auth.uid()));
+
+create or replace function public.experiences_before_write()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if not (public.moderation_is_clean(new.title) and public.moderation_is_clean(new.org)
+          and public.moderation_is_clean(new.description)
+          and not exists (select 1 from unnest(new.skills) s where char_length(s) > 40 or not public.moderation_is_clean(s))) then
+    raise exception 'content_blocked: experience text is not allowed';
+  end if;
+  if tg_op = 'INSERT' and (select count(*) from public.experiences where user_id = new.user_id) >= 30 then
+    raise exception 'You can list up to 30 experiences.';
+  end if;
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
+drop trigger if exists experiences_before_write on public.experiences;
+create trigger experiences_before_write
+  before insert or update on public.experiences
+  for each row execute function public.experiences_before_write();

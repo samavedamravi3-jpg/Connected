@@ -9,8 +9,9 @@ import { router } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import { fieldLabel } from '@/data/options';
-import type { CommunityEvent, FieldId, LatLng, Person } from '@/data/types';
+import type { CommunityEvent, FieldId, LatLng, Person, Prefs } from '@/data/types';
 import { distanceMi } from './geo';
+import { matchPoints } from './match';
 
 export const ALERT_RADIUS_MI = 1;
 const COOLDOWN_MS = 3 * 3_600_000;
@@ -57,7 +58,7 @@ const send = (title: string, body: string, data: Record<string, string>) =>
     trigger: Platform.OS === 'android' ? { channelId: CHANNEL } : null,
   }).catch(() => {});
 
-export function useNearbyAlerts(enabled: boolean, me: LatLng | null, people: Person[], myField: FieldId | null | undefined, events: CommunityEvent[] = []) {
+export function useNearbyAlerts(enabled: boolean, me: LatLng | null, people: Person[], myField: FieldId | null | undefined, events: CommunityEvent[] = [], prefs?: Prefs) {
   const lastAlert = useRef(new Map<string, number>());
   const lat = me?.latitude;
   const lng = me?.longitude;
@@ -70,9 +71,11 @@ export function useNearbyAlerts(enabled: boolean, me: LatLng | null, people: Per
       if (now - (lastAlert.current.get(p.id) ?? 0) < COOLDOWN_MS) continue;
       lastAlert.current.set(p.id, now);
       const mi = distanceMi(here, p.coord);
+      // Lead with why they fit (shared skill, employer or role from experience) when there is one.
+      const why = prefs ? matchPoints(p, prefs).find((x) => /^(Also worked at|Also skilled in|Has worked in)/.test(x.text))?.text : undefined;
       send(
         `${p.name} is nearby · ${fieldLabel(p.field)}`,
-        `${p.role}${p.org ? ` at ${p.org}` : ''} · ${mi < 0.3 ? 'right around you' : `about ${mi.toFixed(1)} mi away`}. Tap to say hi.`,
+        `${why ? `${why}. ` : ''}${p.role}${p.org ? ` at ${p.org}` : ''} · ${mi < 0.3 ? 'right around you' : `about ${mi.toFixed(1)} mi away`}. Tap to say hi.`,
         { personId: p.id },
       );
     }
@@ -83,7 +86,7 @@ export function useNearbyAlerts(enabled: boolean, me: LatLng | null, people: Per
       const mins = Math.max(0, Math.round((e.start - now) / 60_000));
       send(`${e.title} · ${fieldLabel(e.field)}`, `${mins <= 0 ? 'Starting now' : `Starts in ${mins} min`} at ${e.venue}, within ${ALERT_RADIUS_MI} mile of you.`, { eventId: e.id });
     }
-  }, [enabled, lat, lng, people, myField, events]);
+  }, [enabled, lat, lng, people, myField, events, prefs]);
 
   // Tapping an alert opens that person's profile or event.
   useEffect(() => {

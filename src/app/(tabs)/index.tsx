@@ -221,7 +221,7 @@ export default function MapScreen() {
   // "Someone is nearby" alerts: real members within 1 mile of your live position, while the map is open.
   const alertPool = useMemo(() => pool.filter((p) => !blocked.includes(p.id)), [pool, blocked]);
   const liveMe = live && loc.fix ? loc.fix.coord : null;
-  useNearbyAlerts(app.nearbyAlerts, liveMe, alertPool, prefs.field, allEvents);
+  useNearbyAlerts(app.nearbyAlerts, liveMe, alertPool, prefs.field, allEvents, prefs);
   const closeBy = liveMe ? peopleWithin(liveMe, alertPool, prefs.field).length : 0;
   const toggleAlerts = async () => {
     if (app.nearbyAlerts) return app.setNearbyAlerts(false);

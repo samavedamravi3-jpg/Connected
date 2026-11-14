@@ -9,6 +9,7 @@
  */
 import { CHALLENGES, LANGUAGES, TRAITS, fieldLabel, foodLabel } from '@/data/options';
 import type { ChallengeId, ConnectionRequest, FieldId, Person, Prefs, Profile, TraitId } from '@/data/types';
+import { effectiveSkills } from './experience';
 import { conversationStarter, firstName, fullName, matchPoints, matchScore, matchStrength } from './match';
 
 export type AssistantAction = { label: string; href: '/search' | '/open-door' | '/(tabs)/events' | '/(tabs)/inbox' | '/(tabs)/profile' | '/onboarding' | '/person/[id]'; params?: Record<string, string> };
@@ -254,11 +255,12 @@ export function contextForClaude(ctx: AssistantContext): string {
     `Name: ${fullName(ctx.profile) || 'not set'}; status: ${ctx.profile.status ?? 'not set'}; org: ${ctx.profile.org || 'n/a'}`,
     `Wants to grow in: ${p.field ? fieldLabel(p.field) : 'not set'}${p.fromField ? `, coming from ${fieldLabel(p.fromField)}` : ''}`,
     `Goals: ${p.goals.join(', ') || 'none'}; challenges: ${p.challenges.join(', ') || 'none'}; clicks with: ${p.wantTraits.join(', ') || 'anyone'}`,
-    `Interests: ${p.interests.join(', ') || 'none'}; skills: ${p.skills.join(', ') || 'none'}; languages: ${p.languages.join(', ')}; foods: ${p.foods.join(', ') || 'none'}`,
+    `Interests: ${p.interests.join(', ') || 'none'}; skills: ${effectiveSkills(p.skills, p.experience).join(', ') || 'none'}; languages: ${p.languages.join(', ')}; foods: ${p.foods.join(', ') || 'none'}`,
+    `Experience: ${p.experience.slice(0, 4).map((e) => `${e.title} at ${e.org}`).join('; ') || 'none listed'}`,
     `Intro: ${ctx.profile.intro || 'n/a'}`,
   ].join('\n');
   const list = top
-    .map((x) => `- ${x.name} (id ${x.id}): ${x.role} at ${x.org}, ${x.areaName}. Field ${fieldLabel(x.field)}. Helps with: ${x.helpsWith.join('; ')}. Languages: ${x.languages.join(', ')}. Match: ${matchStrength(x, p)}. Bio: ${x.bio}`)
+    .map((x) => `- ${x.name} (id ${x.id}): ${x.role} at ${x.org}, ${x.areaName}. Field ${fieldLabel(x.field)}. Helps with: ${x.helpsWith.join('; ')}. Languages: ${x.languages.join(', ')}. Match: ${matchStrength(x, p)}. Bio: ${x.bio}${x.experience?.length ? `. Experience: ${x.experience.slice(0, 3).map((e) => `${e.title} at ${e.org}`).join('; ')}` : ''}`)
     .join('\n');
   const reqs = ctx.requests.filter((r) => r.status !== 'cancelled').map((r) => `${ctx.people.find((x) => x.id === r.personId)?.name ?? r.personId}: ${r.status}`).join('; ');
   return `ABOUT THE USER\n${me}\n\nBEST-MATCHED PEOPLE NEARBY (demo profiles)\n${list}\n\nUSER'S REQUESTS\n${reqs || 'none'}`;

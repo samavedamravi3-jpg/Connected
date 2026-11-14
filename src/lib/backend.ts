@@ -4,8 +4,9 @@
  */
 import { CHARLOTTE_CENTER, statusLabel } from '@/data/options';
 import type {
-  AvailabilityId, ChallengeId, DietId, FieldId, FoodId, GoalId, LatLng, MeetMode, Mode, Person, Prefs, Profile, RequestStatus, ShareMode, StatusId, TraitId,
+  AvailabilityId, ChallengeId, DietId, Experience, FieldId, FoodId, GoalId, LatLng, MeetMode, Mode, Person, Prefs, Profile, RequestStatus, ShareMode, StatusId, TraitId,
 } from '@/data/types';
+import { cleanExperience, experienceTexts } from './experience';
 import { fieldLabelShort } from './match';
 import { assertClean, dbError } from './moderation';
 import { supabase } from './supabase';
@@ -33,6 +34,7 @@ export type ProfileRow = {
   meet_mode: MeetMode;
   share_mode: ShareMode;
   discoverable: boolean;
+  show_experience?: boolean;
   area_name: string | null;
   area_lat: number | null;
   area_lng: number | null;
@@ -133,6 +135,7 @@ export function myRow(userId: string, profile: Profile, prefs: Prefs, here: { co
     meet_mode: prefs.meetMode,
     share_mode: prefs.shareMode,
     discoverable: prefs.discoverable,
+    show_experience: prefs.showExperience,
     // Rounded again by the database; "public places only" stores no area at all.
     area_name: prefs.shareMode === 'area' && here ? (here.label === 'you' ? null : here.label) : null,
     area_lat: prefs.shareMode === 'area' && here ? Math.round(here.coord.latitude * 100) / 100 : null,
@@ -153,7 +156,7 @@ export function rowToMine(r: ProfileRow): { profile: Partial<Profile>; prefs: Pa
     prefs: {
       field: r.field, fromField: r.from_field, mode: r.mode, goals: r.goals, challenges: r.challenges, wantTraits: r.want_traits,
       interests: r.interests, skills: r.skills, languages: r.languages, foods: r.foods, diet: r.diet, availability: r.availability,
-      meetMode: r.meet_mode, shareMode: r.share_mode, discoverable: r.discoverable,
+      meetMode: r.meet_mode, shareMode: r.share_mode, discoverable: r.discoverable, showExperience: r.show_experience ?? true,
     },
   };
 }
@@ -173,21 +176,59 @@ export async function saveMyRow(row: MyRow): Promise<void> {
 export async function fetchNearby(center: LatLng, radiusMi: number): Promise<Person[]> {
   const { data, error } = await db().rpc('nearby_profiles', { lat: center.latitude, lng: center.longitude, radius_mi: radiusMi });
   if (error) throw error;
-  return ((data ?? []) as ProfileRow[]).map(rowToPerson);
+  return withExperience(((data ?? []) as ProfileRow[]).map(rowToPerson));
 }
 
 /** Everyone you're allowed to see (for search and the assistant). RLS filters the rows. */
 export async function fetchVisible(myId: string): Promise<Person[]> {
   const { data, error } = await db().from('profiles').select('*').neq('id', myId).eq('discoverable', true).limit(300);
   if (error) throw error;
-  return ((data ?? []) as ProfileRow[]).map(rowToPerson);
+  return withExperience(((data ?? []) as ProfileRow[]).map(rowToPerson));
 }
 
 export async function fetchPeopleByIds(ids: string[]): Promise<Person[]> {
   if (!ids.length) return [];
   const { data, error } = await db().from('profiles').select('*').in('id', ids);
   if (error) throw error;
-  return ((data ?? []) as ProfileRow[]).map(rowToPerson);
+  return withExperience(((data ?? []) as ProfileRow[]).map(rowToPerson));
+}
+
+// ---------------------------------------------------------------------------
+// Experience
+// ---------------------------------------------------------------------------
+
+type ExperienceRow = { id: string; user_id: string; title: string; org: string; start_month: string; end_month: string | null; description: string; skills: string[] };
+
+const rowToExperience = (r: ExperienceRow): Experience =>
+  cleanExperience({ id: r.id, title: r.title, org: r.org, start: r.start_month, end: r.end_month, description: r.description, skills: r.skills });
+
+export async function fetchMyExperiences(userId: string): Promise<Experience[]> {
+  const { data, error } = await db().from('experiences').select('*').eq('user_id', userId).order('start_month', { ascending: false }).limit(30);
+  if (error) throw error;
+  return ((data ?? []) as ExperienceRow[]).map(rowToExperience);
+}
+
+/** Makes the stored list match `list`: upserts every entry and removes the ones you deleted. */
+export async function syncMyExperiences(userId: string, list: Experience[]): Promise<void> {
+  assertClean(...list.flatMap(experienceTexts));
+  if (list.length) {
+    const rows = list.map((e) => ({ id: e.id, user_id: userId, title: e.title, org: e.org, start_month: e.start, end_month: e.end, description: e.description, skills: e.skills }));
+    const { error } = await db().from('experiences').upsert(rows);
+    if (error) throw dbError(error);
+  }
+  const del = db().from('experiences').delete().eq('user_id', userId);
+  const { error } = list.length ? await del.not('id', 'in', `(${list.map((e) => e.id).join(',')})`) : await del;
+  if (error) throw error;
+}
+
+/** Adds each person's visible experience. RLS returns only rows they chose to show. */
+async function withExperience(people: Person[]): Promise<Person[]> {
+  if (!people.length) return people;
+  const { data, error } = await db().from('experiences').select('*').in('user_id', people.map((p) => p.id)).limit(2000);
+  if (error) return people;
+  const by = new Map<string, Experience[]>();
+  for (const r of (data ?? []) as ExperienceRow[]) by.set(r.user_id, [...(by.get(r.user_id) ?? []), rowToExperience(r)]);
+  return people.map((p) => (by.has(p.id) ? { ...p, experience: by.get(p.id) } : p));
 }
 
 // ---------------------------------------------------------------------------

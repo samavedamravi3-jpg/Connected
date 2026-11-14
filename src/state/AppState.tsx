@@ -4,7 +4,7 @@ import { DEMO_INCOMING } from '@/data/demo';
 import { dataSource, rememberPeople, setBackendUser, setShowDemo } from '@/data/source';
 import type { ConnectionRequest, IncomingRequest, LatLng, Message, OpenDoor, Prefs, Profile, RequestStatus } from '@/data/types';
 import {
-  blockRemote, fetchMessages, fetchMyRequests, fetchPeopleByIds, isRemoteId, loadMyRow, myRow, reportRemote, rowToMine, saveMyRow,
+  blockRemote, fetchMessages, fetchMyExperiences, syncMyExperiences, fetchMyRequests, fetchPeopleByIds, isRemoteId, loadMyRow, myRow, reportRemote, rowToMine, saveMyRow,
   sendRemoteMessage, sendRemoteRequest, setRemoteRequestStatus, subscribeToMine, unblockRemote, type RemoteMessage, type RemoteRequest,
 } from '@/lib/backend';
 import { assertClean } from '@/lib/moderation';
@@ -216,6 +216,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }, 1200);
     return () => clearTimeout(t);
   }, [session, data.onboarded, data.profile, data.prefs, hereKey]);
+
+  // ---- Experience sync: pull once after sign-in (remote wins when it has entries), then push changes ----
+  const [expReady, setExpReady] = useState<string | null>(null);
+  useEffect(() => {
+    if (!sessionUserId || !hydrated) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setExpReady(null);
+      return;
+    }
+    let alive = true;
+    fetchMyExperiences(sessionUserId)
+      .then((list) => {
+        if (!alive) return;
+        if (list.length) setData((d) => ({ ...d, prefs: { ...d.prefs, experience: list } }));
+        setExpReady(sessionUserId);
+      })
+      .catch((e) => console.warn('Could not load experience', e));
+    return () => {
+      alive = false;
+    };
+  }, [sessionUserId, hydrated]);
+  useEffect(() => {
+    if (!sessionUserId || expReady !== sessionUserId) return;
+    const t = setTimeout(() => {
+      syncMyExperiences(sessionUserId, data.prefs.experience).catch((e) => console.warn('Could not save experience', e));
+    }, 800);
+    return () => clearTimeout(t);
+  }, [sessionUserId, expReady, data.prefs.experience]);
 
   // ---- Demo replies and the clock -----------------------------------------------------------------
   const resolve = useCallback((id: string, forced: 'accepted' | 'declined' | undefined, at: number) => {
