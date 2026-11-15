@@ -37,7 +37,7 @@ export default function AssistantScreen() {
     return () => { alive = false; };
   }, []);
 
-  const ctx: AssistantContext = { prefs: app.prefs, profile: app.profile, people, requests: app.requests, blocked: app.blocked };
+  const ctx: AssistantContext = { prefs: app.prefs, profile: app.profile, people, requests: app.requests, blocked: [...app.blocked, ...app.muted] };
 
   const send = async (raw: string) => {
     const q = raw.trim();

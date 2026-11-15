@@ -251,6 +251,18 @@ export default function ProfileTab() {
         ) : (
           <Text style={T.small}>You haven’t blocked anyone.</Text>
         )}
+        {app.muted.map((id) => (
+          <Row key={id} style={{ justifyContent: 'space-between' }}>
+            <Text style={T.body}>{dataSource.getPerson(id)?.name ?? id} (muted)</Text>
+            <Button label="Unmute" variant="quiet" small onPress={() => app.unmute(id)} />
+          </Row>
+        ))}
+        {app.hiddenEvents.length || app.mutedHosts.length ? (
+          <Row style={{ justifyContent: 'space-between' }}>
+            <Text style={[T.body, { flex: 1 }]}>{app.hiddenEvents.length} hidden events, {app.mutedHosts.length} muted hosts</Text>
+            <Button label="Show again" variant="quiet" small onPress={app.restoreEvents} />
+          </Row>
+        ) : null}
       </Section>
 
       <Button

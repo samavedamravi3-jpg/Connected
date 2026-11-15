@@ -37,6 +37,7 @@ const miLabel = (mi: number) => (mi < 10 ? `${mi.toFixed(1)} mi` : `${Math.round
 
 export default function Events() {
   const app = useApp();
+  const { eventHidden } = app;
   const [res, setRes] = useState<EventsResult | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const all = res?.events ?? null;
@@ -62,11 +63,12 @@ export default function Events() {
     const now = app.now;
     const limit = when === 'week' ? now + 7 * 864e5 : when === 'month' ? now + 31 * 864e5 : Infinity;
     return all
+      .filter((e) => !eventHidden(e))
       .map((e) => ({ ...e, mi: e.online ? 0 : distanceMi(origin, e.coord) }))
       .filter((e) => (cat === 'all' || cat === 'saved' || e.category === cat) && (cat !== 'saved' || app.savedEvents.includes(e.id)))
       .filter((e) => e.start <= limit && e.mi <= maxMi)
       .sort((a, b) => Number(b.field === app.prefs.field && !!app.prefs.field) - Number(a.field === app.prefs.field && !!app.prefs.field) || a.start - b.start);
-  }, [all, cat, when, maxMi, app.savedEvents, app.now, origin, app.prefs.field]);
+  }, [all, cat, when, maxMi, app.savedEvents, eventHidden, app.now, origin, app.prefs.field]);
 
   const noLive = !!res && !res.liveCount && !withDemo;
   const thisWeek = list.filter((e) => e.start <= app.now + 7 * 864e5);

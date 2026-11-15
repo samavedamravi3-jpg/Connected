@@ -84,7 +84,8 @@ const regionFor = (c: LatLng, mi: number): Region => ({ ...c, latitudeDelta: del
 
 export default function MapScreen() {
   const app = useApp();
-  const { prefs, profile, blocked, setHere } = app;
+  const { prefs, profile, setHere } = app;
+  const blocked = useMemo(() => [...app.blocked, ...app.muted], [app.blocked, app.muted]);
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   const [initialRegion] = useState(() => regionFor(CHARLOTTE_CENTER, prefs.travelMi));
@@ -209,9 +210,11 @@ export default function MapScreen() {
     dataSource.listEvents({ withDemo: true }).then((r) => alive && setAllEvents(r.events.filter((e) => e.end > Date.now()))).catch(() => {});
     return () => { alive = false; };
   }, [showEvents, app.nearbyAlerts]);
+  const { eventHidden } = app;
+  const visibleEvents = useMemo(() => allEvents.filter((e) => !eventHidden(e)), [allEvents, eventHidden]);
   const mapEvents = useMemo(
-    () => sortMyFieldFirst(showEvents ? allEvents.filter((e) => !e.online && distanceMi(origin, e.coord) <= filters.distanceMi) : [], prefs.field),
-    [showEvents, allEvents, origin, filters.distanceMi, prefs.field],
+    () => sortMyFieldFirst(showEvents ? visibleEvents.filter((e) => !e.online && distanceMi(origin, e.coord) <= filters.distanceMi) : [], prefs.field),
+    [showEvents, visibleEvents, origin, filters.distanceMi, prefs.field],
   );
   const fromLabel = me ? 'away' : `from ${areaName}`;
   const placeLabel = me ? (loc.place ?? 'Your location') : areaName;
@@ -233,7 +236,7 @@ export default function MapScreen() {
     // Only fresh server results alert: map-loaded people may carry old saved areas.
     return presence.candidates.filter((p) => !blocked.includes(p.id) && !ids.has(p.id) && ids.add(p.id));
   }, [presence.candidates, blocked]);
-  useNearbyAlerts(app.nearbyAlerts, liveMe, alertPeople, prefs.field, allEvents, prefs);
+  useNearbyAlerts(app.nearbyAlerts, liveMe, alertPeople, prefs.field, visibleEvents, prefs);
   const countAt = liveMe ?? (sim ? origin : null);
   const closeBy = countAt ? alertPeople.length + (sim ? 1 : 0) : 0;
 

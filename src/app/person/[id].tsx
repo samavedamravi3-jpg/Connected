@@ -122,6 +122,13 @@ export default function PersonScreen() {
           ]),
       },
       {
+        text: `Mute ${first}`,
+        onPress: () => Alert.alert(`Mute ${first}?`, `${first} won't appear on your map, in search or in alerts, and won't be told. You can unmute in Profile.`, [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Mute', onPress: () => { app.mute(p.id); router.back(); } },
+        ]),
+      },
+      {
         text: 'Report',
         style: 'destructive',
         onPress: () =>

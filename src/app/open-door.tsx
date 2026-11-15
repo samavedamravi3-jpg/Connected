@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, Button, Chip, ChipGroup, Choice, KV, Note, Segmented } from '@/components/ui';
 import { AUDIENCES, VENUES, audienceLabel, fieldLabel, statusLabel, venueById } from '@/data/options';
@@ -69,6 +69,12 @@ export default function OpenDoorScreen() {
 
   const publish = async () => {
     if (!existing && (await idBlocks(app.idStatus, 'host an Open Door'))) return;
+    if (!existing) {
+      // Open Doors live on the phone, so this limit is client-side only: 2 a day for new or unverified accounts, else 6.
+      const trusted = app.verification.verified || app.idStatus === 'verified';
+      const today = app.doors.filter((d) => Date.now() - Number(d.id.replace('door-', '')) < 864e5).length;
+      if (today >= (trusted ? 6 : 2)) return Alert.alert('That’s plenty for today', trusted ? 'You can host up to 6 Open Doors a day.' : 'Unverified accounts can host 2 Open Doors a day. Verify your email or ID to host more.');
+    }
     const door: OpenDoor = { id: existing?.id ?? `door-${Date.now()}`, venueId, start: effectiveStart, end, lengthMin, topics, audience };
     app.saveDoor(door);
     router.back();

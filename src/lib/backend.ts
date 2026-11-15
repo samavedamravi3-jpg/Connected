@@ -294,9 +294,32 @@ export async function unblockRemote(myId: string, personId: string): Promise<voi
   if (error) throw error;
 }
 
+/** One report per reporter per subject: a second report of the same person or event is not an error. */
 export async function reportRemote(personId: string, reason: string): Promise<void> {
   const { error } = await db().from('reports').insert({ reported: personId, reason });
+  if (error && error.code !== '23505') throw error;
+}
+
+export async function reportEventRemote(eventId: string, reason: string): Promise<void> {
+  const { error } = await db().from('reports').insert({ subject_kind: 'event', subject_id: eventId, reason });
+  if (error && error.code !== '23505') throw error;
+}
+
+export async function muteRemote(personId: string): Promise<void> {
+  const { error } = await db().from('mutes').upsert({ muted: personId });
   if (error) throw error;
+}
+
+export async function unmuteRemote(myId: string, personId: string): Promise<void> {
+  const { error } = await db().from('mutes').delete().eq('muter', myId).eq('muted', personId);
+  if (error) throw error;
+}
+
+/** Events reported by 3+ different people. The app hides them. */
+export async function fetchHiddenEventIds(): Promise<string[]> {
+  const { data, error } = await db().rpc('hidden_event_ids');
+  if (error) throw error;
+  return (data ?? []) as string[];
 }
 
 /** Live updates for your requests and messages. Returns an unsubscribe function. */

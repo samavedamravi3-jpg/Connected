@@ -42,6 +42,8 @@ create table if not exists public.profiles (
   constraint profiles_name_len check (char_length(first_name) <= 60 and char_length(last_name) <= 60),
   constraint profiles_text_len check (char_length(intro) <= 400 and char_length(offer) <= 300 and char_length(org) <= 120)
 );
+-- Set by the report auto-hide (see the misuse controls at the end of this file); the app cannot change it.
+alter table public.profiles add column if not exists hidden boolean not null default false;
 
 create table if not exists public.blocks (
   blocker uuid not null references auth.users (id) on delete cascade default auth.uid(),
@@ -230,7 +232,8 @@ create policy "profiles: read visible" on public.profiles
   using (
     id = auth.uid()
     or (
-      not public.is_blocked(auth.uid(), id)
+      not hidden
+      and not public.is_blocked(auth.uid(), id)
       and (discoverable or public.has_connection(auth.uid(), id))
     )
   );
@@ -737,6 +740,7 @@ begin
     and me.area_seen_at > now() - interval '30 minutes'
     and p.field = me.field
     and p.id <> me.id
+    and not exists (select 1 from public.mutes mu where mu.muter = auth.uid() and mu.muted = p.id)
     and p.verified
     and p.discoverable
     and p.area_lat is not null and p.area_lng is not null
@@ -755,3 +759,208 @@ revoke all on function public.set_my_area(double precision, double precision) fr
 revoke all on function public.alert_candidates(double precision, double precision, double precision) from public, anon;
 grant execute on function public.set_my_area(double precision, double precision) to authenticated;
 grant execute on function public.alert_candidates(double precision, double precision, double precision) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Account-misuse controls: audit log, rate limits, mute, report auto-hide, fake-account signals, review queue
+-- ---------------------------------------------------------------------------
+-- Private tables: RLS on and no policies, so only the service role / SQL editor / definer functions touch them.
+
+alter table public.profiles add column if not exists created_at timestamptz not null default now();
+
+create table if not exists public.audit_log (
+  id bigserial primary key,
+  at timestamptz not null default now(),
+  actor uuid,
+  action text not null,
+  subject text,
+  detail jsonb not null default '{}'
+);
+alter table public.audit_log enable row level security;
+revoke all on public.audit_log from anon, authenticated;
+
+create table if not exists public.rate_log (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  kind text not null,
+  at timestamptz not null default now()
+);
+create index if not exists rate_log_lookup on public.rate_log (user_id, kind, at desc);
+alter table public.rate_log enable row level security;
+revoke all on public.rate_log from anon, authenticated;
+
+-- Brand-new (under 24 h) or unverified accounts (no email or ID check) get the stricter limit.
+create or replace function public.rate_check(p_kind text, p_limit_strict int, p_limit int, p_window interval)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  uid uuid := auth.uid();
+  strict boolean;
+  n int;
+begin
+  if uid is null then return; end if; -- service role / SQL editor are not limited
+  strict := coalesce((select u.created_at > now() - interval '24 hours' from auth.users u where u.id = uid), true)
+            or not coalesce((select p.verified or p.id_verified from public.profiles p where p.id = uid), false);
+  select count(*) into n from public.rate_log where user_id = uid and kind = p_kind and at > now() - p_window;
+  if n >= case when strict then p_limit_strict else p_limit end then
+    raise exception 'rate_limited: slow down and try again later' using errcode = '54000';
+  end if;
+  insert into public.rate_log (user_id, kind) values (uid, p_kind);
+  delete from public.rate_log where user_id = uid and at < now() - interval '2 days';
+end;
+$$;
+revoke all on function public.rate_check(text, int, int, interval) from public, anon, authenticated;
+
+-- Connection requests: 3 a day (strict) or 15 a day.
+create or replace function public.requests_rate_limit()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  perform public.rate_check('request', 3, 15, interval '1 day');
+  return new;
+end;
+$$;
+drop trigger if exists requests_rate_limit on public.connection_requests;
+create trigger requests_rate_limit before insert on public.connection_requests for each row execute function public.requests_rate_limit();
+
+-- Profile edits: only edits to text fields count (position updates and syncs do not). 30 an hour (strict) or 120.
+create or replace function public.profiles_rate_limit()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  if tg_op = 'UPDATE' and (
+       new.first_name is distinct from old.first_name or new.last_name is distinct from old.last_name or new.org is distinct from old.org
+       or new.intro is distinct from old.intro or new.offer is distinct from old.offer
+       or new.interests is distinct from old.interests or new.skills is distinct from old.skills or new.languages is distinct from old.languages) then
+    perform public.rate_check('profile_edit', 30, 120, interval '1 hour');
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists profiles_rate_limit on public.profiles;
+create trigger profiles_rate_limit before update on public.profiles for each row execute function public.profiles_rate_limit();
+
+-- Mute: hide someone from your map and alerts without telling them (a block is the stronger option).
+create table if not exists public.mutes (
+  muter uuid not null references auth.users (id) on delete cascade default auth.uid(),
+  muted uuid not null references auth.users (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (muter, muted)
+);
+alter table public.mutes enable row level security;
+drop policy if exists "mutes: own" on public.mutes;
+create policy "mutes: own" on public.mutes for all to authenticated using (muter = (select auth.uid())) with check (muter = (select auth.uid()));
+revoke all on public.mutes from anon;
+grant select, insert, delete on public.mutes to authenticated;
+
+-- Reports: one per reporter per subject (a profile or an event). Three distinct reporters auto-hide the subject.
+alter table public.reports alter column reported drop not null;
+alter table public.reports add column if not exists subject_kind text not null default 'profile';
+alter table public.reports drop constraint if exists reports_subject_kind_check;
+alter table public.reports add constraint reports_subject_kind_check check (subject_kind in ('profile', 'event'));
+alter table public.reports add column if not exists subject_id text;
+update public.reports set subject_id = reported::text where subject_id is null and reported is not null;
+delete from public.reports a using public.reports b
+  where a.ctid < b.ctid and a.reporter = b.reporter and a.subject_kind = b.subject_kind and a.subject_id is not distinct from b.subject_id;
+create unique index if not exists reports_one_per_reporter on public.reports (reporter, subject_kind, subject_id);
+
+alter table public.profiles add column if not exists hidden boolean not null default false;
+
+create or replace function public.profiles_protect_hidden()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  if current_user in ('authenticated', 'anon') then
+    new.hidden := case when tg_op = 'INSERT' then false else old.hidden end;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists profiles_protect_hidden on public.profiles;
+create trigger profiles_protect_hidden before insert or update on public.profiles for each row execute function public.profiles_protect_hidden();
+
+create or replace function public.reports_before()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  if new.subject_id is null then new.subject_id := new.reported::text; end if;
+  if new.subject_id is null or new.subject_id = '' or char_length(new.subject_id) > 200 then raise exception 'invalid report'; end if;
+  if new.subject_kind = 'profile' and new.subject_id = auth.uid()::text then raise exception 'invalid report'; end if;
+  perform public.rate_check('report', 10, 30, interval '1 day');
+  return new;
+end;
+$$;
+drop trigger if exists reports_before on public.reports;
+create trigger reports_before before insert on public.reports for each row execute function public.reports_before();
+
+create or replace function public.reports_after()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare n int;
+begin
+  insert into public.audit_log (actor, action, subject, detail)
+    values (new.reporter, 'report', new.subject_kind || ':' || new.subject_id, jsonb_build_object('reason', new.reason));
+  select count(distinct reporter) into n from public.reports where subject_kind = new.subject_kind and subject_id = new.subject_id;
+  if n >= 3 and new.subject_kind = 'profile' then
+    update public.profiles set hidden = true where id::text = new.subject_id and not hidden;
+    if found then
+      insert into public.audit_log (action, subject, detail) values ('auto_hide', 'profile:' || new.subject_id, jsonb_build_object('reporters', n));
+    end if;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists reports_after on public.reports;
+create trigger reports_after after insert on public.reports for each row execute function public.reports_after();
+
+-- Events come from outside the database, so their auto-hide is a list the app filters by.
+create or replace function public.hidden_event_ids()
+returns setof text language sql stable security definer set search_path = '' as $$
+  select subject_id from public.reports where subject_kind = 'event' group by subject_id having count(distinct reporter) >= 3;
+$$;
+revoke all on function public.hidden_event_ids() from public, anon;
+grant execute on function public.hidden_event_ids() to authenticated;
+
+-- Fake-account signals (flag only, nothing is blocked automatically): the same name on two accounts, or 5+ signups in 10 minutes.
+-- Profile photos are kept on the phone, so "same name and photo" cannot be compared here.
+create table if not exists public.account_signals (
+  id bigserial primary key,
+  at timestamptz not null default now(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  kind text not null check (kind in ('same_name', 'burst_signup')),
+  detail jsonb not null default '{}'
+);
+alter table public.account_signals enable row level security;
+revoke all on public.account_signals from anon, authenticated;
+
+create or replace function public.profiles_signals()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare other uuid;
+begin
+  if tg_op = 'INSERT' then
+    if (select count(*) from public.profiles where created_at > now() - interval '10 minutes') >= 5 then
+      insert into public.account_signals (user_id, kind, detail) values (new.id, 'burst_signup', '{}');
+    end if;
+  end if;
+  if char_length(btrim(new.first_name)) > 0 and char_length(btrim(new.last_name)) > 0
+     and (tg_op = 'INSERT' or new.first_name is distinct from old.first_name or new.last_name is distinct from old.last_name) then
+    select p.id into other from public.profiles p
+      where p.id <> new.id and lower(btrim(p.first_name)) = lower(btrim(new.first_name)) and lower(btrim(p.last_name)) = lower(btrim(new.last_name)) limit 1;
+    if other is not null then
+      insert into public.account_signals (user_id, kind, detail) values (new.id, 'same_name', jsonb_build_object('other', other));
+    end if;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists profiles_signals on public.profiles;
+create trigger profiles_signals after insert or update on public.profiles for each row execute function public.profiles_signals();
+
+-- Admin review queue (SQL editor / service role only): reported subjects and fake-account signals, newest first.
+create or replace view public.admin_review_queue with (security_invoker = true) as
+  select 'report'::text as source, r.subject_kind || ':' || r.subject_id as subject, count(distinct r.reporter) as people, array_agg(distinct r.reason) as reasons,
+         max(r.created_at) as last_at, coalesce(bool_or(p.hidden), false) as hidden
+    from public.reports r left join public.profiles p on r.subject_kind = 'profile' and p.id::text = r.subject_id
+    group by r.subject_kind, r.subject_id
+  union all
+  select 'signal', s.user_id::text, count(*), array_agg(distinct s.kind), max(s.at), false
+    from public.account_signals s group by s.user_id
+  order by last_at desc;
+revoke all on public.admin_review_queue from anon, authenticated;
+-- To restore a wrongly hidden profile:  update public.profiles set hidden = false where id = '<uuid>';

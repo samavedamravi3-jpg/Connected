@@ -27,10 +27,10 @@ export default function SearchScreen() {
     const query = q.trim();
     if (!query || !checkText(query).ok) return;
     dataSource.searchPeople(query).then((hits) => {
-      if (alive) setResult({ q: query, hits: hits.filter((h) => !app.blocked.includes(h.person.id)) });
+      if (alive) setResult({ q: query, hits: hits.filter((h) => !app.blocked.includes(h.person.id) && !app.muted.includes(h.person.id)) });
     });
     return () => { alive = false; };
-  }, [q, app.blocked, app.session, app.showDemo]);
+  }, [q, app.blocked, app.muted, app.session, app.showDemo]);
 
   const query = q.trim();
   const hits = query && result?.q === query ? result.hits : [];

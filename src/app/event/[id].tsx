@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import type { ComponentProps } from 'react';
-import { Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui';
 import { EVENT_STYLE } from '@/data/eventVisuals';
@@ -33,6 +33,23 @@ export default function EventScreen() {
     ? `http://maps.apple.com/?daddr=${ll}&q=${encodeURIComponent(e.venue)}`
     : `https://www.google.com/maps/dir/?api=1&destination=${ll}`;
 
+  const more = () =>
+    Alert.alert(e.title, undefined, [
+      {
+        text: 'Report',
+        style: 'destructive',
+        onPress: () =>
+          Alert.alert('Report this event', 'What’s wrong? Reporting also hides it for you. Events reported by 3 people are hidden for everyone.', [
+            { text: 'Spam or a scam', onPress: () => { app.reportEvent(e.id, 'Spam or a scam'); router.back(); } },
+            { text: 'Unsafe or offensive', onPress: () => { app.reportEvent(e.id, 'Unsafe or offensive'); router.back(); } },
+            { text: 'Cancel', style: 'cancel' },
+          ]),
+      },
+      { text: 'Hide this event', onPress: () => { app.hideEvent(e.id); router.back(); } },
+      { text: `Mute ${e.host}`, onPress: () => { app.muteHost(e.host); router.back(); } },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+
   const tiles: { icon: IconName; label: string; value: string; sub?: string }[] = [
     { icon: 'calendar', label: 'Date', value: multiDay ? `${dayLabel(e.start)} – ${dayLabel(e.end)}` : dayLabel(e.start), sub: new Date(e.start).toLocaleDateString([], { month: 'long', day: 'numeric' }) },
     { icon: 'time', label: 'Time', value: fmtTime(e.start), sub: multiDay ? 'Multi-day' : `until ${fmtTime(e.end)}` },
@@ -58,9 +75,14 @@ export default function EventScreen() {
           <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back" style={styles.heroBtn} hitSlop={6}>
             <Ionicons name="chevron-back" size={22} color={C.white} />
           </Pressable>
-          <Pressable onPress={() => app.toggleSavedEvent(e.id)} accessibilityRole="button" accessibilityLabel={saved ? 'Remove from saved' : 'Save event'} style={styles.heroBtn} hitSlop={6}>
-            <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={20} color={C.white} />
-          </Pressable>
+          <View style={{ flexDirection: 'row', gap: S.sm }}>
+            <Pressable onPress={more} accessibilityRole="button" accessibilityLabel="Report, hide or mute this event" style={styles.heroBtn} hitSlop={6}>
+              <Ionicons name="ellipsis-horizontal" size={20} color={C.white} />
+            </Pressable>
+            <Pressable onPress={() => app.toggleSavedEvent(e.id)} accessibilityRole="button" accessibilityLabel={saved ? 'Remove from saved' : 'Save event'} style={styles.heroBtn} hitSlop={6}>
+              <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={20} color={C.white} />
+            </Pressable>
+          </View>
         </View>
         <View style={{ gap: S.sm, marginTop: 'auto' }}>
           <View style={styles.kindPill}>

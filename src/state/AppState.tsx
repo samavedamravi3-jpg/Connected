@@ -4,7 +4,7 @@ import { DEMO_INCOMING } from '@/data/demo';
 import { dataSource, rememberPeople, setBackendUser, setShowDemo } from '@/data/source';
 import type { ConnectionRequest, Experience, IncomingRequest, LatLng, Message, OpenDoor, Prefs, Profile, RequestStatus } from '@/data/types';
 import {
-  blockRemote, fetchMessages, fetchMyExperiences, syncMyExperiences, fetchMyRequests, fetchPeopleByIds, isRemoteId, loadMyRow, myRow, reportRemote, rowToMine, saveMyRow,
+  blockRemote, fetchHiddenEventIds, fetchMessages, fetchMyExperiences, syncMyExperiences, fetchMyRequests, fetchPeopleByIds, isRemoteId, loadMyRow, muteRemote, myRow, reportEventRemote, reportRemote, rowToMine, saveMyRow, unmuteRemote,
   sendRemoteMessage, sendRemoteRequest, setRemoteRequestStatus, subscribeToMine, unblockRemote, type RemoteMessage, type RemoteRequest,
 } from '@/lib/backend';
 import { EXP_LIMITS, sortExperiences } from '@/lib/experience';
@@ -26,6 +26,11 @@ export type AppData = {
   doors: OpenDoor[];
   savedEvents: string[];
   blocked: string[];
+  /** People you muted: hidden from your map, search and alerts without telling them. */
+  muted: string[];
+  /** Events you hid or reported, and hosts you muted. */
+  hiddenEvents: string[];
+  mutedHosts: string[];
   /** Show the built-in demo people alongside real users. */
   showDemo: boolean;
   /** Mix the built-in sample events in with real live events. */
@@ -41,7 +46,7 @@ export const emptyPrefs: Prefs = {
 const emptyProfile: Profile = { name: '', lastName: '', status: null, org: '', intro: '', offer: '', photoUri: null };
 
 const fresh = (): AppData => ({
-  onboarded: false, prefs: emptyPrefs, profile: emptyProfile, requests: [], messages: {}, incoming: DEMO_INCOMING, doors: [], savedEvents: [], blocked: [], showDemo: true, showDemoEvents: false, nearbyAlerts: false,
+  onboarded: false, prefs: emptyPrefs, profile: emptyProfile, requests: [], messages: {}, incoming: DEMO_INCOMING, doors: [], savedEvents: [], blocked: [], muted: [], hiddenEvents: [], mutedHosts: [], showDemo: true, showDemoEvents: false, nearbyAlerts: false,
 });
 
 export const SAMPLE: Pick<AppData, 'prefs' | 'profile'> = {
@@ -105,6 +110,15 @@ type Ctx = Omit<AppData, 'requests' | 'messages'> & {
   block: (personId: string) => void;
   unblock: (personId: string) => void;
   report: (personId: string, reason: string) => void;
+  mute: (personId: string) => void;
+  unmute: (personId: string) => void;
+  /** True for events you hid, reported or muted the host of, or that 3+ people reported. */
+  eventHidden: (e: { id: string; host: string }) => boolean;
+  hideEvent: (id: string) => void;
+  reportEvent: (id: string, reason: string) => void;
+  muteHost: (host: string) => void;
+  /** Undo every hidden event and muted host. */
+  restoreEvents: () => void;
   reset: () => Promise<void>;
 };
 
@@ -119,6 +133,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [authReady, setAuthReady] = useState(!backendEnabled);
   const [verification, setVerification] = useState<Verification>(NOT_VERIFIED);
   const [idStatus, setIdStatus] = useState<IdStatus>('unverified');
+  const [remoteHiddenEvents, setRemoteHiddenEvents] = useState<string[]>([]);
   const sessionUserId = session?.userId;
   const refreshId = useCallback(async () => {
     if (!sessionUserId) return setIdStatus('unverified');
@@ -129,6 +144,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshId();
   }, [refreshId]);
+  useEffect(() => {
+    if (!sessionUserId) return;
+    fetchHiddenEventIds().then(setRemoteHiddenEvents).catch(() => {});
+  }, [sessionUserId]);
   const refreshVerification = useCallback(async () => {
     if (!sessionUserId) return setVerification(NOT_VERIFIED);
     const row = await loadMyRow(sessionUserId).catch(() => null);
@@ -437,6 +456,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       report: (personId, reason) => {
         if (isRemoteId(personId)) reportRemote(personId, reason).catch((e) => console.warn('Could not report', e));
       },
+      mute: (personId) => {
+        if (isRemoteId(personId)) muteRemote(personId).catch((e) => console.warn('Could not mute', e));
+        setData((d) => ({ ...d, muted: d.muted.includes(personId) ? d.muted : [...d.muted, personId] }));
+      },
+      unmute: (personId) => {
+        if (isRemoteId(personId) && session) unmuteRemote(session.userId, personId).catch((e) => console.warn('Could not unmute', e));
+        setData((d) => ({ ...d, muted: d.muted.filter((x) => x !== personId) }));
+      },
+      eventHidden: (e) => data.hiddenEvents.includes(e.id) || data.mutedHosts.includes(e.host) || remoteHiddenEvents.includes(e.id),
+      hideEvent: (id) => setData((d) => ({ ...d, hiddenEvents: d.hiddenEvents.includes(id) ? d.hiddenEvents : [...d.hiddenEvents, id] })),
+      reportEvent: (id, reason) => {
+        if (session) reportEventRemote(id, reason).catch((e) => console.warn('Could not report event', e));
+        setData((d) => ({ ...d, hiddenEvents: d.hiddenEvents.includes(id) ? d.hiddenEvents : [...d.hiddenEvents, id] }));
+      },
+      muteHost: (host) => setData((d) => ({ ...d, mutedHosts: d.mutedHosts.includes(host) ? d.mutedHosts : [...d.mutedHosts, host] })),
+      restoreEvents: () => setData((d) => ({ ...d, hiddenEvents: [], mutedHosts: [] })),
       reset: async () => {
         await AsyncStorage.removeItem(KEY).catch(() => {});
         await supabase?.auth.signOut();
@@ -444,7 +479,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setData(fresh());
       },
     }),
-    [data, merged, hydrated, now, here, session, authReady, verification, refreshVerification, idStatus, refreshId, setPrefs, setProfile, resolve, loadRemote],
+    [data, merged, hydrated, now, here, session, authReady, verification, refreshVerification, remoteHiddenEvents, idStatus, refreshId, setPrefs, setProfile, resolve, loadRemote],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
