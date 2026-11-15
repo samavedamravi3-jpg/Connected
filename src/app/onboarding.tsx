@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line } from 'react-native-svg';
 import { AuthForm } from '@/components/AuthForm';
 import { Grid, Label, OptionCard, StepTitle, Tile } from '@/components/OnboardingParts';
+import { ExperienceStep } from '@/components/ExperienceFlow';
 import { Avatar, Button, Chip, IconButton, Segmented } from '@/components/ui';
 import { AVAILABILITY, CHALLENGES, CHARLOTTE_CENTER, DIETS, FIELDS, FOODS, GOALS, INTERESTS, LANGUAGES, MEET_MODES, SKILLS, STATUSES, TRAITS, TRAVEL_MI } from '@/data/options';
 import { dataSource } from '@/data/source';
@@ -18,12 +19,12 @@ import { pickProfilePhoto } from '@/lib/photo';
 import { useApp } from '@/state/AppState';
 import { C, R, S, T } from '@/theme';
 
-type StepId = 'status' | 'field' | 'goals' | 'challenges' | 'people' | 'interests' | 'meet' | 'food' | 'privacy' | 'profile';
+type StepId = 'resume' | 'experience' | 'status' | 'field' | 'goals' | 'challenges' | 'people' | 'interests' | 'meet' | 'food' | 'privacy' | 'profile';
 const PREF_STEPS: StepId[] = ['status', 'field', 'goals', 'challenges', 'people', 'interests', 'meet', 'food', 'privacy'];
-const ALL_STEPS: StepId[] = [...PREF_STEPS, 'profile'];
+const ALL_STEPS: StepId[] = [...PREF_STEPS, 'resume', 'experience', 'profile'];
 const SECTION: Record<StepId, string> = {
   status: 'About you', field: 'About you', goals: 'What you need', challenges: 'What you need', people: 'What you need',
-  interests: 'Your interests', meet: 'Meeting up', food: 'Meeting up', privacy: 'Meeting up', profile: 'Your profile',
+  resume: 'Your background', experience: 'Your background', interests: 'Your interests', meet: 'Meeting up', food: 'Meeting up', privacy: 'Meeting up', profile: 'Your profile',
 };
 const MAX_CHALLENGES = 3;
 
@@ -141,7 +142,7 @@ export default function Onboarding() {
     );
   }
 
-  const optional = step === 'people' || step === 'interests' || step === 'food';
+  const optional = step === 'people' || step === 'interests' || step === 'food' || step === 'resume' || step === 'experience';
   const last = i === steps.length - 1;
 
   return (
@@ -400,11 +401,14 @@ export default function Onboarding() {
           </>
         )}
 
+        {step === 'resume' && <ExperienceStep mode="resume" />}
+        {step === 'experience' && <ExperienceStep mode="experience" />}
+
         {err ? <Text style={styles.err} accessibilityRole="alert">{err}</Text> : null}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + S.md }]}>
-        {optional ? <Button label="Skip" variant="quiet" onPress={() => go(i + 1)} /> : null}
+        {optional ? <Button label={step === 'resume' || step === 'experience' ? 'Skip for now' : 'Skip'} variant="quiet" onPress={() => go(i + 1)} /> : null}
         <Button label={last ? (edit ? 'Save' : 'Finish') : 'Continue'} icon={last ? undefined : 'arrow-forward'} onPress={next} style={{ flex: 1 }} />
       </View>
     </KeyboardAvoidingView>

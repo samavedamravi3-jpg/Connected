@@ -35,7 +35,7 @@ export type AppData = {
 
 export const emptyPrefs: Prefs = {
   field: null, fromField: null, challenges: [], wantTraits: [], languages: ['English'], meetMode: 'either', foods: [], diet: [],
-  interests: [], skills: [], experience: [], showExperience: true, goals: [], goalOther: '', travelMi: 5, mode: 'seeking', shareMode: 'area', discoverable: true, availability: ['week'],
+  interests: [], skills: [], experience: [], showExperience: false, goals: [], goalOther: '', travelMi: 5, mode: 'seeking', shareMode: 'area', discoverable: true, availability: ['week'],
 };
 const emptyProfile: Profile = { name: '', lastName: '', status: null, org: '', intro: '', offer: '', photoUri: null };
 
