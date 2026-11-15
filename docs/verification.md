@@ -17,7 +17,7 @@ Setup in the Supabase dashboard:
 
 Limits: a "work" email proves the person controls an inbox at that domain, not that they work there.
 
-## Phase 2: ID check with Stripe Identity, test mode (plan, not built)
+## Phase 2: ID check with Stripe Identity, test mode (built: see docs/id-verification.md)
 
 Goal: a stronger "ID verified" level. We never store ID photos. Stripe holds them; we keep only `verified = true` and a date.
 

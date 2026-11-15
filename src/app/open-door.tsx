@@ -7,6 +7,7 @@ import { AUDIENCES, VENUES, audienceLabel, fieldLabel, statusLabel, venueById } 
 import type { AudienceId, OpenDoor } from '@/data/types';
 import { allowedNow } from '@/lib/guard';
 import { fullName } from '@/lib/match';
+import { idBlocks } from '@/lib/idVerification';
 import { fmtTime, fmtWindow } from '@/lib/time';
 import { useApp } from '@/state/AppState';
 import { C, R, S, T } from '@/theme';
@@ -66,7 +67,8 @@ export default function OpenDoorScreen() {
     setReview(true);
   };
 
-  const publish = () => {
+  const publish = async () => {
+    if (!existing && (await idBlocks(app.idStatus, 'host an Open Door'))) return;
     const door: OpenDoor = { id: existing?.id ?? `door-${Date.now()}`, venueId, start: effectiveStart, end, lengthMin, topics, audience };
     app.saveDoor(door);
     router.back();

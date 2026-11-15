@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MeetSpots } from '@/components/MeetSpots';
-import { VerifiedBadge } from '@/components/VerifiedBadge';
+import { IdBadge, VerifiedBadge } from '@/components/VerifiedBadge';
 import { Avatar, Button, IconButton, Segmented, Tag } from '@/components/ui';
 import { audienceLabel, availabilityLabel, fieldLabel, venueById } from '@/data/options';
 import { dataSource } from '@/data/source';
@@ -17,6 +17,7 @@ import {
   canSeeDoor, conversationStarter, doorActive, doorState, firstName, matchPoints, matchStrength, sharedInterests, sharedLanguages, sharedSkills, type Tone,
 } from '@/lib/match';
 import type { MeetSpot } from '@/lib/places';
+import { idBlocks, isIdRequiredError } from '@/lib/idVerification';
 import { fmtTime, fmtWindow } from '@/lib/time';
 import { latestRequest, useApp } from '@/state/AppState';
 import { C, R, S, T } from '@/theme';
@@ -95,9 +96,11 @@ export default function PersonScreen() {
       return;
     }
     if (!(await allowed(msg))) return;
+    if (await idBlocks(app.idStatus, 'send connection requests')) return;
     try {
       await app.sendRequest(p.id, msg.trim());
     } catch (e) {
+      if (isIdRequiredError(e)) return void idBlocks('unverified', 'send connection requests');
       Alert.alert('Couldn’t send your request', e instanceof Error ? e.message : 'Check your connection and try again.');
     }
   };
@@ -150,6 +153,7 @@ export default function PersonScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Text style={styles.name} accessibilityRole="header">{p.name}</Text>
               {p.verified ? <VerifiedBadge size={20} /> : null}
+              {p.idVerified ? <IdBadge size={20} /> : null}
             </View>
             <Text style={styles.role}>{p.role}</Text>
             <Text style={T.small}>{p.org} · {p.areaName}</Text>

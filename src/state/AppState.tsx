@@ -9,6 +9,7 @@ import {
 } from '@/lib/backend';
 import { EXP_LIMITS, sortExperiences } from '@/lib/experience';
 import { assertClean } from '@/lib/moderation';
+import { fetchIdStatus, type IdStatus } from '@/lib/idVerification';
 import { NOT_VERIFIED, toVerification, type Verification } from '@/lib/verification';
 import { backendEnabled, supabase } from '@/lib/supabase';
 
@@ -75,6 +76,9 @@ type Ctx = Omit<AppData, 'requests' | 'messages'> & {
   /** Your verified status, from the server. Cannot be changed from the app. */
   verification: Verification;
   refreshVerification: () => Promise<void>;
+  /** Your ID-check status: unverified, pending, verified or rejected. Set only by the server. */
+  idStatus: IdStatus;
+  refreshId: () => Promise<void>;
   signUp: (email: string, password: string) => Promise<{ needsConfirmation: boolean }>;
   signIn: (email: string, password: string) => Promise<{ hasProfile: boolean }>;
   signOut: () => Promise<void>;
@@ -114,7 +118,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(!backendEnabled);
   const [verification, setVerification] = useState<Verification>(NOT_VERIFIED);
+  const [idStatus, setIdStatus] = useState<IdStatus>('unverified');
   const sessionUserId = session?.userId;
+  const refreshId = useCallback(async () => {
+    if (!sessionUserId) return setIdStatus('unverified');
+    const row = await loadMyRow(sessionUserId).catch(() => null);
+    setIdStatus(await fetchIdStatus(sessionUserId, !!row?.id_verified).catch(() => 'unverified' as const));
+  }, [sessionUserId]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    refreshId();
+  }, [refreshId]);
   const refreshVerification = useCallback(async () => {
     if (!sessionUserId) return setVerification(NOT_VERIFIED);
     const row = await loadMyRow(sessionUserId).catch(() => null);
@@ -326,6 +340,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       authReady,
       verification,
       refreshVerification,
+      idStatus,
+      refreshId,
       refreshRemote: () => {
         loadRemote();
       },
@@ -428,7 +444,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setData(fresh());
       },
     }),
-    [data, merged, hydrated, now, here, session, authReady, verification, refreshVerification, setPrefs, setProfile, resolve, loadRemote],
+    [data, merged, hydrated, now, here, session, authReady, verification, refreshVerification, idStatus, refreshId, setPrefs, setProfile, resolve, loadRemote],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Avatar, Button, Card, ChipGroup, KV, Note, Row, Section, Tag } from '@/components/ui';
 import { ResumeExperienceCard } from '@/components/ResumeExperienceCard';
-import { VerifiedBadge } from '@/components/VerifiedBadge';
+import { IdBadge, VerifiedBadge } from '@/components/VerifiedBadge';
 import { AVAILABILITY, MEET_MODES, audienceLabel, challengeLabel, dietLabel, fieldLabel, foodLabel, goalLabel, statusLabel, traitLabel, venueById } from '@/data/options';
 import { dataSource } from '@/data/source';
 import { enableNearbyAlerts } from '@/lib/nearbyAlerts';
@@ -58,6 +58,7 @@ export default function ProfileTab() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Text style={styles.name}>{fullName(profile) || 'Your profile'}</Text>
             {app.verification.verified ? <VerifiedBadge size={20} kind={app.verification.kind} /> : null}
+            {app.idStatus === 'verified' ? <IdBadge size={20} /> : null}
           </View>
           <Text style={T.muted}>{statusLabel(profile.status)}{profile.org ? ` · ${profile.org}` : ''}{prefs.field ? ` · ${fieldLabel(prefs.field)}` : ''}</Text>
           {profile.intro ? <Text style={styles.intro} numberOfLines={3}>{profile.intro}</Text> : null}
@@ -108,6 +109,15 @@ export default function ProfileTab() {
                   </Text>
                 </View>
                 {app.verification.verified ? <VerifiedBadge label size={18} /> : <Button label="Verify" small onPress={() => router.push('/verify')} />}
+              </View>
+              <View style={styles.switchRow}>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={T.label}>{app.idStatus === 'verified' ? 'ID verified' : 'Verify your ID'}</Text>
+                  <Text style={T.small}>
+                    {app.idStatus === 'verified' ? 'Your ID was checked. People see an ID badge.' : app.idStatus === 'pending' ? 'Your check is being reviewed.' : app.idStatus === 'rejected' ? 'We couldn’t verify that ID. You can try again.' : 'A quick ID and selfie check. Unlocks sending requests and hosting events.'}
+                  </Text>
+                </View>
+                {app.idStatus === 'verified' ? <IdBadge label size={18} /> : <Button label={app.idStatus === 'pending' ? 'Status' : app.idStatus === 'rejected' ? 'Retry' : 'Verify'} small onPress={() => router.push('/verify-id')} />}
               </View>
               <Text style={T.small}>
                 {prefs.shareMode === 'area'

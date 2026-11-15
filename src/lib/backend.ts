@@ -42,6 +42,8 @@ export type ProfileRow = {
   verified?: boolean;
   verified_at?: string | null;
   verified_kind?: 'school' | 'work' | 'id' | null;
+  id_verified?: boolean;
+  id_verified_at?: string | null;
   updated_at?: string;
 };
 
@@ -103,12 +105,13 @@ export function rowToPerson(r: ProfileRow): Person {
     diet: r.diet ?? [],
     isDemo: false,
     verified: !!r.verified,
+    idVerified: !!r.id_verified,
   };
 }
 
 type AreaCols = 'area_name' | 'area_lat' | 'area_lng';
 /** Your row to save. The area columns are left out when there's no fresh position yet, so the saved area is kept. */
-export type MyRow = Omit<ProfileRow, AreaCols | 'verified' | 'verified_at' | 'verified_kind'> & Partial<Pick<ProfileRow, AreaCols>>;
+export type MyRow = Omit<ProfileRow, AreaCols | 'verified' | 'verified_at' | 'verified_kind' | 'id_verified' | 'id_verified_at'> & Partial<Pick<ProfileRow, AreaCols>>;
 
 export function myRow(userId: string, profile: Profile, prefs: Prefs, here: { coord: LatLng; label: string } | null): MyRow {
   const keepArea = prefs.shareMode === 'area' && !here;

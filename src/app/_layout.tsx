@@ -39,6 +39,7 @@ export default function RootLayout() {
             <Stack.Screen name="search" options={{ headerShown: false }} />
             <Stack.Screen name="auth" options={{ headerShown: false }} />
             <Stack.Screen name="verify" options={{ title: 'Get verified', presentation: 'modal' }} />
+            <Stack.Screen name="verify-id" options={{ title: 'Verify your ID', presentation: 'modal' }} />
             <Stack.Screen name="assistant" options={{ headerShown: false, presentation: 'modal' }} />
           </Stack>
           {introDone ? null : <Intro onDone={() => setIntroDone(true)} />}

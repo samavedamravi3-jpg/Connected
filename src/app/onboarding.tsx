@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line } from 'react-native-svg';
 import { AuthForm } from '@/components/AuthForm';
 import { Grid, Label, OptionCard, StepTitle, Tile } from '@/components/OnboardingParts';
+import { IdVerifyPanel } from '@/components/IdVerifyPanel';
 import { ExperienceStep } from '@/components/ExperienceFlow';
 import { Avatar, Button, Chip, IconButton, Segmented } from '@/components/ui';
 import { AVAILABILITY, CHALLENGES, CHARLOTTE_CENTER, DIETS, FIELDS, FOODS, GOALS, INTERESTS, LANGUAGES, MEET_MODES, SKILLS, STATUSES, TRAITS, TRAVEL_MI } from '@/data/options';
@@ -39,7 +40,7 @@ export default function Onboarding() {
   const insets = useSafeAreaInsets();
   const scroll = useRef<ScrollViewInstance>(null);
   const steps = edit === 'prefs' ? PREF_STEPS : edit === 'profile' ? (['profile'] as StepId[]) : ALL_STEPS;
-  const [phase, setPhase] = useState<'welcome' | 'steps' | 'account' | 'done'>(accountOnly ? 'account' : edit ? 'steps' : 'welcome');
+  const [phase, setPhase] = useState<'welcome' | 'steps' | 'account' | 'idverify' | 'done'>(accountOnly ? 'account' : edit ? 'steps' : 'welcome');
   const [confirmNote, setConfirmNote] = useState('');
   const [i, setI] = useState(0);
   const [err, setErr] = useState('');
@@ -74,7 +75,7 @@ export default function Onboarding() {
     // With a backend, save everything to an account so other people can find you.
     if (app.backendEnabled && !app.session) return setPhase('account');
     app.finishOnboarding();
-    setPhase('done');
+    setPhase(app.backendEnabled && app.session ? 'idverify' : 'done');
   }
 
   function back() {
@@ -99,6 +100,15 @@ export default function Onboarding() {
     );
   }
   if (phase === 'done') return <Done />;
+  if (phase === 'idverify') {
+    return (
+      <ScrollView style={{ backgroundColor: C.bg }} contentContainerStyle={{ padding: S.lg, paddingTop: insets.top + S.xl, paddingBottom: insets.bottom + S.xl, gap: S.xl }}>
+        <StepTitle icon="shield-checkmark-outline" section="Final step" title="Verify your ID" sub="Optional. Get an ID badge and unlock sending requests and hosting events. You can do this later from your profile." />
+        <IdVerifyPanel onDone={() => setPhase('done')} />
+        <Button label="Skip for now" variant="quiet" onPress={() => setPhase('done')} />
+      </ScrollView>
+    );
+  }
   if (phase === 'account') {
     return (
       <KeyboardAvoidingView style={{ flex: 1, backgroundColor: C.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -125,7 +135,7 @@ export default function Onboarding() {
               }
               if (accountOnly) return router.back();
               app.finishOnboarding();
-              setPhase('done');
+              setPhase('idverify');
             }}
           />
           {accountOnly ? null : (

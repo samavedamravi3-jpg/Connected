@@ -356,6 +356,88 @@ create trigger profiles_protect_verified
   for each row execute function public.profiles_protect_verified();
 
 -- ---------------------------------------------------------------------------
+-- ID verification (provider-agnostic; Stripe Identity in test mode first)
+-- ---------------------------------------------------------------------------
+-- We never store ID images or numbers: only the provider's session id, a status and a timestamp.
+-- id_verifications is private (a user can read only their own row; nobody but the service role can write).
+-- profiles.id_verified is the public badge. A trigger resets any attempt by the app to change it, so only the
+-- identity edge function (service role, after checking the provider's signed webhook) can set it.
+
+create table if not exists public.id_verifications (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  provider text not null,
+  session_id text not null,
+  status text not null default 'pending' check (status in ('unverified', 'pending', 'verified', 'rejected')),
+  updated_at timestamptz not null default now()
+);
+alter table public.id_verifications enable row level security;
+drop policy if exists "id_verifications: read own" on public.id_verifications;
+create policy "id_verifications: read own" on public.id_verifications for select to authenticated using (user_id = (select auth.uid()));
+revoke insert, update, delete on public.id_verifications from anon, authenticated;
+
+alter table public.profiles add column if not exists id_verified boolean not null default false;
+alter table public.profiles add column if not exists id_verified_at timestamptz;
+
+create or replace function public.profiles_protect_id_verified()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if current_user in ('authenticated', 'anon') then
+    if tg_op = 'INSERT' then
+      new.id_verified := false;
+      new.id_verified_at := null;
+    else
+      new.id_verified := old.id_verified;
+      new.id_verified_at := old.id_verified_at;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_protect_id_verified on public.profiles;
+create trigger profiles_protect_id_verified
+  before insert or update on public.profiles
+  for each row execute function public.profiles_protect_id_verified();
+
+-- Gate switch. Off until the ID provider works end to end, so nobody is locked out while it is unavailable.
+-- Turn on with:  update public.app_config set value = 'on' where key = 'id_gate';
+create table if not exists public.app_config (key text primary key, value text not null);
+alter table public.app_config enable row level security; -- no policies: service role / SQL editor only
+insert into public.app_config (key, value) values ('id_gate', 'off') on conflict (key) do nothing;
+
+create or replace function public.id_gate_on()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$ select exists (select 1 from public.app_config where key = 'id_gate' and value = 'on') $$;
+revoke all on function public.id_gate_on() from public, anon;
+grant execute on function public.id_gate_on() to authenticated;
+
+-- With the gate on, only ID-verified members can send connection requests (the API cannot bypass this).
+create or replace function public.require_id_for_requests()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if public.id_gate_on() and not coalesce((select p.id_verified from public.profiles p where p.id = new.from_user), false) then
+    raise exception 'id_required' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists connection_requests_require_id on public.connection_requests;
+create trigger connection_requests_require_id
+  before insert on public.connection_requests
+  for each row execute function public.require_id_for_requests();
+
+-- ---------------------------------------------------------------------------
 -- Content guardrails
 -- ---------------------------------------------------------------------------
 
