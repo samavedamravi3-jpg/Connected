@@ -16,6 +16,7 @@
     "server",
     "scripts",
     "supabase/functions",
+    "src/**/__tests__",
     "node_modules"
   ]
 }

@@ -7,13 +7,27 @@
  * It also catches tricks: leetspeak ("k1ll"), spaced-out letters ("k i l l"), punctuation between
  * letters ("f.u.c.k"), stretched letters ("fuuuck"), accents and zero-width characters.
  */
-import { WORDS } from './moderationWords';
+import { BORDERLINE, HOMOGLYPHS, RAW, WORDS } from './moderationWords';
 
-export type ModerationResult = { ok: true } | { ok: false; reason: 'slurs' | 'sexual' | 'harassment' | 'threats' | 'ai' };
+export type ModerationResult =
+  | { ok: true }
+  | { ok: false; reason: keyof typeof WORDS | 'contact' | 'ai' | 'ai_unavailable' };
 
 /** Friendly message to show when text is blocked. */
 export const BLOCKED_TITLE = 'Let’s keep it respectful';
-export const BLOCKED_MESSAGE = 'That message includes language that isn’t allowed in Connected. Please reword it and try again.';
+export const BLOCKED_MESSAGE = 'That message includes language, links, contact details or offers that aren’t allowed in Connected. Please reword it and try again.';
+export const UNAVAILABLE_MESSAGE = 'We couldn’t check that text right now. Please try again in a moment.';
+
+const HOMO_RE = new RegExp(`[${Object.keys(HOMOGLYPHS).join('')}]`, 'g');
+/** Lowercase text with accents, zero-width characters and lookalike letters folded, but digits and symbols kept. */
+export function normalizeRaw(input: string): string {
+  return input
+    .normalize('NFKC')
+    .replace(/[̀-ͯ​-‏⁠﻿­]/g, '')
+    .toLowerCase()
+    .replace(HOMO_RE, (c) => HOMOGLYPHS[c] ?? c);
+}
+const rawRes = RAW.map((p) => new RegExp(p));
 
 const LEET: Record<string, string> = { '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '7': 't', '8': 'b', '9': 'g', '@': 'a', $: 's', '!': 'i', '|': 'i', '+': 't' };
 
@@ -23,8 +37,11 @@ export function normalize(input: string): string {
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')
     .replace(/[​-‏⁠﻿­]/g, '')
-    .toLowerCase();
-  t = t.replace(/[0134578@$!|+9]/g, (c) => LEET[c] ?? c);
+    .toLowerCase()
+    .replace(HOMO_RE, (c) => HOMOGLYPHS[c] ?? c);
+  // "!", "|" and "+" only stand in for letters when a letter follows ("k!ll"), so "income!!!" stays "income".
+  t = t.replace(/[!|+](?=[a-z0-9@$])/g, (c) => LEET[c] ?? c);
+  t = t.replace(/[0134578@$9]/g, (c) => LEET[c] ?? c);
   t = t.replace(/[^a-z]+/g, ' ').trim();
   // Join runs of 3+ single letters: "k i l l" -> "kill".
   const tokens = t.split(' ');
@@ -56,6 +73,8 @@ export function checkText(text: string | null | undefined): ModerationResult {
   if (!text || !text.trim()) return { ok: true };
   const n = normalize(text);
   for (const { reason, re } of compiled) if (re.test(n)) return { ok: false, reason };
+  const raw = normalizeRaw(text);
+  if (rawRes.some((re) => re.test(raw))) return { ok: false, reason: 'contact' };
   return { ok: true };
 }
 
@@ -79,8 +98,9 @@ export function dbError(error: { message?: string }): Error {
 }
 
 /**
- * Optional second check by Claude through the server proxy. Runs only when the proxy is configured,
- * and fails open (returns ok) on any error or timeout so a network problem never blocks people.
+ * Optional second check through the server proxy (a free LLM provider, see server/src/index.ts). Runs only when
+ * the proxy is configured. It fails CLOSED: if the check errors or times out, the text is not accepted, because
+ * these fields are public. The caller only asks for borderline text, so ordinary text is never held up.
  */
 export async function aiModerate(text: string): Promise<ModerationResult> {
   const base = process.env.EXPO_PUBLIC_ASSISTANT_URL;
@@ -94,11 +114,11 @@ export async function aiModerate(text: string): Promise<ModerationResult> {
       body: JSON.stringify({ text: text.slice(0, 2000) }),
       signal: ctrl.signal,
     });
-    if (!res.ok) return { ok: true };
+    if (!res.ok) return { ok: false, reason: 'ai_unavailable' };
     const data = (await res.json()) as { ok?: boolean };
-    return data.ok === false ? { ok: false, reason: 'ai' } : { ok: true };
+    return data.ok === true ? { ok: true } : { ok: false, reason: 'ai' };
   } catch {
-    return { ok: true };
+    return { ok: false, reason: 'ai_unavailable' };
   } finally {
     clearTimeout(timer);
   }
@@ -108,5 +128,5 @@ export async function aiModerate(text: string): Promise<ModerationResult> {
 export async function moderate(text: string): Promise<ModerationResult> {
   const local = checkText(text);
   if (!local.ok) return local;
-  return aiModerate(text);
+  return BORDERLINE.test(text) ? aiModerate(text) : { ok: true };
 }

@@ -461,7 +461,12 @@ declare
 begin
   s := normalize(lower(coalesce(t, '')), NFKD);
   s := regexp_replace(s, '[\u0300-\u036f\u200b-\u200f\u2060\ufeff\u00ad]', '', 'g');
-  s := translate(s, '01345789@$!|+', 'oieastbgasiit');
+  s := translate(s, 'аеорсухкмнтвіјѕԁԛԝӏοαεικνυρτχɑɡıℓøłđ', 'aeopcyxkmhtbijsdqwloaeikvuptxagilold');
+  -- "!", "|" and "+" stand in for letters only when a letter follows (k!ll), so "income!!!" stays "income".
+  s := regexp_replace(s, '!(?=[a-z0-9@$])', 'i', 'g');
+  s := regexp_replace(s, '[|](?=[a-z0-9@$])', 'i', 'g');
+  s := regexp_replace(s, '[+](?=[a-z0-9@$])', 't', 'g');
+  s := translate(s, '01345789@$', 'oieastbgas');
   s := btrim(regexp_replace(s, '[^a-z]+', ' ', 'g'));
   if s = '' then return ''; end if;
   foreach tok in array string_to_array(s, ' ') loop
@@ -484,13 +489,28 @@ begin
 end;
 $$;
 
+-- Raw text: accents, zero-width characters and lookalike letters folded; digits and symbols kept (phones, links, handles).
+create or replace function public.moderation_raw(t text)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select translate(
+    lower(regexp_replace(normalize(coalesce(t, ''), NFKC), '[\u0300-\u036f\u200b-\u200f\u2060\ufeff\u00ad]', '', 'g')),
+    'аеорсухкмнтвіјѕԁԛԝӏοαεικνυρτχɑɡıℓøłđ', 'aeopcyxkmhtbijsdqwloaeikvuptxagilold');
+$$;
+
 create or replace function public.moderation_is_clean(t text)
 returns boolean
 language sql
 immutable
 set search_path = ''
 as $$
-  select t is null or public.moderation_normalize(t) !~ '\y(?:nigg?(er|ers|a|as|ah|ahs)|fag+(ot|ots|s)?|dykes?|tranny|trannies|retard(ed|s)?|chinks?|spics?|kikes?|wetbacks?|gooks?|coons?|pakis?|beaners?|towel ?heads?|sand ?nigg?(er|a)s?|raghead|cunts?|porn(o|ography)?|nudes?|send nudes|horny|sexy|sex(ting| chat| tape)|blow ?jobs?|hand ?jobs?|cum|cumshot|boobs?|tits|titties|pussy|pussies|penis|vagina|orgasm|dildo|only ?fans|naked|one night stand|hook ?up with me|sleep with me|slut(s|ty)?|whores?|cock ?suckers?|dick ?heads?|jerk ?off|masturbat(e|ing|ion)|erotic|fetish|escort service|fuck (you|off|u)|fuck ?(ing)? (idiot|loser|moron)|f u|stfu|shut the fuck up|go to hell|go fuck yourself|bitch(es)?|bastards?|asshole|dumb ?ass|son of a bitch|(you are|you re|u r|ur|youre) (so |such a |a |an )?(stupid|ugly|worthless|useless|pathetic|idiot|loser|moron|trash|garbage|disgusting|fat|retard(ed)?)|nobody (likes|wants|loves) you|i hate you|hope you (die|rot|suffer)|kill your ?self|kys|go (die|kill yourself)|stalk(ing)? you|i m watching you|i am watching you|send me (pics|pictures|photos)|show me your (body|boobs|tits)|(i|we) (will|ll|m going to|am going to|gonna|ma) (kill|hurt|find|beat|shoot|stab|rape|murder|ruin|destroy) (you|u|your family|ur family)|i know where you (live|work|are)|i will find you|i ll find you|watch your back|you re (dead|going to die)|you are (dead|going to die)|you will (pay|regret|die)|shoot (you|up)|stab you|bomb (threat|the|this)|rape (you|her|him)|rapist|kill (you|him|her|them)|beat you up|burn your (house|home)|i have a (gun|knife))\y';
+  select t is null or (
+    public.moderation_normalize(t) !~ '\y(?:nigg?(er|ers|a|as|ah|ahs)|fag+(ot|ots|s)?|dykes?|tranny|trannies|retard(ed|s)?|chinks?|spics?|kikes?|wetbacks?|gooks?|coons?|pakis?|beaners?|towel ?heads?|sand ?nigg?(er|a)s?|raghead|cunts?|porn(o|ography)?|nudes?|send nudes|horny|sexy|sex(ting| chat| tape)|blow ?jobs?|hand ?jobs?|cum|cumshot|boobs?|tits|titties|pussy|pussies|penis|vagina|orgasm|dildo|only ?fans|naked|one night stand|hook ?up with me|sleep with me|slut(s|ty)?|whores?|cock ?suckers?|dick ?heads?|jerk ?off|masturbat(e|ing|ion)|erotic|fetish|escort service|fuck ?(you|off|u)|fuck ?(ing)? (idiot|loser|moron)|f u|stfu|shut ?the ?fuck ?up|go to hell|go ?fuck ?yourself|bitch(es)?|bastards?|asshole|dumb ?ass|son of a bitch|(you are|you re|u r|ur|youre) (so |such a |a |an )?(stupid|ugly|worthless|useless|pathetic|idiot|loser|moron|trash|garbage|disgusting|fat|retard(ed)?)|nobody (likes|wants|loves) you|i hate you|hope you (die|rot|suffer)|kill your ?self|kys|go (die|kill yourself)|stalk(ing)? you|i m watching you|i am watching you|send me (pics|pictures|photos)|show me your (body|boobs|tits)|(i|we) (will|ll|m going to|am going to|gonna|ma) (kill|hurt|find|beat|shoot|stab|rape|murder|ruin|destroy) (you|u|your family|ur family)|i know where you (live|work|are)|i will find you|i ll find you|watch your back|you re (dead|going to die)|you are (dead|going to die)|you will (pay|regret|die)|shoot (you|up)|stab you|bomb (threat|the|this)|rape (you|her|him)|rapist|kill ?(you|him|her|them)|beat you up|burn your (house|home)|i have a (gun|knife)|guaranteed (returns?|profits?|income|roi|winnings)|risk ?free (investment|returns?|profits?)|double your (money|investment|bitcoin|crypto)|investment opportunit(y|ies)|invest (with|in) (me|my|our)|crypto (investment|trading|signals?|giveaway|mining|opportunity|doubler)|bitcoin (investment|trading|doubler|giveaway|mining)|forex (trading|signals?)|binary options?|passive income|trading (signals?|bot|mentor)|airdrop|get rich|financial freedom|unlimited income|make (money|cash) (fast|online|from home)|earn (money|cash|income) (fast|online|daily|weekly|from home)|easy money|quick money|send (me |us )?(some )?(money|cash|funds)|wire (me|us) (money|cash|funds)|western union|moneygram|gift ?cards?|cash ?app|venmo|zelle|paypal (me|us)|pay (me|us) (via|through|on|with)|(dm|message|text|add|contact|hit) (me|us) (on|at|via) (telegram|whatsapp|snapchat|snap|signal|instagram|insta|wechat|kik|discord)|(telegram|whatsapp|snapchat|snap|wechat|kik) (me|us)|my (telegram|whatsapp|snapchat|snap|wechat|kik) (is|id|handle|number)|(gmail|yahoo|hotmail|outlook|icloud|proton ?mail|proton) (dot )?com|act now|limited time (offer|only)?|last chance|don t miss out|offer expires|respond (immediately|asap|now)|urgent(ly)? (reply|response|action|need)|verify your (account|identity|bank|password)|confirm your (password|account|bank)|click (here|the link|this link|below)|you have (won|been selected)|claim your (prize|reward|gift)|account (has been )?(suspended|locked|compromised)|login to claim|multi ?level marketing|mlm|be your own boss|work from home opportunity|no experience (needed|necessary|required) (job|work|offer)|join my (team|downline|business)|pay (a|an|the) (training|registration|starter|application|processing) fee|recruiting (now|today)|ground floor opportunity|you should (just )?(kill|hurt|harm|cut|hang) your ?self|(just )?(go )?(end|take) your (own )?life|do (everyone|us all|the world) a favou?r and (die|leave|disappear)|you (should|ought to|need to) (just )?(die|disappear)|commit suicide|cut your wrists|hang your ?self|overdose (on|yourself)|(selling|sell|buy|buying) (some )?(weed|cocaine|coke|molly|mdma|xanax|adderall|oxy|oxycodone|percocet|fentanyl|heroin|meth|lsd|ketamine|edibles)|(weed|cocaine|molly|xanax|adderall|guns?|weapons?|ammo) for sale|cocaine|heroin|fentanyl|crystal meth|ghost guns?|ar ?15|illegal (guns?|weapons?|drugs?)|(selling|sell|buy|buying) (guns?|firearms?|weapons?|ammo|ammunition)|(her|his|their|your) (home )?address is|lives at|i found (her|his|their|your) (address|number|home)|social security (number)?|ssn|credit card number|bank account number|routing number|drivers? licen[cs]e number|leak(ing|ed)? (her|his|their|your) (address|number|photos|nudes))\y'
+    and public.moderation_raw(t) !~ '[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}|(https?|ftp)://|\ywww\.|\y(bit\.ly|tinyurl\.com|goo\.gl|ow\.ly|is\.gd|cutt\.ly|rb\.gy|shorturl\.at|t\.me|wa\.me|linktr\.ee|rebrand\.ly|buff\.ly|tiny\.cc|lnkd\.in|t\.co)\y|\y[a-z0-9-]+\.(xyz|top|click|zip|mov|tk|ml|ga|cf|gq|icu|buzz|monster|cyou|rest|support)\y|\y[a-z0-9-]*(paypa1|paypai|linkedln|1inkedin|faceb00k|g00gle|gma1l|app1e|amaz0n|micr0soft|netf1ix|wellsfarg0|bankofamerlca)[a-z0-9-]*\.[a-z]{2,}|\d{3}\)?[ .-]?\d{3}[ .-]?\d{4}|(^|[^a-z0-9])\$[a-z][a-z0-9_]{2,}|\y(snapchat|snap|telegram|tg|whatsapp|wechat|kik|signal|insta|instagram|ig|discord) ?(:|@) ?[a-z0-9_.]{3,}'
+  );
 $$;
 
 create or replace function public.profiles_moderation()
@@ -501,10 +521,12 @@ as $$
 begin
   if tg_op = 'INSERT'
      or new.first_name is distinct from old.first_name or new.last_name is distinct from old.last_name
-     or new.org is distinct from old.org or new.intro is distinct from old.intro or new.offer is distinct from old.offer then
+     or new.org is distinct from old.org or new.intro is distinct from old.intro or new.offer is distinct from old.offer
+     or new.interests is distinct from old.interests or new.skills is distinct from old.skills or new.languages is distinct from old.languages then
     if not (public.moderation_is_clean(new.first_name) and public.moderation_is_clean(new.last_name)
             and public.moderation_is_clean(new.org) and public.moderation_is_clean(new.intro)
-            and public.moderation_is_clean(new.offer)) then
+            and public.moderation_is_clean(new.offer)
+            and not exists (select 1 from unnest(new.interests || new.skills || new.languages) s where char_length(s) > 60 or not public.moderation_is_clean(s))) then
       raise exception 'content_blocked: profile text is not allowed';
     end if;
   end if;
