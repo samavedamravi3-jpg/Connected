@@ -21,7 +21,7 @@ export function OptionCard({ icon, title, hint, selected, onPress, multi }: { ic
         <Text style={[T.label, { fontSize: 16 }]}>{title}</Text>
         {hint ? <Text style={[T.small, { fontSize: 14 }]}>{hint}</Text> : null}
       </View>
-      <View style={[styles.check, multi && { borderRadius: 6 }, selected && styles.checkOn]}>
+      <View style={[styles.check, multi && { borderRadius: R.sm }, selected && styles.checkOn]}>
         {selected ? <Ionicons name="checkmark" size={14} color={C.white} /> : null}
       </View>
     </Pressable>
@@ -60,7 +60,7 @@ export function StepTitle({ icon, section, title, sub }: { icon: IconName; secti
         </View>
         <Text style={styles.section}>{section}</Text>
       </View>
-      <Text style={[T.title, { fontSize: 28, lineHeight: 34 }]} accessibilityRole="header">{title}</Text>
+      <Text style={T.title} accessibilityRole="header">{title}</Text>
       {sub ? <Text style={[T.muted, { fontSize: 16, lineHeight: 23 }]}>{sub}</Text> : null}
     </View>
   );
@@ -76,13 +76,13 @@ export function Label({ children, right }: { children: ReactNode; right?: ReactN
 }
 
 const styles = StyleSheet.create({
-  card: { flexDirection: 'row', alignItems: 'center', gap: S.md, padding: S.md, paddingRight: S.lg, borderRadius: R.lg, borderWidth: 1.5, borderColor: C.line, backgroundColor: C.bg },
+  card: { flexDirection: 'row', alignItems: 'center', gap: S.md, padding: S.md, paddingRight: S.lg, borderRadius: R.lg, borderWidth: 1, borderColor: C.line2, backgroundColor: C.surface },
   cardOn: { borderColor: C.accent, backgroundColor: C.accentSoft },
   iconWrap: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
   check: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: C.line2, alignItems: 'center', justifyContent: 'center' },
   checkOn: { backgroundColor: C.accent, borderColor: C.accent },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: S.sm },
-  tile: { width: '48.5%', minHeight: 112, alignItems: 'center', justifyContent: 'center', gap: S.sm, padding: S.md, borderRadius: R.lg, borderWidth: 1.5, borderColor: C.line, backgroundColor: C.bg },
+  tile: { width: '48.5%', minHeight: 112, alignItems: 'center', justifyContent: 'center', gap: S.sm, padding: S.md, borderRadius: R.lg, borderWidth: 1, borderColor: C.line2, backgroundColor: C.surface },
   stepIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
-  section: { color: C.accent, fontWeight: '700', fontSize: 14, letterSpacing: 0.2 },
+  section: { color: C.accent, fontWeight: '600', fontSize: 14 },
 });

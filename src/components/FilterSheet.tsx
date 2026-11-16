@@ -70,7 +70,7 @@ function Block({ label, hint, children }: { label: string; hint?: string; childr
 }
 
 const styles = StyleSheet.create({
-  scrim: { flex: 1, backgroundColor: 'rgba(27,23,38,0.35)' },
+  scrim: { flex: 1, backgroundColor: 'rgba(28,27,23,0.4)' },
   sheet: { maxHeight: '82%', backgroundColor: C.bg, borderTopLeftRadius: R.lg, borderTopRightRadius: R.lg, paddingHorizontal: S.lg, paddingTop: S.sm },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: S.sm },
   foot: { flexDirection: 'row', gap: S.sm, paddingTop: S.md, borderTopWidth: 1, borderTopColor: C.line },

@@ -94,7 +94,7 @@ export function AuthForm({ mode, onDone, onSwitchMode }: Props) {
 }
 
 const styles = StyleSheet.create({
-  input: { minHeight: 50, borderWidth: 1.5, borderColor: C.line, borderRadius: R.md, paddingHorizontal: S.md, fontSize: 16, color: C.ink, backgroundColor: C.bg },
-  pwRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: C.line, borderRadius: R.md },
+  input: { minHeight: 50, borderWidth: 1, borderColor: C.line2, borderRadius: R.md, paddingHorizontal: S.md, fontSize: 16, color: C.ink, backgroundColor: C.surface },
+  pwRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: C.line2, borderRadius: R.md, backgroundColor: C.surface },
   err: { color: C.bad, fontWeight: '600', fontSize: 15 },
 });

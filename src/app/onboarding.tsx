@@ -1,5 +1,4 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, type ScrollViewInstance } from 'react-native';
@@ -18,7 +17,7 @@ import { BLOCKED_MESSAGE, checkAll, checkText } from '@/lib/moderation';
 import { allowedNow } from '@/lib/guard';
 import { pickProfilePhoto } from '@/lib/photo';
 import { useApp } from '@/state/AppState';
-import { C, R, S, T } from '@/theme';
+import { C, F, R, S, T } from '@/theme';
 
 type StepId = 'resume' | 'experience' | 'status' | 'field' | 'goals' | 'challenges' | 'people' | 'interests' | 'meet' | 'food' | 'privacy' | 'profile';
 const PREF_STEPS: StepId[] = ['status', 'field', 'goals', 'challenges', 'people', 'interests', 'meet', 'food', 'privacy'];
@@ -196,7 +195,7 @@ export default function Onboarding() {
 
         {step === 'goals' && (
           <>
-            <StepTitle icon="sparkles-outline" section={SECTION.goals} title="What are you hoping to find?" sub="Pick as many as you like." />
+            <StepTitle icon="flag-outline" section={SECTION.goals} title="What are you hoping to find?" sub="Pick as many as you like." />
             <Segmented
               label="I'm here to"
               options={[{ id: 'seeking' as const, label: 'Get help' }, { id: 'offering' as const, label: 'Give help' }, { id: 'both' as const, label: 'Both' }]}
@@ -429,13 +428,13 @@ function Welcome({ onStart, onSample, onSignIn }: { onStart: () => void; onSampl
   const insets = useSafeAreaInsets();
   return (
     <View style={{ flex: 1, backgroundColor: C.accent }}>
-      <LinearGradient colors={['#7652E6', '#5B35C9', '#43249A']} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={[styles.hero, { paddingTop: insets.top + S.xl }]}>
+      <View style={[styles.hero, { paddingTop: insets.top + S.xl }]}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
           <Text style={styles.heroWord}>Connected</Text>
           <View style={styles.heroDot} />
         </View>
         <NetworkArt />
-      </LinearGradient>
+      </View>
       <ScrollView style={styles.sheet} contentContainerStyle={{ padding: S.xl, paddingBottom: insets.bottom + S.xl, gap: S.xl }}>
         <View style={{ gap: S.md }}>
           <Text style={[T.title, { fontSize: 30, lineHeight: 36 }]} accessibilityRole="header">Find the right people around you.</Text>
@@ -477,7 +476,7 @@ function NetworkArt() {
     <Svg width={270} height={150} viewBox="0 0 270 150" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <Circle cx={130} cy={70} r={30} fill="none" stroke="#FFFFFF" strokeOpacity={0.25} strokeWidth={1.2} />
       {e.map(([a, b], k) => <Line key={k} x1={n[a][0]} y1={n[a][1]} x2={n[b][0]} y2={n[b][1]} stroke="#FFFFFF" strokeOpacity={0.45} strokeWidth={1.3} />)}
-      {n.map(([x, y, r], k) => <Circle key={k} cx={x} cy={y} r={r} fill={k === 0 ? '#FFFFFF' : '#D9CCFF'} />)}
+      {n.map(([x, y, r], k) => <Circle key={k} cx={x} cy={y} r={r} fill={k === 0 ? '#FFFFFF' : '#B9CFC1'} />)}
     </Svg>
   );
 }
@@ -503,22 +502,22 @@ function Done() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <LinearGradient colors={['#7652E6', '#5B35C9']} style={[styles.doneHero, { paddingTop: insets.top + S.xxl }]}>
+      <View style={[styles.doneHero, { paddingTop: insets.top + S.xxl }]}>
         <View style={styles.doneCheck}><Ionicons name="checkmark" size={30} color={C.accent} /></View>
         <Text style={styles.doneTitle} accessibilityRole="header">You&apos;re all set{app.profile.name ? `, ${app.profile.name.split(' ')[0]}` : ''}.</Text>
         <Text style={styles.doneSub}>{top ? `${good || top.length} people in Charlotte fit what you told us.` : 'Finding your people…'}</Text>
-      </LinearGradient>
+      </View>
       <ScrollView contentContainerStyle={{ padding: S.lg, gap: S.md, paddingBottom: insets.bottom + S.xl }}>
         <Text style={T.h2}>Your top matches</Text>
         {(top ?? []).map((p) => {
-          const pts = matchPoints(p, prefs).slice(0, 2);
+          const reason = matchPoints(p, prefs)[0]?.text;
           return (
             <View key={p.id} style={styles.matchRow}>
               <Avatar name={p.name} uri={p.photo} size={52} />
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={T.h3}>{p.name}</Text>
+                <Text style={styles.matchName}>{p.name}</Text>
                 <Text style={T.small} numberOfLines={1}>{p.role} · {p.areaName}</Text>
-                {pts.length ? <Text style={[T.small, { color: C.accent, fontWeight: '600' }]} numberOfLines={1}>{pts.map((x) => x.text).join(' · ')}</Text> : null}
+                {reason ? <Text style={[T.small, { color: C.accent, fontWeight: '600' }]}>{reason}</Text> : null}
               </View>
             </View>
           );
@@ -545,22 +544,23 @@ const styles = StyleSheet.create({
   progress: { flex: 1, flexDirection: 'row', gap: 4 },
   bar: { flex: 1, height: 4, borderRadius: 2, backgroundColor: C.line },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: S.sm },
-  input: { minHeight: 50, borderWidth: 1.5, borderColor: C.line, borderRadius: R.md, paddingHorizontal: S.md, fontSize: 16, color: C.ink, backgroundColor: C.bg },
+  input: { minHeight: 50, borderWidth: 1, borderColor: C.line2, borderRadius: R.md, paddingHorizontal: S.md, fontSize: 16, color: C.ink, backgroundColor: C.surface },
   area: { minHeight: 110, textAlignVertical: 'top', paddingTop: 12 },
   notice: { flexDirection: 'row', gap: S.md, padding: S.lg, borderRadius: R.lg, backgroundColor: C.accentSoft },
-  switchRow: { flexDirection: 'row', alignItems: 'center', gap: S.md, padding: S.lg, borderRadius: R.lg, borderWidth: 1.5, borderColor: C.line },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: S.md, padding: S.lg, borderRadius: R.lg, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface },
   err: { color: C.bad, fontWeight: '600', fontSize: 15 },
   footer: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', gap: S.sm, paddingHorizontal: S.lg, paddingTop: S.md, backgroundColor: C.bg, borderTopWidth: 1, borderTopColor: C.line },
   photo: { width: 112, height: 112, borderRadius: 56, borderWidth: 2, borderColor: C.accent, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', backgroundColor: C.accentSoft },
   photoBadge: { position: 'absolute', right: 2, bottom: 2, width: 30, height: 30, borderRadius: 15, backgroundColor: C.accent, borderWidth: 3, borderColor: C.bg, alignItems: 'center', justifyContent: 'center' },
-  hero: { alignItems: 'center', gap: S.lg, paddingBottom: 44 },
-  heroWord: { color: C.white, fontSize: 34, fontWeight: '800', letterSpacing: -1 },
-  heroDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#D9CCFF', marginLeft: 2, marginBottom: 8 },
-  sheet: { flex: 1, marginTop: -24, backgroundColor: C.bg, borderTopLeftRadius: 28, borderTopRightRadius: 28 },
+  hero: { alignItems: 'center', gap: S.lg, paddingBottom: S.xl + R.lg, backgroundColor: C.accent },
+  heroWord: { color: C.white, fontFamily: F.display, fontSize: 34, letterSpacing: -0.8 },
+  heroDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#B9CFC1', marginLeft: 2, marginBottom: 8 },
+  sheet: { flex: 1, marginTop: -R.lg, backgroundColor: C.bg, borderTopLeftRadius: R.lg, borderTopRightRadius: R.lg },
   howIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
-  doneHero: { alignItems: 'center', gap: S.md, paddingHorizontal: S.xl, paddingBottom: S.xxl },
+  doneHero: { alignItems: 'center', gap: S.md, paddingHorizontal: S.xl, paddingBottom: S.xxl, backgroundColor: C.accent },
   doneCheck: { width: 60, height: 60, borderRadius: 30, backgroundColor: C.white, alignItems: 'center', justifyContent: 'center' },
-  doneTitle: { color: C.white, fontSize: 28, fontWeight: '800', textAlign: 'center' },
-  doneSub: { color: 'rgba(255,255,255,0.85)', fontSize: 16, textAlign: 'center' },
-  matchRow: { flexDirection: 'row', gap: S.md, alignItems: 'center', padding: S.md, borderRadius: R.lg, borderWidth: 1, borderColor: C.line },
+  doneTitle: { color: C.white, fontFamily: F.display, fontSize: 28, lineHeight: 34, textAlign: 'center' },
+  doneSub: { color: C.accentSoft, fontSize: 16, lineHeight: 23, textAlign: 'center' },
+  matchRow: { flexDirection: 'row', gap: S.md, alignItems: 'center', padding: S.md, borderRadius: R.lg, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface },
+  matchName: { fontFamily: F.displaySemi, fontSize: 17, lineHeight: 22, color: C.ink },
 });

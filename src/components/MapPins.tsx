@@ -3,7 +3,10 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 import { EVENT_STYLE } from '@/data/eventVisuals';
 import type { EventCategory } from '@/data/types';
 import { initials } from '@/lib/match';
-import { C } from '@/theme';
+import { C, R } from '@/theme';
+
+const INK_SHADOW = '#1C1B17';
+const GREEN = (a: number) => `rgba(31,77,58,${a})`; // C.accent with alpha
 
 export type Strength = 'strong' | 'good' | 'some';
 
@@ -23,13 +26,13 @@ export function nodeAnchor(strength: Strength, selected: boolean) {
 }
 
 /**
- * A person as a node in your network. Solid purple = strong match, purple ring = good match,
+ * A person as a node in your network. Solid green = strong match, green ring = good match,
  * quiet gray = other. Selected nodes grow and show a small name-and-role card above.
  */
 export function NodePin({ name, role, uri, strength, selected, door, real }: { name: string; role: string; uri?: string | null; strength: Strength; selected: boolean; door: boolean; real?: boolean }) {
   const size = NODE[strength] + (selected ? 6 : 0);
   const solid = strength === 'strong' || selected;
-  const ring = selected ? C.accent : strength === 'some' ? '#B9B4C8' : C.accent;
+  const ring = selected ? C.accent : strength === 'some' ? C.line2 : C.accent;
   const node = (
     <View
       style={[
@@ -46,7 +49,7 @@ export function NodePin({ name, role, uri, strength, selected, door, real }: { n
       {real ? <View style={styles.real} accessibilityLabel="Connected member" /> : null}
       {door ? (
         <View style={styles.door}>
-          <Ionicons name="enter" size={9} color={C.white} />
+          <Ionicons name="enter-outline" size={10} color={C.white} />
         </View>
       ) : null}
     </View>
@@ -97,7 +100,7 @@ export function ClusterPin({ count, tone = 'people' }: { count: number; tone?: '
 export function YouNode({ live }: { live: boolean }) {
   return (
     <View collapsable={false} style={styles.youWrap}>
-      <View style={[styles.youRing, !live && { borderColor: 'rgba(91,53,201,0.25)', backgroundColor: 'rgba(91,53,201,0.06)' }]} />
+      <View style={[styles.youRing, !live && { borderColor: GREEN(0.25), backgroundColor: GREEN(0.06) }]} />
       <View style={styles.youDot}>
         <View style={styles.youCore} />
       </View>
@@ -106,43 +109,43 @@ export function YouNode({ live }: { live: boolean }) {
 }
 
 const styles = StyleSheet.create({
-  cluster: { borderWidth: 3, borderColor: 'rgba(255,255,255,0.95)', alignItems: 'center', justifyContent: 'center', shadowColor: '#2A1E5C', shadowOpacity: 0.25, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
-  clusterText: { color: C.white, fontSize: 14, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  eventPin: { width: 32, height: 32, borderRadius: 9, borderWidth: 2, borderColor: C.white, alignItems: 'center', justifyContent: 'center' },
+  cluster: { borderWidth: 3, borderColor: 'rgba(255,255,255,0.95)', alignItems: 'center', justifyContent: 'center', shadowColor: INK_SHADOW, shadowOpacity: 0.18, shadowRadius: 3, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
+  clusterText: { color: C.white, fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  eventPin: { width: 32, height: 32, borderRadius: R.sm + 2, borderWidth: 2, borderColor: C.white, alignItems: 'center', justifyContent: 'center' },
   eventTip: { alignSelf: 'center', width: 0, height: 0, marginTop: -1, borderLeftWidth: 5, borderRightWidth: 5, borderTopWidth: 6, borderLeftColor: 'transparent', borderRightColor: 'transparent' },
   node: {
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2.5,
-    shadowColor: '#2A1E5C',
-    shadowOpacity: 0.22,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
+    shadowColor: INK_SHADOW,
+    shadowOpacity: 0.16,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 3,
   },
-  initials: { fontWeight: '700', letterSpacing: 0.3 },
-  real: { position: 'absolute', right: -2, bottom: -2, width: 13, height: 13, borderRadius: 7, backgroundColor: '#1FB860', borderWidth: 2, borderColor: C.white },
+  initials: { fontWeight: '600', letterSpacing: 0.3 },
+  real: { position: 'absolute', right: -2, bottom: -2, width: 13, height: 13, borderRadius: 7, backgroundColor: C.ok, borderWidth: 2, borderColor: C.white },
   door: { position: 'absolute', right: -4, top: -4, width: 16, height: 16, borderRadius: 8, backgroundColor: C.blue, borderWidth: 2, borderColor: C.white, alignItems: 'center', justifyContent: 'center' },
   card: {
     height: CARD_H,
     maxWidth: WIDTH,
     paddingHorizontal: 12,
     justifyContent: 'center',
-    backgroundColor: C.white,
-    borderRadius: 10,
+    backgroundColor: C.surface,
+    borderRadius: R.md,
     borderWidth: 1,
-    borderColor: '#E1DEEA',
-    shadowColor: '#2A1E5C',
-    shadowOpacity: 0.16,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 5,
+    borderColor: C.line,
+    shadowColor: INK_SHADOW,
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
-  cardName: { fontSize: 13, fontWeight: '700', color: C.ink },
+  cardName: { fontSize: 13, fontWeight: '600', color: C.ink },
   cardRole: { fontSize: 11, color: C.ink2 },
-  cardTip: { width: 10, height: 10, backgroundColor: C.white, transform: [{ rotate: '45deg' }], marginTop: -6, borderRightWidth: 1, borderBottomWidth: 1, borderColor: '#E1DEEA' },
+  cardTip: { width: 10, height: 10, backgroundColor: C.surface, transform: [{ rotate: '45deg' }], marginTop: -6, borderRightWidth: 1, borderBottomWidth: 1, borderColor: C.line },
   youWrap: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center' },
-  youRing: { position: 'absolute', width: 46, height: 46, borderRadius: 23, borderWidth: 1.5, borderColor: 'rgba(91,53,201,0.45)', backgroundColor: 'rgba(91,53,201,0.10)' },
-  youDot: { width: 20, height: 20, borderRadius: 10, backgroundColor: C.accent, borderWidth: 3, borderColor: C.white, alignItems: 'center', justifyContent: 'center', shadowColor: '#2A1E5C', shadowOpacity: 0.3, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 5 },
+  youRing: { position: 'absolute', width: 46, height: 46, borderRadius: 23, borderWidth: 1.5, borderColor: GREEN(0.45), backgroundColor: GREEN(0.1) },
+  youDot: { width: 20, height: 20, borderRadius: 10, backgroundColor: C.accent, borderWidth: 3, borderColor: C.white, alignItems: 'center', justifyContent: 'center', shadowColor: INK_SHADOW, shadowOpacity: 0.2, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 3 },
   youCore: { width: 4, height: 4, borderRadius: 2, backgroundColor: C.white },
 });

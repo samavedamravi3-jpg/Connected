@@ -1,8 +1,8 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Line } from 'react-native-svg';
+import { C, F } from '@/theme';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 const AnimatedLine = Animated.createAnimatedComponent(Line);
@@ -21,6 +21,7 @@ const EDGES: [number, number][] = [[0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [1, 6
 const len = (a: number, b: number) => Math.hypot(NODES[a].x - NODES[b].x, NODES[a].y - NODES[b].y);
 
 const TOTAL_HOLD_MS = 2550;
+const NODE = '#B9CFC1'; // pale green on the forest background
 
 /** Animated "Connected." launch intro. Calls onDone after it fades out; tap to skip. */
 export function Intro({ onDone }: { onDone: () => void }) {
@@ -80,7 +81,7 @@ export function Intro({ onDone }: { onDone: () => void }) {
   return (
     <Animated.View style={[StyleSheet.absoluteFill, { opacity: v.out, zIndex: 100 }]} pointerEvents={leaving ? 'none' : 'auto'}>
       <Pressable style={{ flex: 1 }} onPress={() => finish(true)} accessibilityRole="button" accessibilityLabel="Connected. Tap to continue">
-        <LinearGradient colors={['#7652E6', '#5B35C9', '#3E2191']} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={styles.fill}>
+        <View style={styles.fill}>
           <View style={styles.center}>
             <Svg width={260} height={164} viewBox="0 0 260 164">
               <AnimatedCircle
@@ -116,7 +117,7 @@ export function Intro({ onDone }: { onDone: () => void }) {
                   cx={n.x}
                   cy={n.y}
                   r={v.nodes[i].interpolate({ inputRange: [0, 1], outputRange: [0, n.r] })}
-                  fill={i === 0 ? '#FFFFFF' : '#D9CCFF'}
+                  fill={i === 0 ? '#FFFFFF' : NODE}
                   opacity={v.nodes[i]}
                 />
               ))}
@@ -145,17 +146,17 @@ export function Intro({ onDone }: { onDone: () => void }) {
               <Text style={styles.tag}>Find the right people around you.</Text>
             </Animated.View>
           </View>
-        </LinearGradient>
+        </View>
       </Pressable>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  fill: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.accent },
   center: { alignItems: 'center', gap: 18, marginTop: -40 },
   wordRow: { flexDirection: 'row', alignItems: 'flex-end' },
-  word: { color: '#FFFFFF', fontSize: 46, fontWeight: '800', letterSpacing: -1.5 },
-  period: { width: 13, height: 13, borderRadius: 7, backgroundColor: '#D9CCFF', marginLeft: 3, marginBottom: 11 },
+  word: { color: '#FFFFFF', fontFamily: F.display, fontSize: 46, letterSpacing: -1.2 },
+  period: { width: 13, height: 13, borderRadius: 7, backgroundColor: NODE, marginLeft: 3, marginBottom: 11 },
   tag: { color: 'rgba(255,255,255,0.78)', fontSize: 16, letterSpacing: 0.2 },
 });

@@ -153,7 +153,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 }
 
 const styles = StyleSheet.create({
-  input: { minHeight: 50, borderWidth: 1.5, borderColor: C.line, borderRadius: R.md, paddingHorizontal: S.md, fontSize: 16, color: C.ink, backgroundColor: C.bg },
+  input: { minHeight: 50, borderWidth: 1, borderColor: C.line2, borderRadius: R.md, paddingHorizontal: S.md, fontSize: 16, color: C.ink, backgroundColor: C.surface },
   area: { minHeight: 100, textAlignVertical: 'top', paddingTop: 12 },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: S.md },
 });

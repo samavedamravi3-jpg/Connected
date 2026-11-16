@@ -5,7 +5,7 @@ import type { NearbyPerson, Prefs, Profile } from '@/data/types';
 import { approxDistance } from '@/lib/geo';
 import { canSeeDoor, doorActive, doorState, matchPoints, matchStrength } from '@/lib/match';
 import { fmtTime, fmtWindow } from '@/lib/time';
-import { C, R, S, T, shadow } from '@/theme';
+import { C, F, R, S, T, shadow } from '@/theme';
 import { Avatar, Button, IconButton } from './ui';
 import { IdBadge, VerifiedBadge } from './VerifiedBadge';
 
@@ -39,14 +39,16 @@ export function PersonCard({ person: p, distanceFromLabel, prefs, profile, onOpe
             <Text style={styles.name} numberOfLines={1}>{p.name}</Text>
             {p.verified ? <VerifiedBadge /> : null}
             {p.idVerified ? <IdBadge /> : null}
-            {strength === 'strong' ? <Text style={styles.badge}>Strong match</Text> : null}
-            {p.isDemo ? <Text style={styles.demoBadge}>DEMO</Text> : null}
+            {p.isDemo ? <Text style={styles.demoBadge}>Demo</Text> : null}
           </View>
-          <Text style={T.small} numberOfLines={1}>{p.role}, {p.org}</Text>
+          <Text style={[T.small, { color: C.ink2, fontSize: 14, lineHeight: 19 }]} numberOfLines={2}>{p.role}, {p.org}</Text>
           <Text style={[T.small, { color: C.ink2 }]} numberOfLines={1}>
             {approxDistance(p.distanceMi)} {distanceFromLabel}{travel ? ` · ${travel}` : ''}
           </Text>
-          <Text style={styles.open} numberOfLines={1}>Open to connecting · {free}</Text>
+          <Text style={styles.open} numberOfLines={1}>
+            {strength === 'strong' ? <Text style={styles.badge}>Strong match · </Text> : null}
+            {free}
+          </Text>
         </View>
         <IconButton icon="close" label="Close" onPress={onClose} style={{ marginTop: -8, marginRight: -8 }} />
       </View>
@@ -57,8 +59,8 @@ export function PersonCard({ person: p, distanceFromLabel, prefs, profile, onOpe
         <View style={{ gap: 6 }}>
           {points.map((pt) => (
             <View key={pt.text} style={styles.point}>
-              <Ionicons name={pt.icon} size={15} color={C.accent} />
-              <Text style={styles.pointText} numberOfLines={3}>{pt.text}</Text>
+              <Ionicons name={pt.icon} size={16} color={C.accent} style={{ marginTop: 2 }} />
+              <Text style={styles.pointText}>{pt.text}</Text>
             </View>
           ))}
         </View>
@@ -84,16 +86,16 @@ export function PersonCard({ person: p, distanceFromLabel, prefs, profile, onOpe
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: C.bg, borderRadius: 22, padding: S.lg, gap: S.md },
+  card: { backgroundColor: C.surface, borderRadius: R.lg, padding: S.lg, gap: S.md },
   embedded: { gap: S.md },
   head: { flexDirection: 'row', gap: S.md, alignItems: 'center' },
-  name: { fontSize: 18, fontWeight: '700', color: C.ink, flexShrink: 1 },
-  badge: { fontSize: 11, fontWeight: '700', color: C.accent, backgroundColor: C.accentSoft, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, overflow: 'hidden' },
-  bio: { fontSize: 15, lineHeight: 21, color: C.ink2 },
+  name: { fontFamily: F.display, fontSize: 20, lineHeight: 25, color: C.ink, flexShrink: 1 },
+  badge: { fontWeight: '600', color: C.accent },
+  bio: { fontSize: 15, lineHeight: 22, color: C.ink2 },
   point: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  pointText: { fontSize: 14, color: C.ink, fontWeight: '500', flex: 1 },
+  pointText: { fontSize: 14, lineHeight: 20, color: C.ink, flex: 1 },
   door: { flexDirection: 'row', gap: S.sm, alignItems: 'center', backgroundColor: C.accentSoft, borderRadius: R.md, paddingHorizontal: S.md, paddingVertical: 10 },
   demo: { fontSize: 12, color: C.ink3 },
-  open: { fontSize: 13, color: C.ok, fontWeight: '600' },
-  demoBadge: { fontSize: 10, fontWeight: '700', color: C.ink3, borderWidth: 1, borderColor: C.line2, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 5, overflow: 'hidden' },
+  open: { fontSize: 13, lineHeight: 18, color: C.ok, fontWeight: '600' },
+  demoBadge: { fontSize: 11, fontWeight: '600', color: C.ink2, borderWidth: 1, borderColor: C.line2, paddingHorizontal: 5, paddingVertical: 1, borderRadius: R.sm, overflow: 'hidden' },
 });

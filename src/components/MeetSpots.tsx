@@ -121,14 +121,14 @@ export function MeetSpots({ person, onUse, useLabel = 'Suggest this' }: Props) {
 
 const styles = StyleSheet.create({
   sharedRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
-  foodChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.accentSoft, paddingHorizontal: 9, paddingVertical: 4, borderRadius: R.pill },
-  foodChipText: { fontSize: 13, fontWeight: '700', color: C.accent },
+  foodChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.accentSoft, paddingHorizontal: 8, paddingVertical: 3, borderRadius: R.sm },
+  foodChipText: { fontSize: 13, fontWeight: '600', color: C.accent },
   skeleton: { height: 64, borderRadius: R.md, backgroundColor: C.bg2 },
-  list: { borderWidth: 1, borderColor: C.line, borderRadius: R.lg, overflow: 'hidden' },
+  list: { borderWidth: 1, borderColor: C.line, borderRadius: R.lg, overflow: 'hidden', backgroundColor: C.surface },
   spot: { flexDirection: 'row', gap: S.md, padding: S.md },
   divider: { borderTopWidth: 1, borderTopColor: C.line },
   spotIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
-  spotName: { fontSize: 16, fontWeight: '700', color: C.ink },
+  spotName: { fontSize: 16, fontWeight: '600', color: C.ink },
   spotDist: { fontSize: 13, color: C.accent, fontWeight: '600' },
   diet: { fontSize: 12, color: C.ok, fontWeight: '600' },
   actions: { flexDirection: 'row', gap: S.sm, marginTop: 6 },

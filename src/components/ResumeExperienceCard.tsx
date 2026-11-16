@@ -46,12 +46,12 @@ export function ResumeExperienceCard() {
 
       {list.length === 0 ? (
         <View style={styles.empty}>
-          <Ionicons name="briefcase-outline" size={32} color={C.accent} />
+          <Ionicons name="briefcase-outline" size={28} color={C.ink3} />
           <Text style={T.h3}>Show where you’ve been</Text>
           <Text style={[T.muted, { textAlign: 'center' }]}>Jobs, internships and school help us find people who’ve walked your path.</Text>
           <View style={{ alignSelf: 'stretch', gap: S.sm }}>
             <Button label={flow.importing ? 'Reading your resume…' : 'Add resume (PDF)'} icon="document-text-outline" disabled={flow.importing} onPress={flow.importResume} />
-            <Button label="Add experience" icon="add" variant="secondary" onPress={() => flow.edit()} />
+            <Button label="Add experience" icon="add-outline" variant="secondary" onPress={() => flow.edit()} />
           </View>
           {flow.importing ? <ActivityIndicator color={C.accent} /> : null}
         </View>
@@ -68,12 +68,12 @@ export function ResumeExperienceCard() {
                 <Text style={T.muted}>{e.org}</Text>
                 <Text style={T.small}>{fmtRange(e)}</Text>
               </View>
-              <Pressable onPress={() => flow.edit(e)} accessibilityRole="button" accessibilityLabel={`Edit ${e.title}`} style={styles.iconBtn}><Ionicons name="pencil" size={20} color={C.ink2} /></Pressable>
+              <Pressable onPress={() => flow.edit(e)} accessibilityRole="button" accessibilityLabel={`Edit ${e.title}`} style={styles.iconBtn}><Ionicons name="pencil-outline" size={20} color={C.ink2} /></Pressable>
               <Pressable onPress={() => confirmDelete(e.id, e.title, e.org)} accessibilityRole="button" accessibilityLabel={`Delete ${e.title}`} style={styles.iconBtn}><Ionicons name="trash-outline" size={20} color={C.ink2} /></Pressable>
             </View>
           ))}
           <View style={{ flexDirection: 'row', gap: S.sm }}>
-            <Button label="Add experience" icon="add" variant="secondary" onPress={() => flow.edit()} style={{ flex: 1 }} />
+            <Button label="Add experience" icon="add-outline" variant="secondary" onPress={() => flow.edit()} style={{ flex: 1 }} />
             <Button label={flow.importing ? 'Reading…' : 'Import resume'} icon="document-text-outline" variant="secondary" disabled={flow.importing} onPress={flow.importResume} style={{ flex: 1 }} />
           </View>
         </View>
@@ -93,11 +93,11 @@ export function ResumeExperienceCard() {
 }
 
 const styles = StyleSheet.create({
-  card: { borderWidth: 1, borderColor: C.line, borderRadius: R.lg, backgroundColor: C.bg, padding: S.lg, gap: S.sm },
+  card: { borderWidth: 1, borderColor: C.line, borderRadius: R.lg, backgroundColor: C.surface, padding: S.lg, gap: S.sm },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  pct: { fontSize: 16, fontWeight: '700', color: C.accent },
-  track: { height: 8, borderRadius: 4, backgroundColor: C.bg2, overflow: 'hidden' },
-  fill: { height: 8, borderRadius: 4, backgroundColor: C.accent },
+  pct: { fontSize: 15, fontWeight: '600', color: C.accent, fontVariant: ['tabular-nums'] },
+  track: { height: 6, borderRadius: 3, backgroundColor: C.bg2, overflow: 'hidden' },
+  fill: { height: 6, borderRadius: 3, backgroundColor: C.accent },
   empty: { alignItems: 'center', gap: S.sm, paddingVertical: S.md },
   item: { flexDirection: 'row', alignItems: 'flex-start', gap: S.sm },
   rail: { width: 16, alignItems: 'center', alignSelf: 'stretch', paddingTop: 6 },

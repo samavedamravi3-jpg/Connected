@@ -24,38 +24,40 @@ import { canSeeDoor, doorActive, matchPoints, matchScore, matchStrength } from '
 import { ALERT_RADIUS_MI, alertPermission, enableNearbyAlerts, notifyNearby, useNearbyAlerts, useNearbyPresence, type AlertPermission } from '@/lib/nearbyAlerts';
 import { useLiveLocation, type Fix } from '@/lib/useLiveLocation';
 import { useApp } from '@/state/AppState';
-import { C, R, S, T, shadow } from '@/theme';
+import { C, F, R, S, T, shadow } from '@/theme';
 
 /**
- * Connected. map style: a calm lavender-gray city with white streets, so purple network nodes and
+ * Connected. map style: a calm warm-paper city with white streets, so forest-green network nodes and
  * connection lines read clearly. Fully applied on Android (Google Maps). Apple Maps on iOS can't be
- * recolored, so a soft lavender wash (the Polygon below) gives it the same feel there.
+ * recolored, so a soft paper wash (the Polygon below) gives it the same feel there.
  */
+const MAP_BG = '#F1EEE6';
 const ANDROID_MAP_STYLE: MapStyleElement[] = [
-  { elementType: 'geometry', stylers: [{ color: '#F3F1F8' }] },
+  { elementType: 'geometry', stylers: [{ color: MAP_BG }] },
   { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#6E6884' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#F7F6FB' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#6B675C' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#F6F4EE' }] },
   { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
-  { featureType: 'administrative.neighborhood', elementType: 'labels.text.fill', stylers: [{ color: '#8E88A6' }] },
+  { featureType: 'administrative.neighborhood', elementType: 'labels.text.fill', stylers: [{ color: '#8A857A' }] },
   { featureType: 'poi', stylers: [{ visibility: 'off' }] },
   { featureType: 'poi.park', stylers: [{ visibility: 'on' }] },
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#E7EBE6' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#E1E8DC' }] },
   { featureType: 'poi.park', elementType: 'labels', stylers: [{ visibility: 'off' }] },
   { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#FFFFFF' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#E4E0EE' }] },
-  { featureType: 'road.arterial', elementType: 'labels.text.fill', stylers: [{ color: '#8E88A6' }] },
-  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#E9E3FA' }] },
-  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#D6CCF5' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#E3DED2' }] },
+  { featureType: 'road.arterial', elementType: 'labels.text.fill', stylers: [{ color: '#8A857A' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#ECE6D8' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#DAD2C0' }] },
   { featureType: 'road.local', elementType: 'labels', stylers: [{ visibility: 'off' }] },
   { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#D9D2F2' }] },
-  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#8E88A6' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#D3DEE0' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#8A857A' }] },
 ];
-const WASH = Platform.OS === 'ios' ? 'rgba(246,243,253,0.42)' : 'rgba(246,243,253,0.12)';
+const WASH = Platform.OS === 'ios' ? 'rgba(246,244,238,0.42)' : 'rgba(246,244,238,0.12)';
+const GREEN = (a: number) => `rgba(31,77,58,${a})`; // C.accent with alpha, for map overlays
 const POOL_RADIUS_MI = 25;
 const MAX_LINES = 6;
-const PEEK_MIN = 136;
+const PEEK_MIN = 144;
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 type MapLook = 'network' | 'city3d' | 'satellite';
@@ -418,7 +420,7 @@ export default function MapScreen() {
   ];
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#F3F1F8' }} onLayout={(e) => setHeight(e.nativeEvent.layout.height)}>
+    <View style={{ flex: 1, backgroundColor: MAP_BG }} onLayout={(e) => setHeight(e.nativeEvent.layout.height)}>
       <MapView
         ref={mapRef}
         style={StyleSheet.absoluteFill}
@@ -452,7 +454,7 @@ export default function MapScreen() {
         accessibilityLabel="Map of your network nearby"
       >
         {look === 'network' ? <Polygon coordinates={wash} fillColor={WASH} strokeWidth={0} strokeColor="transparent" zIndex={0} tappable={false} /> : null}
-        <Circle center={origin} radius={filters.distanceMi * 1609.34} strokeColor="rgba(91,53,201,0.22)" fillColor="rgba(91,53,201,0.03)" strokeWidth={1} zIndex={1} />
+        <Circle center={origin} radius={filters.distanceMi * 1609.34} strokeColor={GREEN(0.25)} fillColor={GREEN(0.03)} strokeWidth={1} zIndex={1} />
         {eventClusters.clusters.map((c) =>
           c.kind === 'cluster' ? (
             <Marker
@@ -526,7 +528,7 @@ export default function MapScreen() {
                 <Polyline
                   key={`l-${p.id}`}
                   coordinates={[origin, p.coord]}
-                  strokeColor={on ? 'rgba(91,53,201,0.9)' : p.strength === 'strong' ? 'rgba(91,53,201,0.5)' : 'rgba(91,53,201,0.3)'}
+                  strokeColor={on ? GREEN(0.9) : p.strength === 'strong' ? GREEN(0.5) : GREEN(0.3)}
                   strokeWidth={on ? 2.5 : 1.5}
                   lineDashPattern={on ? undefined : [2, 6]}
                   zIndex={2}
@@ -535,7 +537,7 @@ export default function MapScreen() {
             })
           : null}
         {loc.fix && loc.fix.accuracyM && loc.fix.accuracyM < 250 ? (
-          <Circle center={loc.fix.coord} radius={loc.fix.accuracyM} strokeColor="rgba(91,53,201,0.2)" fillColor="rgba(91,53,201,0.08)" strokeWidth={1} zIndex={3} />
+          <Circle center={loc.fix.coord} radius={loc.fix.accuracyM} strokeColor={GREEN(0.2)} fillColor={GREEN(0.08)} strokeWidth={1} zIndex={3} />
         ) : null}
         {peopleClusters.clusters.map((c) => {
           if (c.kind === 'cluster') {
@@ -596,7 +598,7 @@ export default function MapScreen() {
             </View>
           </Pressable>
           <Pressable onPress={() => router.push('/search')} accessibilityRole="button" accessibilityLabel="Search people" style={({ pressed }) => [styles.filterBtn, pressed && { backgroundColor: C.bg2 }]}>
-            <Ionicons name="search" size={20} color={C.ink} />
+            <Ionicons name="search-outline" size={20} color={C.ink} />
           </Pressable>
           <Pressable onPress={() => setModal('filters')} accessibilityRole="button" accessibilityLabel={`Filters${fCount ? `, ${fCount} on` : ''}`} style={({ pressed }) => [styles.filterBtn, pressed && { backgroundColor: C.bg2 }]}>
             <Ionicons name="options-outline" size={20} color={C.ink} />
@@ -632,12 +634,12 @@ export default function MapScreen() {
           </ScrollView>
           {!chipEdge.start ? (
             <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(150)} style={[styles.fade, { left: 0 }]} pointerEvents="none">
-              <LinearGradient colors={['rgba(243,241,248,0.95)', 'rgba(243,241,248,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+              <LinearGradient colors={['rgba(241,238,230,0.95)', 'rgba(241,238,230,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
             </Animated.View>
           ) : null}
           {chipEdge.end ? (
             <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(150)} style={[styles.fade, { right: 0 }]} pointerEvents="none">
-              <LinearGradient colors={['rgba(243,241,248,0)', 'rgba(243,241,248,0.95)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+              <LinearGradient colors={['rgba(241,238,230,0)', 'rgba(241,238,230,0.95)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
             </Animated.View>
           ) : null}
         </View>
@@ -650,7 +652,7 @@ export default function MapScreen() {
               accessibilityRole="button"
               style={({ pressed }) => [styles.pill, shadow, pressed && { opacity: 0.85 }]}
             >
-              <Ionicons name="refresh" size={15} color={C.accent} />
+              <Ionicons name="refresh-outline" size={16} color={C.accent} />
               <Text style={styles.pillAccent}>Search this area</Text>
             </Pressable>
           </Animated.View>
@@ -662,7 +664,7 @@ export default function MapScreen() {
               accessibilityLabel={shareCard === 'signin' ? 'Sign in to appear on the map' : 'Show my rough area on the map'}
               style={styles.shareMain}
             >
-              <Ionicons name={shareCard === 'signin' ? 'person-add-outline' : 'eye-outline'} size={15} color={C.accent} />
+              <Ionicons name={shareCard === 'signin' ? 'person-add-outline' : 'eye-outline'} size={16} color={C.accent} />
               <Text style={styles.pillAccent} numberOfLines={1}>{shareCard === 'signin' ? 'Sign in to appear on the map' : 'Show me on the map'}</Text>
             </Pressable>
             <Pressable onPress={() => setHideShareCard(true)} accessibilityRole="button" accessibilityLabel="Dismiss" hitSlop={10} style={styles.shareClose}>
@@ -679,8 +681,8 @@ export default function MapScreen() {
 
       {/* Two map buttons, plus the assistant. They ride just above the sheet and fade out when it opens. */}
       <Animated.View style={[styles.rail, railStyle]} pointerEvents="box-none">
-        <Pressable onPress={() => router.push('/assistant')} accessibilityRole="button" accessibilityLabel="Ask the Connected assistant" style={({ pressed }) => [styles.askBtn, shadow, pressed && { opacity: 0.85 }]}>
-          <Ionicons name="sparkles" size={17} color={C.white} />
+        <Pressable onPress={() => router.push('/assistant')} accessibilityRole="button" accessibilityLabel="Ask the Connected assistant" style={({ pressed }) => [styles.askBtn, shadow, pressed && { backgroundColor: C.accentPressed }]}>
+          <Ionicons name="chatbubble-ellipses-outline" size={20} color={C.white} />
         </Pressable>
         <View style={[styles.controls, shadow]}>
           <ControlButton icon={following ? 'locate' : 'locate-outline'} active={following} label={following ? 'Following your location' : 'Center on my location'} onPress={recenter} />
@@ -723,8 +725,8 @@ export default function MapScreen() {
               </View>
             ) : (
               <View style={styles.sheetHead}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Text style={styles.sheetTitle}>Your network nearby</Text>
+                <View style={{ gap: 1 }}>
+                  <Text style={styles.sheetTitle} accessibilityRole="header" numberOfLines={1}>Your network nearby</Text>
                   <Text style={styles.sheetMeta} numberOfLines={1}>Within {filters.distanceMi} mi of {me ? 'you' : areaName}</Text>
                 </View>
                 {sheetIndex === 0 ? null : <Text style={styles.sheetCounts} numberOfLines={1}>
@@ -778,11 +780,11 @@ export default function MapScreen() {
             <View style={{ paddingHorizontal: S.lg, paddingTop: S.sm, gap: S.md }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.md }}>
                 <View style={[styles.hotIcon, { backgroundColor: HOTSPOT_LEVELS[hotspot.level].fill, borderColor: HOTSPOT_LEVELS[hotspot.level].color }]}>
-                  <Ionicons name="flame" size={20} color={HOTSPOT_LEVELS[hotspot.level].color} />
+                  <Ionicons name="flame-outline" size={20} color={HOTSPOT_LEVELS[hotspot.level].color} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.hotTitle}>{hotspot.name}</Text>
-                  <Text style={[T.small, { color: HOTSPOT_LEVELS[hotspot.level].color, fontWeight: '700' }]}>{HOTSPOT_LEVELS[hotspot.level].label} · {hotspot.kind}</Text>
+                  <Text style={[T.small, { color: C.ink2, fontWeight: '600' }]}>{HOTSPOT_LEVELS[hotspot.level].label} · {hotspot.kind}</Text>
                 </View>
               </View>
               <Text style={[T.body, { fontSize: 15, lineHeight: 22 }]}>{hotspot.why}</Text>
@@ -814,7 +816,7 @@ export default function MapScreen() {
             <View style={{ paddingHorizontal: S.lg, paddingTop: S.xs }}>
               {listed.map((p) => {
                 const door = doorVisible(p);
-                const tags = matchPoints(p, prefs).slice(0, 2);
+                const reason = matchPoints(p, prefs)[0]?.text;
                 return (
                   <Pressable
                     key={p.id}
@@ -825,17 +827,17 @@ export default function MapScreen() {
                     style={({ pressed }) => [styles.contact, pressed && { backgroundColor: C.bg2 }]}
                   >
                     <Avatar name={p.name} uri={p.photo} size={46} ring={p.strength === 'strong'} />
-                    <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                    <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         <Text style={styles.contactName} numberOfLines={1}>{p.name}</Text>
-                        {p.strength === 'strong' ? <Text style={styles.strong}>Strong match</Text> : null}
-                        {p.isDemo ? <Text style={styles.demoPill}>DEMO</Text> : null}
+                        {p.isDemo ? <Text style={styles.demoPill}>Demo</Text> : null}
                       </View>
                       <Text style={styles.contactRole} numberOfLines={1}>{p.role} · {p.org}</Text>
-                      {tags.length ? (
-                        <View style={styles.tagRow}>
-                          {tags.map((t) => <Text key={t.text} style={styles.tag} numberOfLines={2}>{t.text}</Text>)}
-                        </View>
+                      {p.strength === 'strong' || reason ? (
+                        <Text style={styles.reason}>
+                          {p.strength === 'strong' ? <Text style={styles.strong}>Strong match{reason ? ' · ' : ''}</Text> : null}
+                          {reason}
+                        </Text>
                       ) : null}
                     </View>
                     <View style={styles.contactRight}>
@@ -948,80 +950,79 @@ function ControlButton({ icon, label, onPress, active }: { icon: IconName; label
 
 const styles = StyleSheet.create({
   top: { position: 'absolute', left: 0, right: 0, top: 0, gap: S.sm },
-  header: { flexDirection: 'row', alignItems: 'center', marginHorizontal: S.md, backgroundColor: C.bg, borderRadius: 16, paddingLeft: S.md, paddingRight: 6, minHeight: 52, borderWidth: 1, borderColor: C.line },
+  header: { flexDirection: 'row', alignItems: 'center', marginHorizontal: S.md, backgroundColor: C.surface, borderRadius: R.lg, paddingLeft: S.md, paddingRight: 4, minHeight: 52, borderWidth: 1, borderColor: C.line },
   headerMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: S.md, minHeight: 48 },
   brand: { flexDirection: 'row', alignItems: 'flex-end' },
-  brandWord: { fontSize: 17, fontWeight: '800', color: C.ink, letterSpacing: -0.5 },
-  brandDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.accent, marginLeft: 1.5, marginBottom: 4 },
+  brandWord: { fontFamily: F.display, fontSize: 19, color: C.ink, letterSpacing: -0.4 },
+  brandDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.accent, marginLeft: 1.5, marginBottom: 5 },
   headerDivider: { width: 1, height: 24, backgroundColor: C.line },
-  place: { fontSize: 15, fontWeight: '700', color: C.ink, flexShrink: 1 },
+  place: { fontSize: 15, fontWeight: '600', color: C.ink, flexShrink: 1 },
   locDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.accent },
-  filterBtn: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  filterBtn: { width: 44, height: 44, borderRadius: R.md, alignItems: 'center', justifyContent: 'center' },
   count: { position: 'absolute', top: 4, right: 4, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
-  countText: { color: C.white, fontSize: 10, fontWeight: '800' },
-  quick: { gap: S.sm, paddingHorizontal: S.md },
-  nearDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#1FB860' },
-  askBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
+  countText: { color: C.white, fontSize: 10, fontWeight: '700' },
+  quick: { gap: S.sm, paddingHorizontal: S.md, paddingVertical: 2 },
+  nearDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.ok },
+  askBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
   rail: { position: 'absolute', right: S.md, bottom: 0, alignItems: 'center', gap: S.sm },
-  fade: { position: 'absolute', top: 0, bottom: 0, width: 28 },
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.bg, paddingHorizontal: S.md, minHeight: 36, borderRadius: R.pill, borderWidth: 1, borderColor: C.line },
-  pillAccent: { color: C.accent, fontWeight: '700', fontSize: 14, flexShrink: 1 },
-  pillText: { fontSize: 13, fontWeight: '700', color: C.ink },
+  fade: { position: 'absolute', top: 0, bottom: 0, width: 32 },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.surface, paddingHorizontal: S.md, minHeight: 40, borderRadius: R.pill, borderWidth: 1, borderColor: C.line },
+  pillAccent: { color: C.accent, fontWeight: '600', fontSize: 14, flexShrink: 1 },
+  pillText: { fontSize: 13, fontWeight: '600', color: C.ink },
   sharePill: { alignSelf: 'flex-start', marginLeft: S.md, paddingRight: 4, maxWidth: '88%' },
-  shareMain: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, minHeight: 36 },
-  shareClose: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  shareMain: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, minHeight: 40 },
+  shareClose: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   placeRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  sheetBg: { backgroundColor: C.bg, borderTopLeftRadius: 26, borderTopRightRadius: 26 },
-  handle: { width: 40, height: 5, backgroundColor: C.line2 },
+  sheetBg: { backgroundColor: C.bg, borderTopLeftRadius: R.lg, borderTopRightRadius: R.lg, borderWidth: 1, borderColor: C.line },
+  handle: { width: 36, height: 4, backgroundColor: C.line2 },
   handleHit: { paddingTop: 10, paddingBottom: 6 },
-  sheetCounts: { fontSize: 13, color: C.ink3, fontWeight: '500', marginTop: -S.sm },
-  key: { position: 'absolute', left: S.md, bottom: 0, flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: R.pill, borderWidth: 1, borderColor: C.line, paddingHorizontal: 11, minHeight: 32 },
+  sheetCounts: { fontSize: 13, lineHeight: 18, color: C.ink2, marginTop: -S.xs },
+  key: { position: 'absolute', left: S.md, bottom: 0, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(252,251,247,0.96)', borderRadius: R.md, borderWidth: 1, borderColor: C.line, paddingHorizontal: 10, minHeight: 32 },
   keyRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  keySwatch: { width: 13, height: 13, borderRadius: 7, borderWidth: 1.5 },
-  keyText: { fontSize: 11.5, color: C.ink2, fontWeight: '600' },
+  keySwatch: { width: 12, height: 12, borderRadius: 6, borderWidth: 1.5 },
+  keyText: { fontSize: 12, color: C.ink2, fontWeight: '500' },
   emptyCard: { gap: S.sm, paddingHorizontal: S.lg, paddingVertical: S.md, marginBottom: S.lg },
   emptyActions: { flexDirection: 'row', flexWrap: 'wrap', gap: S.sm, marginTop: S.xs },
-  emptyTitle: { fontSize: 15, fontWeight: '700', color: C.ink },
-  hotLabel: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 8, borderWidth: 1.5, borderColor: 'transparent', paddingHorizontal: 7, paddingVertical: 3, shadowColor: '#2A1E5C', shadowOpacity: 0.12, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+  emptyTitle: { fontSize: 15, lineHeight: 20, fontWeight: '600', color: C.ink },
+  hotLabel: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(252,251,247,0.95)', borderRadius: R.sm, borderWidth: 1.5, borderColor: 'transparent', paddingHorizontal: 7, paddingVertical: 3, shadowColor: '#1C1B17', shadowOpacity: 0.1, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
   hotDot: { width: 7, height: 7, borderRadius: 4 },
-  hotText: { fontSize: 11, fontWeight: '700', color: C.ink },
+  hotText: { fontSize: 11, fontWeight: '600', color: C.ink },
   hotIcon: { width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
-  hotTitle: { fontSize: 20, fontWeight: '800', color: C.ink },
-  hotFacts: { flexDirection: 'row', borderWidth: 1, borderColor: C.line, borderRadius: R.md, paddingVertical: S.md },
+  hotTitle: { fontFamily: F.display, fontSize: 22, lineHeight: 28, color: C.ink },
+  hotFacts: { flexDirection: 'row', borderWidth: 1, borderColor: C.line, borderRadius: R.md, paddingVertical: S.md, backgroundColor: C.surface },
   hotFact: { flex: 1, alignItems: 'center', gap: 2 },
-  hotFactNum: { fontSize: 20, fontWeight: '800', color: C.ink, fontVariant: ['tabular-nums'] },
-  hotFactLabel: { fontSize: 12, color: C.ink3, textAlign: 'center' },
+  hotFactNum: { fontFamily: F.display, fontSize: 22, color: C.ink, fontVariant: ['tabular-nums'] },
+  hotFactLabel: { fontSize: 12, lineHeight: 16, color: C.ink3, textAlign: 'center' },
   hotFactDivider: { width: 1, backgroundColor: C.line },
-  controls: { backgroundColor: C.bg, borderRadius: 14, borderWidth: 1, borderColor: C.line, overflow: 'hidden' },
+  controls: { backgroundColor: C.surface, borderRadius: R.lg, borderWidth: 1, borderColor: C.line, overflow: 'hidden' },
   control: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center' },
   controlDivider: { height: 1, backgroundColor: C.line, marginHorizontal: 8 },
   centerMark: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: C.accent, backgroundColor: C.white },
   sheetHead: { paddingHorizontal: S.lg, gap: S.md, paddingBottom: S.sm },
-  sheetTitle: { fontSize: 19, fontWeight: '800', color: C.ink, letterSpacing: -0.3 },
-  sheetMeta: { fontSize: 13, color: C.ink3, fontWeight: '500' },
-  backRow: { flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 36 },
-  tabs: { flexDirection: 'row', backgroundColor: C.bg2, borderRadius: 12, padding: 3 },
-  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, minHeight: 36, borderRadius: 9 },
-  tabOn: { backgroundColor: C.bg, shadowColor: '#2A1E5C', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
-  tabText: { fontSize: 13, fontWeight: '600', color: C.ink3 },
-  tabTextOn: { color: C.ink },
-  tabCount: { fontSize: 12, fontWeight: '700', color: C.ink3, fontVariant: ['tabular-nums'] },
-  permRow: { flexDirection: 'row', alignItems: 'center', gap: S.sm, backgroundColor: C.accentSoft, borderRadius: 12, padding: S.sm, paddingLeft: S.md },
-  contact: { flexDirection: 'row', alignItems: 'center', gap: S.md, paddingVertical: 12, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: C.line, borderRadius: 4 },
-  contactName: { fontSize: 16, fontWeight: '700', color: C.ink, flexShrink: 1 },
-  contactRole: { fontSize: 13, color: C.ink2 },
-  strong: { fontSize: 11, fontWeight: '700', color: C.accent, backgroundColor: C.accentSoft, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5, overflow: 'hidden' },
-  tagRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  tag: { fontSize: 12, color: C.ink2, borderWidth: 1, borderColor: C.line, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, flexShrink: 1 },
-  demoPill: { fontSize: 10, fontWeight: '700', color: C.ink3, borderWidth: 1, borderColor: C.line2, paddingHorizontal: 5, borderRadius: 5, overflow: 'hidden' },
+  sheetTitle: { fontFamily: F.display, fontSize: 20, lineHeight: 26, color: C.ink, letterSpacing: -0.2, flexShrink: 1 },
+  sheetMeta: { fontSize: 13, lineHeight: 18, color: C.ink3 },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 44 },
+  tabs: { flexDirection: 'row', backgroundColor: C.bg2, borderRadius: R.md, padding: 3 },
+  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, minHeight: 38, borderRadius: R.md - 3, borderWidth: 1, borderColor: 'transparent' },
+  tabOn: { backgroundColor: C.surface, borderColor: C.line },
+  tabText: { fontSize: 14, fontWeight: '500', color: C.ink2 },
+  tabTextOn: { color: C.ink, fontWeight: '600' },
+  tabCount: { fontSize: 13, fontWeight: '600', color: C.ink3, fontVariant: ['tabular-nums'] },
+  permRow: { flexDirection: 'row', alignItems: 'center', gap: S.sm, backgroundColor: C.accentSoft, borderRadius: R.md, padding: S.sm, paddingLeft: S.md },
+  contact: { flexDirection: 'row', alignItems: 'center', gap: S.md, paddingVertical: S.md, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: C.line },
+  contactName: { fontFamily: F.displaySemi, fontSize: 17, lineHeight: 22, color: C.ink, flexShrink: 1 },
+  contactRole: { fontSize: 14, lineHeight: 19, color: C.ink2 },
+  reason: { fontSize: 13, lineHeight: 18, color: C.ink3 },
+  strong: { fontWeight: '600', color: C.accent },
+  demoPill: { fontSize: 11, fontWeight: '600', color: C.ink2, borderWidth: 1, borderColor: C.line2, paddingHorizontal: 5, paddingVertical: 1, borderRadius: R.sm, overflow: 'hidden' },
   contactRight: { alignItems: 'flex-end', gap: 2, minWidth: 64 },
-  dist: { fontSize: 15, fontWeight: '700', color: C.ink, fontVariant: ['tabular-nums'] },
-  travel: { fontSize: 11, color: C.ink3 },
-  doorText: { fontSize: 11, fontWeight: '700', color: C.blue },
-  freeText: { fontSize: 11, fontWeight: '600', color: C.ok },
+  dist: { fontSize: 15, fontWeight: '600', color: C.ink, fontVariant: ['tabular-nums'] },
+  travel: { fontSize: 12, color: C.ink3 },
+  doorText: { fontSize: 12, fontWeight: '600', color: C.blue },
+  freeText: { fontSize: 12, fontWeight: '600', color: C.ok },
   empty: { flexDirection: 'row', alignItems: 'center', gap: S.md, paddingHorizontal: S.lg, paddingVertical: S.md },
-  scrim: { flex: 1, backgroundColor: 'rgba(27,23,38,0.35)', justifyContent: 'center', padding: S.lg },
-  areaBox: { backgroundColor: C.bg, borderRadius: 20, padding: S.lg, gap: S.md },
+  scrim: { flex: 1, backgroundColor: 'rgba(28,27,23,0.4)', justifyContent: 'center', padding: S.lg },
+  areaBox: { backgroundColor: C.surface, borderRadius: R.lg, padding: S.lg, gap: S.md },
   areaRow: { flexDirection: 'row', alignItems: 'center', gap: S.md, minHeight: 50, paddingHorizontal: S.sm, borderRadius: R.md },
   areaIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
 });

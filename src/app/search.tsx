@@ -10,7 +10,7 @@ import { approxDistance, distanceMi } from '@/lib/geo';
 import { BLOCKED_MESSAGE, checkText } from '@/lib/moderation';
 import { matchStrength } from '@/lib/match';
 import { useApp } from '@/state/AppState';
-import { C, R, S, T } from '@/theme';
+import { C, F, R, S, T } from '@/theme';
 
 const SUGGESTIONS = ['Nursing', 'Spanish', 'Python', 'South End', 'Interview prep', 'First-gen', 'Recruiter', 'Mediterranean'];
 
@@ -146,15 +146,15 @@ export default function SearchScreen() {
 const styles = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'center', gap: S.xs, paddingHorizontal: S.sm, paddingBottom: S.sm, borderBottomWidth: 1, borderBottomColor: C.line },
   back: { width: 40, height: 44, alignItems: 'center', justifyContent: 'center' },
-  box: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: S.sm, backgroundColor: C.bg2, borderRadius: 12, paddingHorizontal: S.md, minHeight: 44 },
+  box: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: S.sm, backgroundColor: C.bg2, borderRadius: R.md, paddingHorizontal: S.md, minHeight: 44 },
   input: { flex: 1, fontSize: 16, color: C.ink, paddingVertical: 10 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: S.sm },
-  chip: { paddingHorizontal: 14, minHeight: 38, justifyContent: 'center', borderRadius: R.pill, borderWidth: 1, borderColor: C.line },
+  chip: { paddingHorizontal: 14, minHeight: 40, justifyContent: 'center', borderRadius: R.md, borderWidth: 1, borderColor: C.line2, backgroundColor: C.surface },
   chipText: { fontSize: 14, color: C.ink, fontWeight: '500' },
   fieldRow: { flexDirection: 'row', alignItems: 'center', gap: S.md, minHeight: 52, paddingHorizontal: 4, borderRadius: R.md },
   fieldIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', gap: S.md, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.line },
-  name: { fontSize: 16, fontWeight: '700', color: C.ink, flexShrink: 1 },
+  name: { fontFamily: F.displaySemi, fontSize: 17, lineHeight: 22, color: C.ink, flexShrink: 1 },
   matched: { fontSize: 12, color: C.accent, fontWeight: '600' },
   dist: { fontSize: 13, fontWeight: '600', color: C.ink2, fontVariant: ['tabular-nums'] },
   empty: { alignItems: 'center', gap: S.sm, paddingVertical: S.xxl },

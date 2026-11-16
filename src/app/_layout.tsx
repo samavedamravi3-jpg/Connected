@@ -1,3 +1,5 @@
+import { BricolageGrotesque_600SemiBold, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
+import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -7,14 +9,17 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Intro } from '@/components/Intro';
 import { AppProvider } from '@/state/AppState';
-import { C } from '@/theme';
+import { C, F } from '@/theme';
 
-// Keep the native purple splash up until the animated intro is on screen (store builds only;
+// Keep the native splash up until the fonts settle and the intro is on screen (Intro hides it on mount;
 // Expo Go shows the app icon instead and this call is harmless there).
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
   const [introDone, setIntroDone] = useState(false);
+  // Display face for headings. On error we carry on: unknown font families fall back to the system font.
+  const [fontsLoaded, fontError] = useFonts({ BricolageGrotesque_600SemiBold, BricolageGrotesque_700Bold });
+  if (!fontsLoaded && !fontError) return null;
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
     <SafeAreaProvider>
@@ -26,6 +31,7 @@ export default function RootLayout() {
               headerTintColor: C.ink,
               headerStyle: { backgroundColor: C.bg },
               headerShadowVisible: false,
+              headerTitleStyle: { fontFamily: F.displaySemi, fontSize: 18, color: C.ink },
               contentStyle: { backgroundColor: C.bg },
               headerBackButtonDisplayMode: 'minimal',
             }}

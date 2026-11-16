@@ -195,7 +195,7 @@ function Block({ label, children }: { label: string; children: React.ReactNode }
 
 const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: S.sm },
-  input: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: C.line2, borderRadius: R.sm, paddingHorizontal: S.md, fontSize: 16, color: C.ink },
+  input: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: C.line2, borderRadius: R.md, paddingHorizontal: S.md, fontSize: 16, color: C.ink, backgroundColor: C.surface },
   preview: { gap: S.sm, padding: S.lg, borderRadius: R.md, borderWidth: 1, borderStyle: 'dashed', borderColor: C.line2 },
   err: { color: C.bad, fontWeight: '600' },
 });

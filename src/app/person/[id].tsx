@@ -1,5 +1,4 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ScrollViewInstance } from 'react-native';
@@ -20,7 +19,7 @@ import type { MeetSpot } from '@/lib/places';
 import { idBlocks, isIdRequiredError } from '@/lib/idVerification';
 import { fmtTime, fmtWindow } from '@/lib/time';
 import { latestRequest, useApp } from '@/state/AppState';
-import { C, R, S, T } from '@/theme';
+import { C, F, R, S, T } from '@/theme';
 
 const TONES: { id: Tone; label: string }[] = [
   { id: 'friendly', label: 'Friendly' },
@@ -150,7 +149,7 @@ export default function PersonScreen() {
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: C.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView ref={scroll} contentContainerStyle={{ paddingBottom: insets.bottom + S.xxl }} keyboardShouldPersistTaps="handled">
-        <LinearGradient colors={['#EAE3FC', '#F6F3FE', C.bg]} style={[styles.hero, { paddingTop: Platform.OS === 'android' ? insets.top + S.sm : S.md }]}>
+        <View style={[styles.hero, { paddingTop: Platform.OS === 'android' ? insets.top + S.sm : S.md }]}>
           <View style={styles.heroBar}>
             <IconButton icon="chevron-down" label="Close profile" onPress={() => router.back()} style={styles.heroBtn} />
             <IconButton icon="ellipsis-horizontal" label="More options" onPress={more} style={styles.heroBtn} />
@@ -165,14 +164,12 @@ export default function PersonScreen() {
             <Text style={styles.role}>{p.role}</Text>
             <Text style={T.small}>{p.org} · {p.areaName}</Text>
           </View>
-          <View style={styles.factRow}>
-            {facts.map((f) => <Text key={f} style={styles.fact}>{f}</Text>)}
+          <Text style={styles.facts}>{facts.join(' · ')}</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6 }}>
+            {strength === 'strong' ? <Tag label="Strong match for you" tone="accent" icon="star-outline" /> : strength === 'good' ? <Tag label="Good match" tone="accent" /> : null}
+            {p.isDemo ? <Tag label="Demo profile" icon="flask-outline" /> : <Tag label="Connected member" tone="ok" icon="checkmark-circle-outline" />}
           </View>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            {strength === 'strong' ? <Tag label="Strong match for you" tone="accent" icon="star" /> : strength === 'good' ? <Tag label="Good match" tone="accent" /> : null}
-            {p.isDemo ? <Tag label="Demo profile" icon="flask-outline" /> : <Tag label="Connected member" tone="ok" icon="checkmark-circle" />}
-          </View>
-        </LinearGradient>
+        </View>
 
         <View style={styles.body}>
           {!req && !isBlocked ? (
@@ -201,7 +198,7 @@ export default function PersonScreen() {
             <Block title="Open Door">
               <View style={styles.ticket}>
                 <View style={styles.ticketSide}>
-                  <Text style={styles.ticketDay}>{doorState(door) === 'live' ? 'NOW' : new Date(door.start).toLocaleDateString([], { weekday: 'short' }).toUpperCase()}</Text>
+                  <Text style={styles.ticketDay}>{doorState(door) === 'live' ? 'Now' : new Date(door.start).toLocaleDateString([], { weekday: 'short' })}</Text>
                   <Text style={styles.ticketTime}>{fmtTime(doorState(door) === 'live' ? door.end : door.start)}</Text>
                   <Text style={styles.ticketCap}>{doorState(door) === 'live' ? 'until' : 'starts'}</Text>
                 </View>
@@ -234,7 +231,7 @@ export default function PersonScreen() {
             </View>
           </Block>
 
-          <Block title="Skills, interests & languages" hint={shared.size ? 'Purple = you share it' : undefined}>
+          <Block title="Skills, interests & languages" hint={shared.size ? 'Highlighted = you share it' : undefined}>
             <View style={styles.chips}>
               {[...effectiveSkills(p.skills, p.experience), ...p.interests, ...p.languages.filter((l) => l !== 'English')].map((x) => (
                 <Text key={x} style={[styles.chip, shared.has(x) && styles.chipOn]}>{x}</Text>
@@ -303,9 +300,9 @@ export default function PersonScreen() {
                   </View>
                   <Button label="Send request" icon="paper-plane-outline" onPress={send} />
                   <Pressable onPress={() => setShowIdeas((v) => !v)} accessibilityRole="button" accessibilityState={{ expanded: showIdeas }} style={styles.ideasToggle}>
-                    <Ionicons name="bulb-outline" size={17} color={C.accent} />
+                    <Ionicons name="bulb-outline" size={20} color={C.accent} />
                     <Text style={[T.label, { flex: 1, color: C.accent }]}>Not sure what to ask?</Text>
-                    <Ionicons name={showIdeas ? 'chevron-up' : 'chevron-down'} size={17} color={C.accent} />
+                    <Ionicons name={showIdeas ? 'chevron-up' : 'chevron-down'} size={20} color={C.accent} />
                   </Pressable>
                   {showIdeas ? (
                     <View style={{ gap: 8 }}>
@@ -346,7 +343,7 @@ function RequestStatus({ status, first, message, demo, onCancel, onSim, onOpenCh
 }) {
   if (status === 'requested')
     return (
-      <View style={[styles.status, { backgroundColor: C.warnSoft, borderColor: '#EAD9B2' }]}>
+      <View style={[styles.status, { backgroundColor: C.warnSoft, borderColor: C.line }]}>
         <Tag label="Requested" tone="warn" icon="time-outline" />
         <Text style={T.body}>Waiting for {first} to reply. It isn&apos;t a confirmed meeting until they accept.</Text>
         <Text style={styles.quote} numberOfLines={4}>{message}</Text>
@@ -366,7 +363,7 @@ function RequestStatus({ status, first, message, demo, onCancel, onSim, onOpenCh
     );
   if (status === 'accepted')
     return (
-      <View style={[styles.status, { backgroundColor: C.okSoft, borderColor: '#BFDCC8' }]}>
+      <View style={[styles.status, { backgroundColor: C.okSoft, borderColor: C.line }]}>
         <Tag label="Accepted" tone="ok" icon="checkmark-circle-outline" />
         <Text style={T.body}>{first} said yes. Pick a time and a public place together.</Text>
         <Button label="Open conversation" icon="chatbubbles-outline" onPress={onOpenChat} />
@@ -384,26 +381,25 @@ function RequestStatus({ status, first, message, demo, onCancel, onSim, onOpenCh
 const styles = StyleSheet.create({
   hero: { alignItems: 'center', gap: S.md, paddingHorizontal: S.lg, paddingBottom: S.xl },
   heroBar: { alignSelf: 'stretch', flexDirection: 'row', justifyContent: 'space-between' },
-  heroBtn: { backgroundColor: 'rgba(255,255,255,0.8)' },
-  name: { fontSize: 26, fontWeight: '800', color: C.ink, letterSpacing: -0.4, textAlign: 'center' },
-  role: { fontSize: 16, color: C.ink, fontWeight: '500', textAlign: 'center' },
-  factRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6 },
-  fact: { fontSize: 13, color: C.ink2, backgroundColor: C.bg, borderWidth: 1, borderColor: C.line, paddingHorizontal: 10, paddingVertical: 5, borderRadius: R.pill, overflow: 'hidden' },
+  heroBtn: { backgroundColor: C.surface, borderWidth: 1, borderColor: C.line },
+  name: { ...T.title, textAlign: 'center', flexShrink: 1 },
+  role: { fontSize: 16, lineHeight: 22, color: C.ink, fontWeight: '500', textAlign: 'center' },
+  facts: { fontSize: 13, lineHeight: 18, color: C.ink2, textAlign: 'center' },
   body: { paddingHorizontal: S.lg, gap: S.xl },
   bio: { fontSize: 17, lineHeight: 26, color: C.ink },
-  listCard: { borderWidth: 1, borderColor: C.line, borderRadius: R.lg, overflow: 'hidden' },
+  listCard: { borderWidth: 1, borderColor: C.line, borderRadius: R.lg, overflow: 'hidden', backgroundColor: C.surface },
   listRow: { flexDirection: 'row', alignItems: 'center', gap: S.md, paddingHorizontal: S.lg, paddingVertical: 14 },
   listDivider: { borderTopWidth: 1, borderTopColor: C.line },
   ptIcon: { width: 30, height: 30, borderRadius: 15, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
-  ticket: { flexDirection: 'row', borderRadius: R.lg, borderWidth: 1, borderColor: C.line, overflow: 'hidden' },
+  ticket: { flexDirection: 'row', borderRadius: R.lg, borderWidth: 1, borderColor: C.line, overflow: 'hidden', backgroundColor: C.surface },
   ticketSide: { width: 86, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', paddingVertical: S.md },
-  ticketDay: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '700', letterSpacing: 1 },
-  ticketTime: { color: C.white, fontSize: 17, fontWeight: '800' },
-  ticketCap: { color: 'rgba(255,255,255,0.8)', fontSize: 11 },
+  ticketDay: { color: C.accentSoft, fontSize: 13, fontWeight: '600' },
+  ticketTime: { fontFamily: F.display, color: C.white, fontSize: 18, lineHeight: 23 },
+  ticketCap: { color: C.accentSoft, fontSize: 12 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { fontSize: 14, color: C.ink2, backgroundColor: C.bg2, paddingHorizontal: 12, paddingVertical: 7, borderRadius: R.pill, overflow: 'hidden' },
-  chipOn: { backgroundColor: C.accentSoft, color: C.accent, fontWeight: '700' },
-  msg: { minHeight: 150, borderWidth: 1.5, borderColor: C.line, borderRadius: R.md, padding: S.md, fontSize: 16, lineHeight: 23, color: C.ink, textAlignVertical: 'top', backgroundColor: C.bg },
+  chip: { fontSize: 14, color: C.ink2, backgroundColor: C.bg2, paddingHorizontal: 10, paddingVertical: 6, borderRadius: R.sm, overflow: 'hidden' },
+  chipOn: { backgroundColor: C.accentSoft, color: C.accent, fontWeight: '600' },
+  msg: { minHeight: 150, borderWidth: 1, borderColor: C.line2, borderRadius: R.md, padding: S.md, fontSize: 16, lineHeight: 23, color: C.ink, textAlignVertical: 'top', backgroundColor: C.surface },
   ideasToggle: { flexDirection: 'row', alignItems: 'center', gap: S.sm, minHeight: 44 },
   status: { gap: S.md, padding: S.lg, borderRadius: R.lg, borderWidth: 1, borderColor: C.line, backgroundColor: C.bg2 },
   quote: { fontSize: 14, lineHeight: 20, color: C.ink2, borderLeftWidth: 2, borderLeftColor: C.line2, paddingLeft: S.md },

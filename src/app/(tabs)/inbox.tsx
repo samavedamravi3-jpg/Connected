@@ -9,7 +9,7 @@ import type { ConnectionRequest, RequestStatus } from '@/data/types';
 import { firstName } from '@/lib/match';
 import { dayLabel, fmtTime } from '@/lib/time';
 import { useApp } from '@/state/AppState';
-import { C, S, T } from '@/theme';
+import { C, F, R, S, T } from '@/theme';
 
 const STATUS_TAG: Record<RequestStatus, { label: string; tone: 'warn' | 'ok' | 'neutral' }> = {
   requested: { label: 'Requested', tone: 'warn' },
@@ -38,7 +38,7 @@ export default function Inbox() {
   return (
     <ScrollView
       style={{ backgroundColor: C.bg }}
-      contentContainerStyle={{ padding: S.lg, gap: S.lg, paddingBottom: S.xxl }}
+      contentContainerStyle={{ padding: S.lg, gap: S.md, paddingBottom: S.xxl }}
       refreshControl={app.session ? <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={C.accent} /> : undefined}
     >
       <Segmented
@@ -53,7 +53,7 @@ export default function Inbox() {
           sent.map((r) => <RequestRow key={r.id} r={r} />)
         ) : (
           <View style={styles.empty}>
-            <Ionicons name="paper-plane-outline" size={36} color={C.ink3} />
+            <Ionicons name="paper-plane-outline" size={28} color={C.ink3} />
             <Text style={T.h3}>No requests yet</Text>
             <Text style={[T.muted, { textAlign: 'center' }]}>Open someone on the map and we’ll help you write a first message.</Text>
             <Button label="Go to the map" onPress={() => router.navigate('/')} />
@@ -64,10 +64,10 @@ export default function Inbox() {
           {received.map((r) => <RequestRow key={r.id} r={r} />)}
           {!received.length && !(app.showDemo && app.incoming.length) ? (
             <View style={styles.empty}>
-              <Ionicons name="mail-open-outline" size={36} color={C.ink3} />
+              <Ionicons name="mail-open-outline" size={28} color={C.ink3} />
               <Text style={T.h3}>No requests yet</Text>
               <Text style={[T.muted, { textAlign: 'center' }]}>
-                {app.session ? 'Keep “Let people nearby find me” on in Profile so people can find you.' : 'Create an account to receive requests from real people, or turn on demo people to try it.'}
+                {app.session ? 'Keep “Show me in nearby discovery” on in Profile so people can find you.' : 'Create an account to receive requests from real people, or turn on demo people to try it.'}
               </Text>
               <Button label={app.session ? 'Review my profile' : 'Go to Profile'} onPress={() => router.navigate('/profile')} />
             </View>
@@ -83,7 +83,7 @@ export default function Inbox() {
                   <Row style={{ flexWrap: 'nowrap' }}>
                     <Avatar name={i.name} />
                     <View style={{ flex: 1 }}>
-                      <Text style={T.h3}>{i.name}</Text>
+                      <Text style={styles.name}>{i.name}</Text>
                       <Text style={T.small}>{i.role} · {statusLabel(i.status)} · {fieldLabel(i.field)}</Text>
                     </View>
                     {i.state === 'new' ? <Tag label="New" tone="warn" /> : <Tag label={i.state === 'accepted' ? 'Accepted' : 'Declined'} tone={i.state === 'accepted' ? 'ok' : 'neutral'} />}
@@ -130,7 +130,7 @@ function RequestRow({ r }: { r: ConnectionRequest }) {
       <Avatar name={name} uri={p?.photo} />
       <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
         <Row style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
-          <Text style={[T.h3, { flexShrink: 1 }]} numberOfLines={1}>{name}</Text>
+          <Text style={styles.name} numberOfLines={1}>{name}</Text>
           <Tag label={pendingForMe ? 'New' : s.label} tone={pendingForMe ? 'warn' : s.tone} />
         </Row>
         <Text style={T.small} numberOfLines={2}>{last.replace(/\s+/g, ' ')}</Text>
@@ -156,6 +156,7 @@ function RequestRow({ r }: { r: ConnectionRequest }) {
 }
 
 const styles = StyleSheet.create({
-  item: { flexDirection: 'row', gap: S.md, padding: S.md, borderWidth: 1, borderColor: C.line, borderRadius: 12, alignItems: 'flex-start' },
+  item: { flexDirection: 'row', gap: S.md, paddingVertical: S.md, paddingHorizontal: S.xs, borderBottomWidth: 1, borderBottomColor: C.line, borderRadius: R.sm, alignItems: 'flex-start' },
+  name: { fontFamily: F.displaySemi, fontSize: 17, lineHeight: 22, color: C.ink, flexShrink: 1 },
   empty: { alignItems: 'center', gap: S.md, paddingVertical: S.xxl, paddingHorizontal: S.lg },
 });

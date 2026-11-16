@@ -1,8 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react';
-import { ActivityIndicator, ImageBackground, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View, type ViewStyle } from 'react-native';
+import { useCallback, useEffect, useMemo, useState, type ComponentProps } from 'react';
+import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Button, Tag } from '@/components/ui';
 import { EVENT_STYLE } from '@/data/eventVisuals';
 import { CHARLOTTE_CENTER } from '@/data/options';
 import { dataSource, type EventsResult } from '@/data/source';
@@ -10,19 +10,19 @@ import type { CommunityEvent, EventCategory } from '@/data/types';
 import { distanceMi } from '@/lib/geo';
 import { dayLabel, fmtTime } from '@/lib/time';
 import { useApp } from '@/state/AppState';
-import { C, R, S, T } from '@/theme';
+import { C, F, R, S, T } from '@/theme';
 
 type When = 'any' | 'week' | 'month';
 type Cat = 'all' | EventCategory | 'saved';
 type IconName = ComponentProps<typeof Ionicons>['name'];
 type Ev = CommunityEvent & { mi: number };
 
-const CATS: { id: Cat; label: string; icon: IconName; colors: [string, string] }[] = [
-  { id: 'all', label: 'All', icon: 'sparkles', colors: ['#3B3355', '#1B1726'] },
-  { id: 'networking', label: 'Networking', icon: EVENT_STYLE.networking.icon, colors: EVENT_STYLE.networking.colors },
-  { id: 'career', label: 'Career', icon: EVENT_STYLE.career.icon, colors: EVENT_STYLE.career.colors },
-  { id: 'hackathon', label: 'Hackathons', icon: EVENT_STYLE.hackathon.icon, colors: EVENT_STYLE.hackathon.colors },
-  { id: 'saved', label: 'Saved', icon: 'bookmark', colors: ['#F2B544', '#C9861A'] },
+const CATS: { id: Cat; label: string; icon: IconName }[] = [
+  { id: 'all', label: 'All', icon: 'apps-outline' },
+  { id: 'networking', label: 'Networking', icon: EVENT_STYLE.networking.icon },
+  { id: 'career', label: 'Career', icon: EVENT_STYLE.career.icon },
+  { id: 'hackathon', label: 'Hackathons', icon: EVENT_STYLE.hackathon.icon },
+  { id: 'saved', label: 'Saved', icon: 'bookmark-outline' },
 ];
 const WHEN: { id: When; label: string }[] = [
   { id: 'any', label: 'Any time' },
@@ -31,8 +31,8 @@ const WHEN: { id: When; label: string }[] = [
 ];
 const MILES = [5, 10, 25];
 
-const shortDay = (t: number) => new Date(t).toLocaleDateString([], { weekday: 'short' }).toUpperCase();
-const month = (t: number) => new Date(t).toLocaleDateString([], { month: 'short' }).toUpperCase();
+const shortDay = (t: number) => new Date(t).toLocaleDateString([], { weekday: 'short' });
+const month = (t: number) => new Date(t).toLocaleDateString([], { month: 'short' });
 const miLabel = (mi: number) => (mi < 10 ? `${mi.toFixed(1)} mi` : `${Math.round(mi)} mi`);
 
 export default function Events() {
@@ -97,24 +97,16 @@ export default function Events() {
           ) : null}
         </View>
         <View style={styles.demoToggle}>
-          <Text style={styles.demoText}>Demo</Text>
+          <Text style={styles.demoText}>Demo events</Text>
           <Switch value={withDemo} onValueChange={app.setShowDemoEvents} trackColor={{ true: C.accent, false: C.line2 }} accessibilityLabel="Show demo events" />
         </View>
       </View>
 
-      {/* Category tiles */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: S.md, paddingHorizontal: S.lg }}>
-        {CATS.map((c) => {
-          const on = cat === c.id;
-          return (
-            <Pressable key={c.id} onPress={() => setCat(c.id)} accessibilityRole="button" accessibilityState={{ selected: on }} accessibilityLabel={c.label} style={styles.catTile}>
-              <LinearGradient colors={c.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.catCircle, on && styles.catCircleOn]}>
-                <Ionicons name={c.icon} size={24} color={C.white} />
-              </LinearGradient>
-              <Text style={[styles.catLabel, on && { color: C.ink, fontWeight: '800' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>{c.label}</Text>
-            </Pressable>
-          );
-        })}
+      {/* Category */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: S.sm, paddingHorizontal: S.lg }}>
+        {CATS.map((c) => (
+          <Pill key={c.id} label={c.label} icon={c.icon} on={cat === c.id} onPress={() => setCat(c.id)} />
+        ))}
       </ScrollView>
 
       {/* When + distance */}
@@ -132,7 +124,7 @@ export default function Events() {
         <ActivityIndicator color={C.accent} style={{ marginTop: S.xl }} />
       ) : !list.length ? (
         <View style={styles.empty}>
-          <View style={styles.emptyIcon}><Ionicons name={cat === 'saved' ? 'bookmark-outline' : 'calendar-clear-outline'} size={30} color={C.accent} /></View>
+          <Ionicons name={cat === 'saved' ? 'bookmark-outline' : 'calendar-clear-outline'} size={28} color={C.ink3} />
           <Text style={T.h3}>{cat === 'saved' ? 'Nothing saved yet' : noLive ? 'No live events loaded' : 'Nothing matches'}</Text>
           <Text style={[T.small, { textAlign: 'center' }]}>
             {cat === 'saved'
@@ -142,24 +134,22 @@ export default function Events() {
                 : 'Try a wider distance or another date.'}
           </Text>
           {noLive && cat !== 'saved' ? (
-            <Pressable onPress={() => app.setShowDemoEvents(true)} style={[styles.pill, styles.pillOn, { marginTop: S.sm }]} accessibilityRole="button">
-              <Text style={[styles.pillText, { color: C.white }]}>Show demo events</Text>
-            </Pressable>
+            <Button label="Show demo events" small onPress={() => app.setShowDemoEvents(true)} style={{ marginTop: S.sm }} />
           ) : null}
         </View>
       ) : (
         <>
           {thisWeek.length ? (
             <View style={{ gap: S.md }}>
-              <Text style={styles.section}>Next 7 days</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={272} decelerationRate="fast" contentContainerStyle={{ gap: S.md, paddingHorizontal: S.lg }}>
+              <Text style={styles.section} accessibilityRole="header">Next 7 days</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={284} decelerationRate="fast" contentContainerStyle={{ gap: S.md, paddingHorizontal: S.lg }}>
                 {thisWeek.map((e) => <BigCard key={e.id} e={e} fromLabel={fromLabel} />)}
               </ScrollView>
             </View>
           ) : null}
           {later.length ? (
             <View style={{ gap: S.sm, paddingHorizontal: S.lg }}>
-              <Text style={[styles.section, { paddingHorizontal: 0 }]}>Later</Text>
+              <Text style={[styles.section, { paddingHorizontal: 0 }]} accessibilityRole="header">Later</Text>
               {later.map((e) => <Row key={e.id} e={e} />)}
             </View>
           ) : null}
@@ -171,14 +161,14 @@ export default function Events() {
 
 function Pill({ label, on, onPress, icon }: { label: string; on: boolean; onPress: () => void; icon?: IconName }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: on }} style={[styles.pill, on && styles.pillOn]}>
-      {icon ? <Ionicons name={icon} size={13} color={on ? C.white : C.ink2} /> : null}
-      <Text style={[styles.pillText, on && { color: C.white }]}>{label}</Text>
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: on }} hitSlop={4} style={({ pressed }) => [styles.pill, on && styles.pillOn, pressed && !on && { backgroundColor: C.bg2 }]}>
+      {icon ? <Ionicons name={icon} size={16} color={on ? C.white : C.ink2} /> : null}
+      <Text style={[styles.pillText, on && { color: C.white, fontWeight: '600' }]} numberOfLines={1}>{label}</Text>
     </Pressable>
   );
 }
 
-function SaveButton({ id, light }: { id: string; light?: boolean }) {
+function SaveButton({ id, onImage }: { id: string; onImage?: boolean }) {
   const app = useApp();
   const saved = app.savedEvents.includes(id);
   return (
@@ -186,64 +176,54 @@ function SaveButton({ id, light }: { id: string; light?: boolean }) {
       onPress={() => app.toggleSavedEvent(id)}
       accessibilityRole="button"
       accessibilityLabel={saved ? 'Remove from saved' : 'Save event'}
-      hitSlop={8}
-      style={[styles.save, light ? styles.saveLight : null, saved && !light && { backgroundColor: C.accentSoft }]}
+      hitSlop={4}
+      style={[styles.save, onImage && styles.saveOnImage, saved && !onImage && { backgroundColor: C.accentSoft }]}
     >
-      <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={18} color={light ? C.white : saved ? C.accent : C.ink2} />
+      <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={20} color={saved ? C.accent : C.ink2} />
     </Pressable>
   );
 }
 
-/** Large gradient card for the "This week" carousel. */
+/** Online vs in person, as a small tag so it reads at a glance. */
+function WhereTag({ e }: { e: Ev }) {
+  return e.online ? <Tag label="Online" icon="globe-outline" tone="blue" /> : <Tag label="In person" icon="location-outline" />;
+}
+
+/** Card for the "Next 7 days" carousel: photo on top, title and details on a solid panel below it. */
 function BigCard({ e, fromLabel }: { e: Ev; fromLabel: string }) {
   const st = EVENT_STYLE[e.category];
   return (
-    <Pressable onPress={() => router.push({ pathname: '/event/[id]', params: { id: e.id } })} accessibilityRole="button" accessibilityLabel={`${e.title}, ${dayLabel(e.start)} ${fmtTime(e.start)}`}>
-      <Cover e={e} style={styles.big}>
-        <View style={styles.bigTop}>
-          <View style={styles.datePill}>
-            <Text style={styles.datePillDay}>{shortDay(e.start)}</Text>
-            <Text style={styles.datePillNum}>{new Date(e.start).getDate()}</Text>
-          </View>
-          <SaveButton id={e.id} light />
+    <Pressable
+      onPress={() => router.push({ pathname: '/event/[id]', params: { id: e.id } })}
+      accessibilityRole="button"
+      accessibilityLabel={`${e.title}, ${dayLabel(e.start)} ${fmtTime(e.start)}, ${e.online ? 'online' : 'in person'}`}
+      style={({ pressed }) => [styles.big, pressed && { opacity: 0.92 }]}
+    >
+      <View style={[styles.bigMedia, { backgroundColor: st.soft }]}>
+        {e.image ? <Image source={{ uri: e.image }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityIgnoresInvertColors /> : <Ionicons name={st.icon} size={40} color={st.solid} />}
+        <View style={styles.datePill}>
+          <Text style={styles.datePillDay}>{shortDay(e.start)}</Text>
+          <Text style={styles.datePillNum}>{new Date(e.start).getDate()}</Text>
         </View>
-        <View style={{ gap: 4 }}>
-          <Text style={styles.bigKind}>{st.label.toUpperCase()}{e.cost.toLowerCase().startsWith('free') ? ' · FREE' : ''}{e.source ? ` · ${e.source.toUpperCase()}` : ' · DEMO'}</Text>
-          <Text style={styles.bigTitle} numberOfLines={2}>{e.title}</Text>
-          <Text style={styles.bigMeta} numberOfLines={1}>
-            {e.online ? `${fmtTime(e.start)} · Online event` : `${fmtTime(e.start)} · ${e.areaName} · ${miLabel(e.mi)}${fromLabel.startsWith('from you') ? ' away' : ''}`}
+        <View style={styles.bigSave}><SaveButton id={e.id} onImage /></View>
+      </View>
+      <View style={styles.bigBody}>
+        <Text style={[styles.kind, { color: st.solid }]} numberOfLines={1}>
+          {st.label}{e.cost.toLowerCase().startsWith('free') ? ' · Free' : ''}{e.source ? ` · ${e.source}` : ' · Demo'}
+        </Text>
+        <Text style={styles.bigTitle} numberOfLines={2}>{e.title}</Text>
+        <View style={styles.metaRow}>
+          <WhereTag e={e} />
+          <Text style={styles.meta} numberOfLines={1}>
+            {e.online ? fmtTime(e.start) : `${fmtTime(e.start)} · ${e.areaName} · ${miLabel(e.mi)}${fromLabel.startsWith('from you') ? ' away' : ''}`}
           </Text>
         </View>
-      </Cover>
+      </View>
     </Pressable>
   );
 }
 
-/** The event's real photo under a dark scrim, or the category gradient when there's no photo. */
-function Cover({ e, style, small, children }: { e: CommunityEvent; style: ViewStyle; small?: boolean; children: ReactNode }) {
-  const st = EVENT_STYLE[e.category];
-  const radius = small ? 14 : 22;
-  if (e.image) {
-    return (
-      <ImageBackground source={{ uri: e.image }} style={style} imageStyle={{ borderRadius: radius }} resizeMode="cover">
-        <LinearGradient
-          colors={small ? ['rgba(20,14,40,0.45)', 'rgba(20,14,40,0.6)'] : ['rgba(20,14,40,0.25)', 'rgba(20,14,40,0.55)', 'rgba(20,14,40,0.94)']}
-          locations={small ? undefined : [0, 0.4, 1]}
-          style={[StyleSheet.absoluteFill, { borderRadius: radius }]}
-        />
-        {children}
-      </ImageBackground>
-    );
-  }
-  return (
-    <LinearGradient colors={st.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={style}>
-      {!small ? <Ionicons name={st.icon} size={150} color="rgba(255,255,255,0.13)" style={styles.bigWatermark} /> : null}
-      {children}
-    </LinearGradient>
-  );
-}
-
-/** Compact visual row for later events. */
+/** Compact row for later events: a plain date block, then title and details. */
 function Row({ e }: { e: Ev }) {
   const st = EVENT_STYLE[e.category];
   const free = e.cost.toLowerCase().startsWith('free');
@@ -251,28 +231,22 @@ function Row({ e }: { e: Ev }) {
     <Pressable
       onPress={() => router.push({ pathname: '/event/[id]', params: { id: e.id } })}
       accessibilityRole="button"
+      accessibilityLabel={`${e.title}, ${dayLabel(e.start)} ${fmtTime(e.start)}, ${e.online ? 'online' : 'in person'}`}
       style={({ pressed }) => [styles.row, pressed && { backgroundColor: C.bg2 }]}
     >
-      <Cover e={e} style={styles.dateTile} small>
+      <View style={styles.dateTile}>
         <Text style={styles.dateMonth}>{month(e.start)}</Text>
         <Text style={styles.dateNum}>{new Date(e.start).getDate()}</Text>
-      </Cover>
+      </View>
       <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-        <Text style={styles.rowTitle} numberOfLines={1}>{e.title}</Text>
+        <Text style={[styles.kind, { color: st.solid }]} numberOfLines={1}>{st.label} · {fmtTime(e.start)}</Text>
+        <Text style={styles.rowTitle} numberOfLines={2}>{e.title}</Text>
         <View style={styles.metaRow}>
-          <Ionicons name={st.icon} size={13} color={st.solid} />
-          <Text style={[styles.meta, { color: st.solid, fontWeight: '700' }]}>{st.label}</Text>
-          <Text style={styles.metaDot}>·</Text>
-          <Text style={styles.meta}>{fmtTime(e.start)}</Text>
-          <Text style={styles.metaDot}>·</Text>
-          <Text style={styles.meta} numberOfLines={1}>{e.online ? 'Online' : miLabel(e.mi)}</Text>
+          <WhereTag e={e} />
+          {!e.online ? <Text style={styles.meta} numberOfLines={1}>{miLabel(e.mi)}</Text> : null}
+          <Text style={[styles.meta, free && { color: C.ok, fontWeight: '600' }]} numberOfLines={1}>{e.cost}</Text>
         </View>
-        <View style={styles.metaRow}>
-          <View style={[styles.costPill, free && { backgroundColor: C.okSoft }]}>
-            <Text style={[styles.costText, free && { color: C.ok }]}>{e.cost}</Text>
-          </View>
-          <Text style={styles.meta} numberOfLines={1}>{e.source ? `${e.source} · ${e.host}` : `${e.areaName} · Demo`}</Text>
-        </View>
+        <Text style={styles.meta} numberOfLines={1}>{e.source ? `${e.source} · ${e.host}` : `${e.areaName} · Demo`}</Text>
       </View>
       <SaveButton id={e.id} />
     </Pressable>
@@ -280,43 +254,35 @@ function Row({ e }: { e: Ev }) {
 }
 
 const styles = StyleSheet.create({
-  intro: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: S.lg, paddingTop: S.md },
-  count: { fontSize: 15, fontWeight: '700', color: C.ink2 },
+  intro: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: S.md, paddingHorizontal: S.lg, paddingTop: S.md },
+  count: { fontSize: 15, lineHeight: 20, fontWeight: '600', color: C.ink },
   liveRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#1FB860' },
-  liveText: { fontSize: 12, color: C.ink3, flexShrink: 1 },
-  demoToggle: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  demoText: { fontSize: 11, color: C.ink2, fontWeight: '600' },
-  catTile: { alignItems: 'center', gap: 6, width: 84 },
-  catCircle: { width: 60, height: 60, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  catCircleOn: { borderWidth: 3, borderColor: C.bg, shadowColor: '#2A1E5C', shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6, transform: [{ scale: 1.06 }] },
-  catLabel: { fontSize: 12, color: C.ink2, fontWeight: '600' },
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, minHeight: 36, borderRadius: R.pill, backgroundColor: C.bg2 },
-  pillOn: { backgroundColor: C.ink },
-  pillText: { fontSize: 13, fontWeight: '600', color: C.ink2 },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.ok },
+  liveText: { fontSize: 13, lineHeight: 18, color: C.ink3, flexShrink: 1 },
+  demoToggle: { alignItems: 'center', gap: 2 },
+  demoText: { fontSize: 12, color: C.ink2, fontWeight: '500' },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, minHeight: 40, borderRadius: R.md, borderWidth: 1, borderColor: C.line2, backgroundColor: C.surface },
+  pillOn: { backgroundColor: C.accent, borderColor: C.accent },
+  pillText: { fontSize: 14, color: C.ink },
   pillDivider: { width: 1, backgroundColor: C.line, marginVertical: 6 },
-  section: { fontSize: 20, fontWeight: '800', color: C.ink, letterSpacing: -0.3, paddingHorizontal: S.lg },
-  big: { width: 260, height: 196, borderRadius: 22, padding: S.lg, justifyContent: 'space-between', overflow: 'hidden' },
-  bigWatermark: { position: 'absolute', right: -24, bottom: -28 },
-  bigTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  datePill: { backgroundColor: 'rgba(255,255,255,0.22)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4, alignItems: 'center' },
-  datePillDay: { color: C.white, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  datePillNum: { color: C.white, fontSize: 20, fontWeight: '800', marginTop: -2 },
-  bigKind: { color: 'rgba(255,255,255,0.85)', fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-  bigTitle: { color: C.white, fontSize: 20, fontWeight: '800', letterSpacing: -0.3, lineHeight: 24, textShadowColor: 'rgba(0,0,0,0.45)', textShadowRadius: 6, textShadowOffset: { width: 0, height: 1 } },
-  bigMeta: { color: 'rgba(255,255,255,0.9)', fontSize: 13, fontWeight: '600' },
-  save: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg2 },
-  saveLight: { backgroundColor: 'rgba(255,255,255,0.22)' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: S.md, padding: S.sm, paddingRight: S.md, borderRadius: R.lg, borderWidth: 1, borderColor: C.line },
-  dateTile: { width: 58, height: 66, borderRadius: 14, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  dateMonth: { color: 'rgba(255,255,255,0.85)', fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-  dateNum: { color: C.white, fontSize: 24, fontWeight: '800', marginTop: -2 },
-  rowTitle: { fontSize: 16, fontWeight: '800', color: C.ink },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  meta: { fontSize: 12, color: C.ink3, flexShrink: 1 },
-  metaDot: { fontSize: 12, color: C.line2 },
-  costPill: { backgroundColor: C.bg2, paddingHorizontal: 7, paddingVertical: 1, borderRadius: 6 },
-  costText: { fontSize: 11, fontWeight: '700', color: C.ink2 },
+  section: { ...T.h2, paddingHorizontal: S.lg },
+  big: { width: 272, borderRadius: R.lg, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface, overflow: 'hidden' },
+  bigMedia: { height: 136, alignItems: 'center', justifyContent: 'center' },
+  bigSave: { position: 'absolute', top: S.sm, right: S.sm },
+  bigBody: { padding: S.md, gap: 6 },
+  datePill: { position: 'absolute', top: S.sm, left: S.sm, backgroundColor: C.surface, borderRadius: R.md, paddingHorizontal: 10, paddingVertical: 4, alignItems: 'center', minWidth: 48 },
+  datePillDay: { color: C.ink2, fontSize: 12, fontWeight: '600' },
+  datePillNum: { fontFamily: F.display, color: C.ink, fontSize: 20, lineHeight: 24 },
+  kind: { fontSize: 12, lineHeight: 16, fontWeight: '600' },
+  bigTitle: { fontFamily: F.displaySemi, color: C.ink, fontSize: 18, lineHeight: 23, minHeight: 46 },
+  save: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg2 },
+  saveOnImage: { backgroundColor: C.surface },
+  row: { flexDirection: 'row', alignItems: 'center', gap: S.md, padding: S.md, borderRadius: R.lg, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface },
+  dateTile: { width: 56, paddingVertical: S.sm, borderRadius: R.md, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg2, alignSelf: 'flex-start' },
+  dateMonth: { color: C.ink2, fontSize: 12, fontWeight: '600' },
+  dateNum: { fontFamily: F.display, color: C.ink, fontSize: 22, lineHeight: 26 },
+  rowTitle: { fontFamily: F.displaySemi, fontSize: 16, lineHeight: 21, color: C.ink },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  meta: { fontSize: 13, lineHeight: 18, color: C.ink3, flexShrink: 1 },
   empty: { alignItems: 'center', gap: S.sm, paddingVertical: S.xxl, paddingHorizontal: S.xl },
-  emptyIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
 });

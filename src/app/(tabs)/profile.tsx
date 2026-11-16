@@ -1,6 +1,5 @@
 import { router } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Avatar, Button, Card, ChipGroup, KV, Note, Row, Section, Tag } from '@/components/ui';
 import { ResumeExperienceCard } from '@/components/ResumeExperienceCard';
@@ -13,7 +12,7 @@ import { doorState, fullName } from '@/lib/match';
 import { pickProfilePhoto, removeProfilePhoto } from '@/lib/photo';
 import { fmtWindow } from '@/lib/time';
 import { useApp } from '@/state/AppState';
-import { C, R, S, T } from '@/theme';
+import { C, F, S, T } from '@/theme';
 
 export default function ProfileTab() {
   const app = useApp();
@@ -41,40 +40,37 @@ export default function ProfileTab() {
 
   return (
     <ScrollView style={{ backgroundColor: C.bg }} contentContainerStyle={{ padding: S.lg, gap: S.xl, paddingBottom: S.xxl }}>
-      <View style={styles.headerCard}>
-        <LinearGradient colors={['#7652E6', '#5B35C9', '#43249A']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.banner}>
-          <Ionicons name="git-network-outline" size={140} color="rgba(255,255,255,0.10)" style={styles.bannerArt} />
-          {prefs.discoverable ? (
-            <View style={styles.visiblePill}><View style={styles.visibleDot} /><Text style={styles.visibleText}>Visible nearby</Text></View>
-          ) : (
-            <View style={styles.visiblePill}><Ionicons name="eye-off-outline" size={12} color={C.white} /><Text style={styles.visibleText}>Hidden</Text></View>
-          )}
-        </LinearGradient>
-        <View style={styles.headerBody}>
+      <View style={styles.header}>
+        <View style={styles.idRow}>
           <Pressable onPress={photoMenu} accessibilityRole="button" accessibilityLabel={profile.photoUri ? 'Change profile photo' : 'Add a profile photo'} style={styles.avatarWrap}>
-            <Avatar name={fullName(profile) || '?'} uri={profile.photoUri} size={88} />
-            <View style={styles.camBadge}><Ionicons name={profile.photoUri ? 'pencil' : 'camera'} size={13} color={C.white} /></View>
+            <Avatar name={fullName(profile) || '?'} uri={profile.photoUri} size={76} />
+            <View style={styles.camBadge}><Ionicons name={profile.photoUri ? 'pencil-outline' : 'camera-outline'} size={14} color={C.white} /></View>
           </Pressable>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={styles.name}>{fullName(profile) || 'Your profile'}</Text>
-            {app.verification.verified ? <VerifiedBadge size={20} kind={app.verification.kind} /> : null}
-            {app.idStatus === 'verified' ? <IdBadge size={20} /> : null}
+          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <Text style={styles.name} accessibilityRole="header">{fullName(profile) || 'Your profile'}</Text>
+              {app.verification.verified ? <VerifiedBadge size={18} kind={app.verification.kind} /> : null}
+              {app.idStatus === 'verified' ? <IdBadge size={18} /> : null}
+            </View>
+            <Text style={T.muted}>{statusLabel(profile.status)}{profile.org ? ` · ${profile.org}` : ''}{prefs.field ? ` · ${fieldLabel(prefs.field)}` : ''}</Text>
+            <View style={styles.visibleRow}>
+              {prefs.discoverable ? <View style={styles.visibleDot} /> : <Ionicons name="eye-off-outline" size={14} color={C.ink3} />}
+              <Text style={[styles.visibleText, prefs.discoverable && { color: C.ok }]}>{prefs.discoverable ? 'Visible nearby' : 'Hidden'}</Text>
+            </View>
           </View>
-          <Text style={T.muted}>{statusLabel(profile.status)}{profile.org ? ` · ${profile.org}` : ''}{prefs.field ? ` · ${fieldLabel(prefs.field)}` : ''}</Text>
-          {profile.intro ? <Text style={styles.intro} numberOfLines={3}>{profile.intro}</Text> : null}
-          <View style={styles.stats}>
-            {[
-              { n: app.requests.filter((r) => r.status === 'accepted').length, label: 'Connections', icon: 'people' as const },
-              { n: app.requests.filter((r) => !r.incoming && r.status !== 'cancelled').length, label: 'Requests', icon: 'paper-plane' as const },
-              { n: app.savedEvents.length, label: 'Saved events', icon: 'bookmark' as const },
-            ].map((s, k) => (
-              <View key={s.label} style={[styles.stat, k > 0 && styles.statDivider]}>
-                <Ionicons name={s.icon} size={16} color={C.accent} />
-                <Text style={styles.statNum}>{s.n}</Text>
-                <Text style={styles.statLabel}>{s.label}</Text>
-              </View>
-            ))}
-          </View>
+        </View>
+        {profile.intro ? <Text style={styles.intro} numberOfLines={3}>{profile.intro}</Text> : null}
+        <View style={styles.stats}>
+          {[
+            { n: app.requests.filter((r) => r.status === 'accepted').length, label: 'Connections' },
+            { n: app.requests.filter((r) => !r.incoming && r.status !== 'cancelled').length, label: 'Requests' },
+            { n: app.savedEvents.length, label: 'Saved events' },
+          ].map((s, k) => (
+            <View key={s.label} style={[styles.stat, k > 0 && styles.statDivider]} accessible accessibilityLabel={`${s.n} ${s.label}`}>
+              <Text style={styles.statNum}>{s.n}</Text>
+              <Text style={styles.statLabel} numberOfLines={1}>{s.label}</Text>
+            </View>
+          ))}
         </View>
       </View>
 
@@ -159,10 +155,9 @@ export default function ProfileTab() {
 
       <ResumeExperienceCard />
 
-      <Card>
-        <Text style={T.label}>When I’m usually free</Text>
+      <Section title="When I’m usually free">
         <ChipGroup options={AVAILABILITY} selected={prefs.availability} onToggle={toggleAvail} />
-      </Card>
+      </Section>
 
       <Section title="Preferences" right={<Button label="Edit" variant="secondary" small onPress={() => router.push({ pathname: '/onboarding', params: { edit: 'prefs' } })} />}>
         <View style={{ gap: S.sm }}>
@@ -181,7 +176,7 @@ export default function ProfileTab() {
         </View>
       </Section>
 
-      <Section title="Open Door" right={<Button label="Offer one" small icon="add" onPress={() => router.push('/open-door')} />}>
+      <Section title="Open Door" right={<Button label="Offer one" small icon="add-outline" onPress={() => router.push('/open-door')} />}>
         <Text style={T.muted}>Offer a short, in-person chat at a public place and time you choose. Only people you pick can see where.</Text>
         {active.map((d) => (
           <Card key={d.id}>
@@ -286,22 +281,20 @@ export default function ProfileTab() {
 }
 
 const styles = StyleSheet.create({
-  headerCard: { borderRadius: 24, borderWidth: 1, borderColor: C.line, overflow: 'hidden', backgroundColor: C.bg },
-  banner: { height: 110, padding: S.md, alignItems: 'flex-end', overflow: 'hidden' },
-  bannerArt: { position: 'absolute', left: -20, top: -30 },
-  visiblePill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: R.pill },
-  visibleDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#7CF0B0' },
-  visibleText: { color: C.white, fontSize: 12, fontWeight: '700' },
-  headerBody: { alignItems: 'center', paddingHorizontal: S.lg, paddingBottom: S.lg, gap: 4, marginTop: -48 },
-  avatarWrap: { borderRadius: 50, borderWidth: 4, borderColor: C.bg, marginBottom: 4 },
-  name: { fontSize: 24, fontWeight: '800', color: C.ink, letterSpacing: -0.4, textAlign: 'center' },
-  intro: { fontSize: 15, lineHeight: 21, color: C.ink2, textAlign: 'center', marginTop: 4 },
-  stats: { flexDirection: 'row', alignSelf: 'stretch', marginTop: S.md, paddingTop: S.md, borderTopWidth: 1, borderTopColor: C.line },
+  header: { gap: S.md },
+  idRow: { flexDirection: 'row', alignItems: 'center', gap: S.lg },
+  avatarWrap: { borderRadius: 40 },
+  name: { ...T.title, flexShrink: 1 },
+  visibleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  visibleDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.ok },
+  visibleText: { fontSize: 13, fontWeight: '600', color: C.ink3 },
+  intro: { fontSize: 15, lineHeight: 22, color: C.ink2 },
+  stats: { flexDirection: 'row', paddingVertical: S.md, borderTopWidth: 1, borderBottomWidth: 1, borderColor: C.line },
   stat: { flex: 1, alignItems: 'center', gap: 2 },
   statDivider: { borderLeftWidth: 1, borderLeftColor: C.line },
-  statNum: { fontSize: 20, fontWeight: '800', color: C.ink, fontVariant: ['tabular-nums'] },
-  statLabel: { fontSize: 12, color: C.ink3 },
-  camBadge: { position: 'absolute', right: -2, bottom: -2, width: 26, height: 26, borderRadius: 13, backgroundColor: C.accent, borderWidth: 2, borderColor: C.bg, alignItems: 'center', justifyContent: 'center' },
-  switchRow: { flexDirection: 'row', alignItems: 'center', gap: S.md },
-  divider: { height: 1, backgroundColor: C.line, marginVertical: S.xs, borderRadius: R.sm },
+  statNum: { fontFamily: F.display, fontSize: 22, lineHeight: 28, color: C.ink, fontVariant: ['tabular-nums'] },
+  statLabel: { fontSize: 13, color: C.ink3 },
+  camBadge: { position: 'absolute', right: -2, bottom: -2, width: 28, height: 28, borderRadius: 14, backgroundColor: C.accent, borderWidth: 2, borderColor: C.bg, alignItems: 'center', justifyContent: 'center' },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: S.md, minHeight: 44 },
+  divider: { height: 1, backgroundColor: C.line, marginVertical: S.xs },
 });

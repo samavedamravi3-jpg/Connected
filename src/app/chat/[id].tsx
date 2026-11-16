@@ -60,7 +60,7 @@ export default function Chat() {
           return (
             <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
               <Text style={[T.body, { fontSize: 15, color: mine ? C.white : C.ink }]}>{item.text}</Text>
-              <Text style={[T.small, { fontSize: 11, color: mine ? 'rgba(255,255,255,0.8)' : C.ink3 }]}>
+              <Text style={[T.small, { fontSize: 11, color: mine ? C.accentSoft : C.ink3 }]}>
                 {fmtTime(item.at)}{item.demo ? ' · demo reply' : ''}
               </Text>
             </View>
@@ -107,12 +107,12 @@ export default function Chat() {
 
 const styles = StyleSheet.create({
   bubble: { maxWidth: '85%', padding: S.md, borderRadius: R.md, gap: 4 },
-  mine: { alignSelf: 'flex-end', backgroundColor: C.accent, borderBottomRightRadius: 4 },
-  theirs: { alignSelf: 'flex-start', backgroundColor: C.bg2, borderBottomLeftRadius: 4 },
+  mine: { alignSelf: 'flex-end', backgroundColor: C.accent, borderBottomRightRadius: R.sm - 2 },
+  theirs: { alignSelf: 'flex-start', backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderBottomLeftRadius: R.sm - 2 },
   composerWrap: { borderTopWidth: 1, borderTopColor: C.line, paddingTop: S.sm, gap: S.sm },
-  meetBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginHorizontal: S.md, paddingHorizontal: S.md, minHeight: 38, borderRadius: R.pill, borderWidth: 1, borderColor: C.line, alignSelf: 'flex-start', flexWrap: 'wrap' },
-  meetText: { fontSize: 14, fontWeight: '700', color: C.accent },
+  meetBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginHorizontal: S.md, paddingHorizontal: S.md, minHeight: 44, borderRadius: R.md, borderWidth: 1, borderColor: C.line2, backgroundColor: C.surface, alignSelf: 'flex-start', flexWrap: 'wrap' },
+  meetText: { fontSize: 14, fontWeight: '600', color: C.accent },
   composer: { flexDirection: 'row', alignItems: 'flex-end', gap: S.sm, paddingHorizontal: S.md },
-  input: { flex: 1, minHeight: 44, maxHeight: 120, borderWidth: 1, borderColor: C.line2, borderRadius: R.sm, paddingHorizontal: S.md, paddingVertical: 10, fontSize: 16, color: C.ink },
+  input: { flex: 1, minHeight: 44, maxHeight: 120, borderWidth: 1, borderColor: C.line2, borderRadius: R.md, paddingHorizontal: S.md, paddingVertical: 10, fontSize: 16, color: C.ink, backgroundColor: C.surface },
   sheetHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: S.lg, paddingBottom: S.sm, borderBottomWidth: 1, borderBottomColor: C.line },
 });

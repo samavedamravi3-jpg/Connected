@@ -122,5 +122,5 @@ export default function VerifyScreen() {
 
 const styles = StyleSheet.create({
   icon: { width: 64, height: 64, borderRadius: 32, backgroundColor: C.blueSoft, alignItems: 'center', justifyContent: 'center' },
-  input: { minHeight: 48, borderWidth: 1, borderColor: C.line2, borderRadius: R.md, paddingHorizontal: S.md, fontSize: 16, color: C.ink, backgroundColor: C.white },
+  input: { minHeight: 48, borderWidth: 1, borderColor: C.line2, borderRadius: R.md, paddingHorizontal: S.md, fontSize: 16, color: C.ink, backgroundColor: C.surface },
 });
