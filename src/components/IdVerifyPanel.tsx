@@ -3,7 +3,8 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Text, View } from 'react-native';
 import { Button, Note, Tag } from '@/components/ui';
-import { idServerMode, startIdVerification, type IdStatus } from '@/lib/idVerification';
+import { idServerMode, isProfileNotReadyError, startIdVerification, type IdStatus } from '@/lib/idVerification';
+import { NOT_SAVED_MESSAGE } from '@/lib/profileSync';
 import { useApp } from '@/state/AppState';
 import { C, S, T } from '@/theme';
 
@@ -16,16 +17,27 @@ const PRIMARY: Record<IdStatus, string> = {
  * The ID check in every state, with one primary action. Shared by onboarding, Profile (via /verify-id) and the gate prompt.
  * Status always comes from the server: after the browser closes we re-read it (app foreground, or "Check status").
  */
-export function IdVerifyPanel({ onDone, onLater, onSignIn }: { onDone?: () => void; onLater?: () => void; onSignIn?: () => void }) {
+export function IdVerifyPanel({ onDone, onLater, onSignIn, onEditProfile }: { onDone?: () => void; onLater?: () => void; onSignIn?: () => void; onEditProfile?: () => void }) {
   const app = useApp();
   const [mode, setMode] = useState<{ available: boolean; test: boolean } | null>(null);
-  const [busy, setBusy] = useState<'start' | 'check' | null>(null);
+  const [busy, setBusy] = useState<'start' | 'check' | 'save' | null>(null);
   const [opened, setOpened] = useState(false);
   const [err, setErr] = useState('');
+  const [notReady, setNotReady] = useState(false); // a save or the server said your profile row isn't there yet
   const inFlight = useRef(false); // blocks a second tap before the disabled state renders
   const status = app.idStatus;
   const signedIn = !!app.session;
   const refreshId = app.refreshId;
+  const ensureSaved = app.ensureProfileSaved;
+  const ready = app.profileReady;
+
+  // The identity function needs your saved profile row: save it now instead of waiting for the debounce.
+  const kicked = useRef(false);
+  useEffect(() => {
+    if (!signedIn || ready || kicked.current) return;
+    kicked.current = true;
+    ensureSaved();
+  }, [signedIn, ready, ensureSaved]);
 
   useEffect(() => {
     if (!signedIn) return;
@@ -40,21 +52,24 @@ export function IdVerifyPanel({ onDone, onLater, onSignIn }: { onDone?: () => vo
     return () => sub.remove();
   }, [refreshId]);
 
-  const run = useCallback(async (kind: 'start' | 'check') => {
+  const run = useCallback(async (kind: 'start' | 'check' | 'save') => {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(kind);
     setErr('');
+    setNotReady(false);
     try {
+      if (kind !== 'check' && !(await ensureSaved())) return setNotReady(true);
       if (kind === 'start' && (await startIdVerification()) === 'opened') setOpened(true);
-      await refreshId();
+      if (kind !== 'save') await refreshId();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Couldn’t start verification.');
+      if (isProfileNotReadyError(e)) setNotReady(true);
+      else setErr(e instanceof Error ? e.message : 'Couldn’t start verification.');
     } finally {
       inFlight.current = false;
       setBusy(null);
     }
-  }, [refreshId]);
+  }, [refreshId, ensureSaved]);
 
   if (!app.authReady) return <ActivityIndicator color={C.accent} accessibilityLabel="Loading your account" />;
   if (!signedIn) {
@@ -97,6 +112,10 @@ export function IdVerifyPanel({ onDone, onLater, onSignIn }: { onDone?: () => vo
   }
 
   const showCheck = status !== 'unverified' || opened;
+  const issue = app.profileSaveIssue;
+  const saveProblem = status === 'pending' ? null : issue ?? (notReady ? { message: NOT_SAVED_MESSAGE, rejected: false } : null);
+  const settingUp = !ready && status !== 'pending';
+  const editProfile = onEditProfile ?? (() => router.push({ pathname: '/onboarding', params: { edit: 'profile' } }));
   return (
     <View style={{ gap: S.md }}>
       {testTag}
@@ -110,13 +129,23 @@ export function IdVerifyPanel({ onDone, onLater, onSignIn }: { onDone?: () => vo
         <Text style={[T.small, { flex: 1 }]}>Stripe processes your ID and selfie. We never see or store your ID photos, selfie or document details, only the result and the date.</Text>
       </View>
       {err ? <Text style={{ color: C.bad, fontSize: 14 }} accessibilityRole="alert">{err}</Text> : null}
-      <Button
-        label={status === 'pending' ? PRIMARY.pending : busy === 'start' ? 'Opening…' : PRIMARY[status]}
-        icon={status === 'pending' ? 'refresh' : 'shield-checkmark-outline'}
-        loading={status === 'pending' ? busy === 'check' : busy === 'start'}
-        disabled={!!busy}
-        onPress={() => run(status === 'pending' ? 'check' : 'start')}
-      />
+      {saveProblem ? (
+        <>
+          <View accessibilityRole="alert">
+            <Note tone="warn" icon="alert-circle-outline">{saveProblem.message}</Note>
+          </View>
+          <Button label="Try again" icon="refresh" loading={busy === 'save'} disabled={!!busy} onPress={() => run('save')} />
+          {saveProblem.rejected ? <Button label="Edit profile" icon="create-outline" variant="secondary" disabled={!!busy} onPress={editProfile} /> : null}
+        </>
+      ) : (
+        <Button
+          label={status === 'pending' ? PRIMARY.pending : busy === 'start' ? 'Opening…' : settingUp ? 'Setting up your profile…' : PRIMARY[status]}
+          icon={status === 'pending' ? 'refresh' : 'shield-checkmark-outline'}
+          loading={status === 'pending' ? busy === 'check' : busy === 'start' || settingUp}
+          disabled={!!busy || settingUp}
+          onPress={() => run(status === 'pending' ? 'check' : 'start')}
+        />
+      )}
       {showCheck && status !== 'pending' ? <Button label="Check status" icon="refresh" variant="secondary" loading={busy === 'check'} disabled={!!busy} onPress={() => run('check')} /> : null}
       {onLater ? <Button label="Do this later" variant="quiet" disabled={!!busy} onPress={onLater} /> : null}
     </View>

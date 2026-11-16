@@ -66,6 +66,11 @@ export default function Onboarding() {
     app.setResumeAt('idverify');
     setPhase('idverify');
   }
+  /** A save was rejected (moderation or validation): fix it on the profile step, which returns here on Next. */
+  function backToProfile() {
+    setPhase('steps');
+    go(steps.indexOf('profile'));
+  }
   function afterIdStep() {
     setPhase('steps');
     go(steps.indexOf('resume'));
@@ -130,7 +135,7 @@ export default function Onboarding() {
           title="Verify your identity"
           sub="Optional, about two minutes. Stripe checks that your government ID matches a live selfie of you. It confirms you are who you say you are, not that anyone is safe to meet, so keep first meetings in public places."
         />
-        <IdVerifyPanel onDone={afterIdStep} onLater={afterIdStep} onSignIn={() => setPhase('account')} />
+        <IdVerifyPanel onDone={afterIdStep} onLater={afterIdStep} onSignIn={() => setPhase('account')} onEditProfile={backToProfile} />
       </ScrollView>
     );
   }

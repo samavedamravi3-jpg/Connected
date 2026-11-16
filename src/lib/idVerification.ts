@@ -76,4 +76,7 @@ export async function idBlocks(status: IdStatus, action: string): Promise<boolea
   return true;
 }
 
-export const isIdRequiredError = (e: unknown) => String((e as { message?: string } | null)?.message ?? '').includes('id_required');
+/** The identity function couldn't find your profile row yet ("Finish setting up your profile first"). */
+export const isProfileNotReadyError = (e: unknown) => /setting up your profile/i.test(String((e as { message?: string } | null)?.message ?? ''));
+
+export const isIdRequiredError =(e: unknown) => String((e as { message?: string } | null)?.message ?? '').includes('id_required');

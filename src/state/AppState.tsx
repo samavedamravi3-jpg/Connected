@@ -4,12 +4,13 @@ import { DEMO_INCOMING } from '@/data/demo';
 import { dataSource, rememberPeople, setBackendUser, setShowDemo } from '@/data/source';
 import type { ConnectionRequest, Experience, IncomingRequest, LatLng, Message, OpenDoor, Prefs, Profile, RequestStatus } from '@/data/types';
 import {
-  blockRemote, fetchHiddenEventIds, fetchMessages, fetchMyExperiences, syncMyExperiences, fetchMyRequests, fetchPeopleByIds, isRemoteId, loadMyRow, muteRemote, myRow, reportEventRemote, reportRemote, rowToMine, saveMyRow, unmuteRemote,
+  blockRemote, fetchHiddenEventIds, fetchMessages, fetchMyExperiences, syncMyExperiences, fetchMyRequests, fetchPeopleByIds, isRemoteId, loadMyRow, muteRemote, myRow, reportEventRemote, reportRemote, rowToMine, saveMyRow, unmuteRemote, type MyRow,
   sendRemoteMessage, sendRemoteRequest, setRemoteRequestStatus, subscribeToMine, unblockRemote, type RemoteMessage, type RemoteRequest,
 } from '@/lib/backend';
 import { EXP_LIMITS, sortExperiences } from '@/lib/experience';
 import { assertClean } from '@/lib/moderation';
 import { fetchIdStatus, type IdStatus } from '@/lib/idVerification';
+import { createProfileSync, type SaveIssue, type SyncState } from '@/lib/profileSync';
 import { NOT_VERIFIED, toVerification, type Verification } from '@/lib/verification';
 import { backendEnabled, supabase } from '@/lib/supabase';
 
@@ -90,6 +91,12 @@ type Ctx = Omit<AppData, 'requests' | 'messages'> & {
   /** Your ID-check status: unverified, pending, verified or rejected. Set only by the server. */
   idStatus: IdStatus;
   refreshId: () => Promise<void>;
+  /** True once the server has confirmed your profile row exists (loaded, or a save succeeded). */
+  profileReady: boolean;
+  /** Why the last profile save failed, or null. `rejected`: moderation or validation said no. */
+  profileSaveIssue: SaveIssue | null;
+  /** Saves any pending profile change now (skipping the debounce). Resolves true once the server confirms the row. */
+  ensureProfileSaved: () => Promise<boolean>;
   signUp: (email: string, password: string) => Promise<{ needsConfirmation: boolean }>;
   signIn: (email: string, password: string) => Promise<{ hasProfile: boolean }>;
   signOut: () => Promise<void>;
@@ -144,6 +151,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [idStatus, setIdStatus] = useState<IdStatus>('unverified');
   const [remoteHiddenEvents, setRemoteHiddenEvents] = useState<string[]>([]);
   const sessionUserId = session?.userId;
+  const [profileSync, setProfileSync] = useState<SyncState>({ ready: false, saving: false, issue: null });
+  const [sync] = useState(() =>
+    createProfileSync<MyRow>((row) => saveMyRow(row).catch((e) => { console.warn('Could not save profile', e); throw e; }), 1200, setProfileSync),
+  );
   const refreshId = useCallback(async () => {
     if (!sessionUserId) return setIdStatus('unverified');
     try {
@@ -164,8 +175,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const refreshVerification = useCallback(async () => {
     if (!sessionUserId) return setVerification(NOT_VERIFIED);
     const row = await loadMyRow(sessionUserId).catch(() => null);
+    if (row) sync.confirm(sessionUserId);
     setVerification(toVerification(row));
-  }, [sessionUserId]);
+  }, [sessionUserId, sync]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshVerification();
@@ -260,12 +272,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     hereRef.current = here;
   }, [here]);
   useEffect(() => {
+    sync.setOwner(sessionUserId ?? null);
+  }, [sync, sessionUserId]);
+  useEffect(() => {
     if (!session || !data.onboarded || !data.profile.name.trim()) return;
-    const t = setTimeout(() => {
-      saveMyRow(myRow(session.userId, data.profile, data.prefs, hereRef.current)).catch((e) => console.warn('Could not save profile', e));
-    }, 1200);
-    return () => clearTimeout(t);
-  }, [session, data.onboarded, data.profile, data.prefs, hereKey]);
+    sync.schedule(myRow(session.userId, data.profile, data.prefs, hereRef.current));
+  }, [sync, session, data.onboarded, data.profile, data.prefs, hereKey]);
 
   // ---- Experience sync: pull once after sign-in (remote wins when it has entries), then push changes ----
   const [expReady, setExpReady] = useState<string | null>(null);
@@ -375,6 +387,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshVerification,
       idStatus,
       refreshId,
+      profileReady: profileSync.ready,
+      profileSaveIssue: profileSync.issue,
+      // Same row and save path as the debounced sync above, just without the wait.
+      ensureProfileSaved: () =>
+        session ? sync.flush(data.onboarded && data.profile.name.trim() ? myRow(session.userId, data.profile, data.prefs, hereRef.current) : null) : Promise.resolve(false),
       refreshRemote: () => {
         loadRemote();
       },
@@ -501,7 +518,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setData(fresh());
       },
     }),
-    [data, merged, hydrated, now, here, session, authReady, verification, refreshVerification, remoteHiddenEvents, idStatus, refreshId, setPrefs, setProfile, markRead, resolve, loadRemote],
+    [data, merged, hydrated, now, here, session, authReady, verification, refreshVerification, remoteHiddenEvents, idStatus, refreshId, profileSync, sync, setPrefs, setProfile, markRead, resolve, loadRemote],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
