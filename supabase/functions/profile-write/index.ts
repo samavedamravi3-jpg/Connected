@@ -2,7 +2,8 @@
 //
 //   POST { row: { first_name, last_name, org, intro, offer, ...prefs } }   Authorization: Bearer <user token>
 //   200 { status: 'published' }                       everything is public
-//   202 { status: 'draft', held: ['intro', ...] }      the AI review couldn't run: those fields stay private in
+//   202 { status: 'draft', held: ['intro', ...], reason: 'not_configured' | 'provider_error' | 'rate_limited' }
+//                                                      the AI review couldn't run: those fields stay private in
 //                                                      profile_drafts, the rest is saved; send again to retry
 //   422 { status: 'rejected', fields: { intro: 'contact' | 'scams' | ... | 'ai' | 'too_long' | 'invalid' } }  nothing saved
 //   401 / 429 / 503                                   not signed in / too many edits / couldn't save
@@ -29,11 +30,11 @@ import { handleProfileWrite, moderationEndpoint } from '../_shared/profileWriteC
 
 const json = (status: number, body: object) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
-/** null = the review couldn't run or answered badly (missing or non-https config, network, redirect, timeout, non-200, malformed). */
-async function review(fields: Partial<Record<AiField, string>>): Promise<Verdict[] | null> {
+/** 'not_configured' = missing or non-https MODERATION_URL / missing MODERATION_TOKEN; null = network, redirect, timeout, non-200 or malformed answer. */
+async function review(fields: Partial<Record<AiField, string>>): Promise<Verdict[] | null | 'not_configured'> {
   const url = moderationEndpoint(Deno.env.get('MODERATION_URL'));
   const token = Deno.env.get('MODERATION_TOKEN');
-  if (!url || !token) return null;
+  if (!url || !token) return 'not_configured';
   try {
     const res = await fetch(url, {
       method: 'POST',
@@ -69,6 +70,7 @@ Deno.serve(async (req) => {
       },
       review,
       upsert: async (row) => await admin.from('profiles').upsert({ ...row, id: uid }),
+      // profile_drafts.reason has CHECK (reason in ('ai_unavailable', 'audit')); the precise reason goes to the app and the log.
       saveDraft: async (fields) => await admin.from('profile_drafts').upsert({ user_id: uid, fields, reason: 'ai_unavailable', updated_at: new Date().toISOString() }),
       clearDraft: async () => {
         await admin.from('profile_drafts').delete().eq('user_id', uid);

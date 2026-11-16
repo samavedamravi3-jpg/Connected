@@ -147,7 +147,24 @@ test('review unavailable: held text and new custom chips stay private, the rest 
   });
   const res = await handleProfileWrite(f.deps, body({ intro: 'New bio', skills: ['Excel', 'Tarot'], first_name: 'Ana' }));
   assert.equal(res.status, 202);
-  assert.deepEqual(res.body, { status: 'draft', held: ['intro', 'skills'] });
+  assert.deepEqual(res.body, { status: 'draft', held: ['intro', 'skills'], reason: 'provider_error' });
   assert.deepEqual(written, { intro: 'Old bio', skills: ['Excel'], first_name: 'Ana' });
   assert.deepEqual(draft, { intro: 'New bio', skills: ['Excel', 'Tarot'] });
+});
+
+test('draft reasons: missing config, provider failure and the AI limit are told apart; nothing held is published', async () => {
+  const cases: [Partial<WriteDeps> & { limits?: { ai?: boolean } }, string, string][] = [
+    [{ review: async () => 'not_configured' }, 'not_configured', 'ai_not_configured'],
+    [{ review: async () => null }, 'provider_error', 'ai_unavailable'],
+    [{ limits: { ai: false } }, 'rate_limited', 'ai_limit'],
+  ];
+  for (const [over, reason, logged] of cases) {
+    let written: Record<string, unknown> = {};
+    const f = fakeDeps({ ...over, current: { intro: 'Old bio' }, upsert: async (row) => ((written = row), { error: null }) });
+    const res = await handleProfileWrite(f.deps, body({ intro: 'New bio' }));
+    assert.equal(res.status, 202, reason);
+    assert.deepEqual(res.body, { status: 'draft', held: ['intro'], reason });
+    assert.equal(written.intro, 'Old bio', `${reason}: the public value stays`);
+    assert.deepEqual(f.logged, [{ field: 'intro', decision: 'held', reason: logged }]);
+  }
 });

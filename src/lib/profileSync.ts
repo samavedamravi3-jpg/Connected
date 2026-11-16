@@ -15,10 +15,22 @@ export type SyncState = { ready: boolean; saving: boolean; issue: SaveIssue | nu
 export const NOT_SAVED_MESSAGE = 'Couldn’t save your profile. Check your connection, then try again.';
 export const REJECTED_MESSAGE = 'Some of your profile details weren’t accepted. Edit your profile, then try again.';
 
-/** The save went through, except `held` text that waits for review. Nothing in it is public yet. */
-export function draftIssue(held: string[]): SaveIssue {
+/** Why profile-write held text back (its 202 `reason`); older deployments send none. */
+export type DraftReason = 'not_configured' | 'provider_error' | 'rate_limited';
+export const DRAFT_REASONS: readonly string[] = ['not_configured', 'provider_error', 'rate_limited'];
+
+/** The save went through, except `held` text that waits for review. Nothing in it is public yet; the copy never says otherwise. */
+export function draftIssue(held: string[], reason?: DraftReason): SaveIssue {
   const what = held.map((f) => FIELD_LABELS[f] ?? f).join(', ') || 'Some of your text';
-  return { message: `Saved. We couldn’t check ${what} just now, so it’s kept as a private draft only you can see. Try again in a moment.`, rejected: false, draft: true };
+  const message =
+    reason === 'provider_error'
+      ? `Saved. We couldn’t check ${what} just now, so it’s kept as a private draft only you can see. Try again in a moment.`
+      : reason === 'not_configured'
+        ? `Saved privately. Checking isn’t available right now, so ${what} is kept as a private draft only you can see. It goes public once it’s been checked; saving again retries.`
+        : reason === 'rate_limited'
+          ? `Saved privately. You’ve made a lot of edits this hour, so ${what} is kept as a private draft only you can see. Try again later.`
+          : `Saved. We couldn’t check ${what} yet, so it’s kept as a private draft only you can see. Try again later.`;
+  return { message, rejected: false, draft: true };
 }
 
 /** Moderation or database validation said no (retrying alone won't help); anything else reads as a connection problem. */
@@ -32,8 +44,8 @@ export function saveIssue(e: unknown): SaveIssue {
   return { message: NOT_SAVED_MESSAGE, rejected: false };
 }
 
-/** `save` resolves `{ held }` when the row was saved but some text is held back as a draft (see draftIssue). */
-export function createProfileSync<R extends { id: string }>(save: (row: R) => Promise<{ held: string[] } | void>, delayMs: number, onChange: (s: SyncState) => void) {
+/** `save` resolves `{ held, reason? }` when the row was saved but some text is held back as a draft (see draftIssue). */
+export function createProfileSync<R extends { id: string }>(save: (row: R) => Promise<{ held: string[]; reason?: DraftReason } | void>, delayMs: number, onChange: (s: SyncState) => void) {
   let owner: string | null = null;
   let pending: R | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -85,7 +97,7 @@ export function createProfileSync<R extends { id: string }>(save: (row: R) => Pr
           if (owner === me) {
             const held = result?.held ?? [];
             if (held.length) pending ??= next; // the row exists; keep it so "Try again" re-sends the held text
-            set({ ready: true, saving: false, issue: held.length ? draftIssue(held) : null });
+            set({ ready: true, saving: false, issue: held.length ? draftIssue(held, result?.reason) : null });
           }
           return owner === me;
         },

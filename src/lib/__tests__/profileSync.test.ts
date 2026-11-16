@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BLOCKED_MESSAGE, ContentRejectedError } from '../moderation';
-import { createProfileSync, NOT_SAVED_MESSAGE, REJECTED_MESSAGE, saveIssue, type SyncState } from '../profileSync';
+import { createProfileSync, draftIssue, NOT_SAVED_MESSAGE, REJECTED_MESSAGE, saveIssue, type SyncState } from '../profileSync';
 
 type Row = { id: string; name: string };
 
@@ -114,4 +114,20 @@ test('a server rejection carries per-field messages and is never shown while a s
   assert.match(issue.fields!.intro, /A little about you.*community guidelines/);
   assert.match(issue.fields!.first_name, /can only be a name/);
   assert.equal(h.last().ready, false, 'nothing was saved');
+});
+
+test('draft copy follows the server reason; older servers (no reason) get copy that is true for every cause', () => {
+  assert.match(draftIssue(['intro'], 'provider_error').message, /Try again in a moment/);
+  assert.match(draftIssue(['intro'], 'not_configured').message, /Checking isn’t available right now/);
+  assert.doesNotMatch(draftIssue(['intro'], 'not_configured').message, /in a moment/);
+  assert.match(draftIssue(['intro'], 'rate_limited').message, /lot of edits/);
+  const old = draftIssue(['intro']).message;
+  assert.match(old, /private draft/);
+  assert.doesNotMatch(old, /in a moment/);
+  for (const r of [undefined, 'provider_error', 'not_configured', 'rate_limited'] as const) {
+    const i = draftIssue(['intro'], r);
+    assert.equal(i.draft, true);
+    assert.equal(i.rejected, false);
+    assert.doesNotMatch(i.message, /\bpublic now|published\b/, 'never claims the text is public');
+  }
 });

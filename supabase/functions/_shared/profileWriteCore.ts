@@ -85,12 +85,20 @@ export function moderationEndpoint(base: string | undefined): string | null {
 // ---------------------------------------------------------------------------------------------------------------
 
 export type LogRow = { field: string; decision: 'published' | 'rejected' | 'held'; reason: string };
+/**
+ * Why text was held as a draft, sent to the app in the 202 body so it can say whether retrying soon helps.
+ * not_configured: MODERATION_URL / MODERATION_TOKEN missing or not https; provider_error: the review ran but failed
+ * (network, timeout, non-200, malformed); rate_limited: over the hourly AI review limit.
+ */
+export type DraftReason = 'not_configured' | 'provider_error' | 'rate_limited';
+/** Decision-log reasons (moderation_events.reason); the first two are the values logged before DraftReason existed. */
+const LOG_REASON: Record<DraftReason, string> = { rate_limited: 'ai_limit', provider_error: 'ai_unavailable', not_configured: 'ai_not_configured' };
 export type WriteDeps = {
   /** profile_write_rate: atomic per-user counter in the database. true = allowed, false = over the limit, null = error. */
   rate(kind: 'write' | 'ai'): Promise<boolean | null>;
   readCurrent(cols: string): Promise<{ data: Published; error: unknown }>;
-  /** null = the review couldn't run or answered badly. */
-  review(fields: Partial<Record<AiField, string>>): Promise<Verdict[] | null>;
+  /** 'not_configured' = no usable review endpoint; null = the review ran but failed or answered badly. */
+  review(fields: Partial<Record<AiField, string>>): Promise<Verdict[] | null | 'not_configured'>;
   upsert(row: Record<string, unknown>): Promise<{ error: { message?: string; code?: string } | null }>;
   saveDraft(fields: Record<string, unknown>): Promise<{ error: unknown }>;
   clearDraft(): Promise<void>;
@@ -124,14 +132,16 @@ export async function handleProfileWrite(deps: WriteDeps, readBody: () => Promis
   if (readErr) return { status: 503, body: { error: 'Couldn’t save right now.' } };
   const check = aiFieldsToCheck(row, current);
   let held: AiField[] = [];
-  let heldReason = 'ai_unavailable';
+  let heldReason: DraftReason = 'provider_error';
   if (check.length) {
     const aiAllowed = await deps.rate('ai');
     if (aiAllowed === null) return { status: 503, body: { error: 'Couldn’t save right now.' } };
     // Over the AI cap: no review is spent, and the new text waits as a private draft. The rest still saves, so a
     // privacy change (e.g. pausing discovery) is never blocked by someone's place-name or chip edits.
-    const verdicts = aiAllowed ? await deps.review(reviewFields(row, current, check)) : null;
-    if (!aiAllowed) heldReason = 'ai_limit';
+    const answer = aiAllowed ? await deps.review(reviewFields(row, current, check)) : null;
+    if (!aiAllowed) heldReason = 'rate_limited';
+    else if (answer === 'not_configured') heldReason = 'not_configured';
+    const verdicts = Array.isArray(answer) ? answer : null;
     const blocked = verdicts?.filter((v) => v.decision === 'block') ?? [];
     if (blocked.length) {
       await deps.log(blocked.map((v) => ({ field: v.field, decision: 'rejected', reason: `ai:${v.category}` })));
@@ -149,8 +159,8 @@ export async function handleProfileWrite(deps: WriteDeps, readBody: () => Promis
   if (held.length) {
     const { error } = await deps.saveDraft(pickRaw(row, held));
     if (error) return { status: 503, body: { error: 'Couldn’t save right now.' } };
-    await deps.log(held.map((field) => ({ field, decision: 'held', reason: heldReason })));
-    return { status: 202, body: { status: 'draft', held } };
+    await deps.log(held.map((field) => ({ field, decision: 'held', reason: LOG_REASON[heldReason] })));
+    return { status: 202, body: { status: 'draft', held, reason: heldReason } };
   }
   await deps.clearDraft();
   await deps.log(check.map((field) => ({ field, decision: 'published', reason: 'ai:none' })));

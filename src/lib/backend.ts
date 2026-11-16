@@ -9,6 +9,7 @@ import type {
 import { cleanExperience } from './experience';
 import { cleanPrefLists } from './lists';
 import { parseRecs, type NearbyRec } from './nearbyPolicy';
+import { DRAFT_REASONS, type DraftReason } from './profileSync';
 import { fieldLabelShort } from './match';
 import { assertClean, ContentRejectedError, dbError, experienceProblem, PROFILE_TEXT, profileRuleErrors, type FieldError } from './moderation';
 import { supabase } from './supabase';
@@ -189,13 +190,14 @@ export const RATE_LIMITED_MESSAGE = 'You’ve made a lot of profile changes. Try
  * Resolves `{ held }` when some text is kept as a private draft because the server couldn't review it yet.
  * Throws ContentRejectedError (per-field reasons) when the rules or the review said no; nothing is saved then.
  */
-export async function saveMyRow(row: MyRow): Promise<{ held: string[] } | void> {
+export async function saveMyRow(row: MyRow): Promise<{ held: string[]; reason?: DraftReason } | void> {
   const local = profileRuleErrors(row);
   if (Object.keys(local).length) throw new ContentRejectedError(local);
   const { data, error } = await db().functions.invoke('profile-write', { body: { row } });
   if (!error) {
-    const d = data as { status?: string; held?: string[] } | null;
-    if (d?.status === 'draft') return { held: Array.isArray(d.held) ? d.held : [] };
+    const d = data as { status?: string; held?: string[]; reason?: string } | null;
+    // `reason` is absent from older profile-write deployments, and anything unknown is ignored (generic copy).
+    if (d?.status === 'draft') return { held: Array.isArray(d.held) ? d.held : [], reason: DRAFT_REASONS.includes(d.reason ?? '') ? (d.reason as DraftReason) : undefined };
     if (d?.status === 'published') return;
     throw new Error('Unexpected answer from profile-write');
   }
