@@ -21,7 +21,8 @@ import { C, F, R, S, T } from '@/theme';
 
 type StepId = 'resume' | 'experience' | 'status' | 'field' | 'goals' | 'challenges' | 'people' | 'interests' | 'meet' | 'food' | 'privacy' | 'profile';
 const PREF_STEPS: StepId[] = ['status', 'field', 'goals', 'challenges', 'people', 'interests', 'meet', 'food', 'privacy'];
-const ALL_STEPS: StepId[] = [...PREF_STEPS, 'resume', 'experience', 'profile'];
+// Account (if needed) and the ID check come right after 'profile', before resume and experience.
+const ALL_STEPS: StepId[] = [...PREF_STEPS, 'profile', 'resume', 'experience'];
 const SECTION: Record<StepId, string> = {
   status: 'About you', field: 'About you', goals: 'What you need', challenges: 'What you need', people: 'What you need',
   resume: 'Your background', experience: 'Your background', interests: 'Your interests', meet: 'Meeting up', food: 'Meeting up', privacy: 'Meeting up', profile: 'Your profile',
@@ -39,9 +40,13 @@ export default function Onboarding() {
   const insets = useSafeAreaInsets();
   const scroll = useRef<ScrollViewInstance>(null);
   const steps = edit === 'prefs' ? PREF_STEPS : edit === 'profile' ? (['profile'] as StepId[]) : ALL_STEPS;
-  const [phase, setPhase] = useState<'welcome' | 'steps' | 'account' | 'idverify' | 'done'>(accountOnly ? 'account' : edit ? 'steps' : 'welcome');
+  // Reopen where the user left off after the account step (browser trip, app closed, retry).
+  const resumeAt = !editParam ? app.resumeAt : null;
+  const [phase, setPhase] = useState<'welcome' | 'steps' | 'account' | 'idverify' | 'done'>(
+    accountOnly ? 'account' : edit ? 'steps' : resumeAt === 'idverify' ? 'idverify' : resumeAt ? 'steps' : 'welcome',
+  );
   const [confirmNote, setConfirmNote] = useState('');
-  const [i, setI] = useState(0);
+  const [i, setI] = useState(resumeAt && resumeAt !== 'idverify' ? Math.max(0, ALL_STEPS.indexOf(resumeAt)) : 0);
   const [err, setErr] = useState('');
   const [customSkill, setCustomSkill] = useState('');
   const { prefs, profile, setPrefs, setProfile } = app;
@@ -51,7 +56,25 @@ export default function Onboarding() {
     setErr('');
     setI(n);
     scroll.current?.scrollTo({ y: 0, animated: false });
+    const s = steps[n];
+    if (!edit && (s === 'resume' || s === 'experience')) app.setResumeAt(s);
   };
+
+  /** Account exists (or the user stayed a guest): show the ID step, remembered across app restarts. */
+  function toIdStep() {
+    app.finishOnboarding();
+    app.setResumeAt('idverify');
+    setPhase('idverify');
+  }
+  function afterIdStep() {
+    setPhase('steps');
+    go(steps.indexOf('resume'));
+  }
+  function finish() {
+    app.finishOnboarding();
+    app.setResumeAt(null);
+    setPhase('done');
+  }
 
   function validate(): string {
     if (step === 'status' && !profile.status) return 'Pick the one that fits best.';
@@ -69,12 +92,11 @@ export default function Onboarding() {
   function next() {
     const e = validate();
     if (e) return setErr(e);
+    if (edit) return i < steps.length - 1 ? go(i + 1) : router.back();
+    // With a backend, save the profile to an account so other people can find you, then offer the ID check.
+    if (step === 'profile' && app.backendEnabled) return app.session ? toIdStep() : setPhase('account');
     if (i < steps.length - 1) return go(i + 1);
-    if (edit) return router.back();
-    // With a backend, save everything to an account so other people can find you.
-    if (app.backendEnabled && !app.session) return setPhase('account');
-    app.finishOnboarding();
-    setPhase(app.backendEnabled && app.session ? 'idverify' : 'done');
+    finish();
   }
 
   function back() {
@@ -102,9 +124,13 @@ export default function Onboarding() {
   if (phase === 'idverify') {
     return (
       <ScrollView style={{ backgroundColor: C.bg }} contentContainerStyle={{ padding: S.lg, paddingTop: insets.top + S.xl, paddingBottom: insets.bottom + S.xl, gap: S.xl }}>
-        <StepTitle icon="shield-checkmark-outline" section="Final step" title="Verify your ID" sub="Optional. Get an ID badge and unlock sending requests and hosting events. You can do this later from your profile." />
-        <IdVerifyPanel onDone={() => setPhase('done')} />
-        <Button label="Skip for now" variant="quiet" onPress={() => setPhase('done')} />
+        <StepTitle
+          icon="shield-checkmark-outline"
+          section="Your account"
+          title="Verify your identity"
+          sub="Optional, about two minutes. Stripe checks that your government ID matches a live selfie of you. It confirms you are who you say you are, not that anyone is safe to meet, so keep first meetings in public places."
+        />
+        <IdVerifyPanel onDone={afterIdStep} onLater={afterIdStep} onSignIn={() => setPhase('account')} />
       </ScrollView>
     );
   }
@@ -112,7 +138,7 @@ export default function Onboarding() {
     return (
       <KeyboardAvoidingView style={{ flex: 1, backgroundColor: C.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={{ padding: S.lg, paddingTop: insets.top + S.sm, paddingBottom: insets.bottom + S.xl, gap: S.xl }} keyboardShouldPersistTaps="handled">
-          <IconButton icon="chevron-back" label="Back" onPress={() => (accountOnly ? router.back() : setPhase('steps'))} style={{ marginLeft: -S.sm }} />
+          <IconButton icon="chevron-back" label="Back" onPress={() => (accountOnly ? router.back() : app.resumeAt === 'idverify' ? setPhase('idverify') : setPhase('steps'))} style={{ marginLeft: -S.sm }} />
           <StepTitle
             icon="person-add-outline"
             section="Your account"
@@ -133,13 +159,13 @@ export default function Onboarding() {
                 return;
               }
               if (accountOnly) return router.back();
-              app.finishOnboarding();
-              setPhase('idverify');
+              setConfirmNote('');
+              toIdStep();
             }}
           />
           {accountOnly ? null : (
             <Pressable
-              onPress={() => { app.finishOnboarding(); setPhase('done'); }}
+              onPress={toIdStep}
               accessibilityRole="button"
               style={{ alignSelf: 'center', minHeight: 44, justifyContent: 'center' }}
             >
@@ -355,7 +381,7 @@ export default function Onboarding() {
 
         {step === 'profile' && (
           <>
-            <StepTitle icon="happy-outline" section={SECTION.profile} title={edit ? 'Your profile' : 'Last step: say hello'} sub="People see this when you reach out. Short and real beats polished." />
+            <StepTitle icon="happy-outline" section={SECTION.profile} title={edit ? 'Your profile' : 'Say hello'} sub="People see this when you reach out. Short and real beats polished." />
             <View style={{ alignItems: 'center', gap: S.sm }}>
               <Pressable onPress={choosePhoto} accessibilityRole="button" accessibilityLabel={profile.photoUri ? 'Change profile photo' : 'Add a profile photo'} style={styles.photo}>
                 {profile.photoUri || profile.name.trim() ? (
@@ -417,7 +443,7 @@ export default function Onboarding() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + S.md }]}>
-        {optional ? <Button label={step === 'resume' || step === 'experience' ? 'Skip for now' : 'Skip'} variant="quiet" onPress={() => go(i + 1)} /> : null}
+        {optional ? <Button label={step === 'resume' || step === 'experience' ? 'Skip for now' : 'Skip'} variant="quiet" onPress={() => (last && !edit ? finish() : go(i + 1))} /> : null}
         <Button label={last ? (edit ? 'Save' : 'Finish') : 'Continue'} icon={last ? undefined : 'arrow-forward'} onPress={next} style={{ flex: 1 }} />
       </View>
     </KeyboardAvoidingView>

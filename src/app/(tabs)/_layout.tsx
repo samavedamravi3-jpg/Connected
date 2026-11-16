@@ -7,7 +7,7 @@ import { useApp } from '@/state/AppState';
 import { C, F } from '@/theme';
 
 export default function TabLayout() {
-  const { hydrated, onboarded, requests, incoming, messages, blocked, lastRead, now, showDemo } = useApp();
+  const { hydrated, onboarded, resumeAt, requests, incoming, messages, blocked, lastRead, now, showDemo } = useApp();
   if (!hydrated) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg }}>
@@ -15,7 +15,8 @@ export default function TabLayout() {
       </View>
     );
   }
-  if (!onboarded) return <Redirect href="/onboarding" />;
+  // resumeAt: onboarding was left mid-way after the account step (e.g. the app closed during the ID check).
+  if (!onboarded || resumeAt) return <Redirect href="/onboarding" />;
 
   // Same unread chats the Inbox "Chats" section shows; a just-accepted request that is also unread counts once.
   const unread = new Set(

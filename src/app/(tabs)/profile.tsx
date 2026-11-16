@@ -13,6 +13,19 @@ import { pickProfilePhoto, removeProfilePhoto } from '@/lib/photo';
 import { fmtWindow } from '@/lib/time';
 import { useApp } from '@/state/AppState';
 import { C, F, S, T } from '@/theme';
+import type { IdStatus } from '@/lib/idStatus';
+
+// ID check (Stripe, government ID + live selfie). Separate from email verification above it.
+const ID_TEXT: Record<IdStatus, string> = {
+  unverified: 'A quick government ID and live selfie check with Stripe. Adds an ID badge.',
+  started: 'You started a check but haven’t finished it.',
+  pending: 'Stripe is reviewing your check.',
+  rejected: 'That attempt didn’t go through. You can try again.',
+  canceled: 'Your last check was canceled. You can start a new one.',
+  test_verified: 'Test verification passed. Test checks add no ID badge.',
+  verified: 'Your ID was checked. People see an ID badge.',
+};
+const ID_BUTTON: Record<IdStatus, string> = { unverified: 'Verify', started: 'Continue', pending: 'Status', rejected: 'Retry', canceled: 'Verify', test_verified: 'Details', verified: '' };
 
 export default function ProfileTab() {
   const app = useApp();
@@ -98,7 +111,7 @@ export default function ProfileTab() {
               </View>
               <View style={styles.switchRow}>
                 <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={T.label}>{app.verification.verified ? 'Verified' : 'Get verified'}</Text>
+                  <Text style={T.label}>{app.verification.verified ? 'Email verified' : 'Verify your email'}</Text>
                   <Text style={T.small}>
                     {app.verification.verified ? `Confirmed with a ${app.verification.kind ?? ''} email. People in your field can get nearby alerts about you.` : 'Confirm a school or work email to get a check. Only verified people trigger nearby alerts.'}
                   </Text>
@@ -109,10 +122,10 @@ export default function ProfileTab() {
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text style={T.label}>{app.idStatus === 'verified' ? 'ID verified' : 'Verify your ID'}</Text>
                   <Text style={T.small}>
-                    {app.idStatus === 'verified' ? 'Your ID was checked. People see an ID badge.' : app.idStatus === 'pending' ? 'Your check is being reviewed.' : app.idStatus === 'rejected' ? 'We couldn’t verify that ID. You can try again.' : 'A quick ID and selfie check. Unlocks sending requests and hosting events.'}
+                    {ID_TEXT[app.idStatus]}
                   </Text>
                 </View>
-                {app.idStatus === 'verified' ? <IdBadge label size={18} /> : <Button label={app.idStatus === 'pending' ? 'Status' : app.idStatus === 'rejected' ? 'Retry' : 'Verify'} small onPress={() => router.push('/verify-id')} />}
+                {app.idStatus === 'verified' ? <IdBadge label size={18} /> : <Button label={ID_BUTTON[app.idStatus]} small onPress={() => router.push('/verify-id')} />}
               </View>
               <Text style={T.small}>
                 {prefs.shareMode === 'area'

@@ -1,46 +1,59 @@
 /**
  * ID verification (client side). The app never sees ID images or numbers and cannot set the result:
- * the `identity` edge function starts a hosted check with the provider (Stripe Identity, test mode), and only
- * its signed webhook marks you verified. See supabase/functions/identity and docs/id-verification.md.
+ * the `identity` edge function starts or resumes a hosted Stripe Identity check, and only the signed
+ * `identity-webhook` updates the status. See supabase/functions/identity* and docs/id-verification.md.
  */
 import { Alert, Linking } from 'react-native';
 import { router } from 'expo-router';
+import { toIdStatus, type IdStatus } from './idStatus';
 import { supabase } from './supabase';
 
-export type IdStatus = 'unverified' | 'pending' | 'verified' | 'rejected';
+export type { IdStatus };
 
-/** Your own status. Others only ever see the public `id_verified` badge. */
+/** Your own status, read from the server. Others only ever see the public `id_verified` badge. */
 export async function fetchIdStatus(userId: string, publicVerified: boolean): Promise<IdStatus> {
-  if (publicVerified) return 'verified';
-  if (!supabase) return 'unverified';
-  const { data } = await supabase.from('id_verifications').select('status').eq('user_id', userId).maybeSingle();
-  return (data?.status as IdStatus | undefined) ?? 'unverified';
+  if (publicVerified || !supabase) return toIdStatus(null, publicVerified);
+  const { data, error } = await supabase.from('id_verifications').select('status, livemode').eq('user_id', userId).maybeSingle();
+  if (error) throw error;
+  return toIdStatus(data, false);
 }
 
-/** True when the server has an ID provider configured. False (not an error) means "Verification unavailable". */
-export async function idAvailable(): Promise<boolean> {
-  if (!supabase) return false;
+/** Is an ID provider configured on the server, and is it Stripe test mode? Any failure reads as unavailable. */
+export async function idServerMode(): Promise<{ available: boolean; test: boolean }> {
+  if (!supabase) return { available: false, test: false };
   const { data, error } = await supabase.functions.invoke('identity', { body: { action: 'status' } });
-  return !error && !!(data as { available?: boolean } | null)?.available;
+  const d = data as { available?: boolean; test?: boolean } | null;
+  return error ? { available: false, test: false } : { available: !!d?.available, test: !!d?.test };
 }
 
-/** Starts the hosted check and opens it in the browser. Throws a friendly Error on failure. */
-export async function startIdVerification(): Promise<void> {
+/**
+ * Resumes your open check or starts one, then opens Stripe's hosted page in the browser.
+ * Returns 'processing' when Stripe already has your submission (nothing to open). Throws a friendly Error.
+ */
+export async function startIdVerification(): Promise<'opened' | 'processing'> {
   if (!supabase) throw new Error('Accounts aren’t set up in this build.');
   const { data, error } = await supabase.functions.invoke('identity', { body: { action: 'session' } });
   if (error) {
     let msg = 'Couldn’t start verification. Try again later.';
     try {
       const body = await (error as { context?: Response }).context?.json();
-      msg = body?.error === 'unavailable' ? 'Verification unavailable right now.' : body?.error ?? msg;
+      msg = body?.error === 'unavailable' ? 'Verification currently unavailable.' : body?.error ?? msg;
     } catch {
       /* keep the default */
     }
     throw new Error(msg);
   }
-  const url = (data as { url?: string } | null)?.url;
-  if (!url || !/^https:\/\//.test(url)) throw new Error('Couldn’t start verification. Try again later.');
-  await Linking.openURL(url);
+  const d = data as { url?: string; state?: string } | null;
+  if (d?.state === 'processing') return 'processing';
+  const url = d?.url;
+  if (!url || !/^https:\/\/[^/]*stripe\.com\//.test(url)) throw new Error('Couldn’t start verification. Try again later.');
+  // External browser (Safari / Chrome): camera access works there, and no redirect back into the app is needed.
+  try {
+    await Linking.openURL(url);
+  } catch {
+    throw new Error('Couldn’t open the browser. Check that a browser is installed, then try again.');
+  }
+  return 'opened';
 }
 
 /** Whether the server currently requires ID verification for sensitive actions (a switch in app_config). */

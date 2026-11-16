@@ -39,7 +39,11 @@ export type AppData = {
   nearbyAlerts: boolean;
   /** When you last opened each chat (by request id), for unread dots. Kept on this phone only. */
   lastRead: Record<string, number>;
+  /** Onboarding step to reopen after the account exists (ID check, then resume and experience). Null when finished. */
+  resumeAt?: OnboardingResume | null;
 };
+
+export type OnboardingResume = 'idverify' | 'resume' | 'experience';
 
 export const emptyPrefs: Prefs = {
   field: null, fromField: null, challenges: [], wantTraits: [], languages: ['English'], meetMode: 'either', foods: [], diet: [],
@@ -99,6 +103,7 @@ type Ctx = Omit<AppData, 'requests' | 'messages'> & {
   setShowDemoEvents: (v: boolean) => void;
   setNearbyAlerts: (v: boolean) => void;
   finishOnboarding: () => void;
+  setResumeAt: (s: OnboardingResume | null) => void;
   loadSample: () => void;
   sendRequest: (personId: string, message: string) => Promise<void>;
   cancelRequest: (id: string) => Promise<void>;
@@ -141,8 +146,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const sessionUserId = session?.userId;
   const refreshId = useCallback(async () => {
     if (!sessionUserId) return setIdStatus('unverified');
-    const row = await loadMyRow(sessionUserId).catch(() => null);
-    setIdStatus(await fetchIdStatus(sessionUserId, !!row?.id_verified).catch(() => 'unverified' as const));
+    try {
+      const row = await loadMyRow(sessionUserId);
+      setIdStatus(await fetchIdStatus(sessionUserId, !!row?.id_verified));
+    } catch {
+      // Offline or server error: keep the last status the server gave us rather than guessing.
+    }
   }, [sessionUserId]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -382,7 +391,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const row = await loadMyRow(d.user.id).catch(() => null);
         if (row) {
           const mine = rowToMine(row);
-          setData((cur) => ({ ...cur, onboarded: true, prefs: { ...cur.prefs, ...mine.prefs }, profile: { ...cur.profile, ...mine.profile } }));
+          setData((cur) => ({ ...cur, onboarded: true, resumeAt: null, prefs: { ...cur.prefs, ...mine.prefs }, profile: { ...cur.profile, ...mine.profile } }));
         }
         return { hasProfile: !!row };
       },
@@ -403,7 +412,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setShowDemoEvents: (v) => setData((d) => ({ ...d, showDemoEvents: v })),
       setNearbyAlerts: (v) => setData((d) => ({ ...d, nearbyAlerts: v })),
       finishOnboarding: () => setData((d) => ({ ...d, onboarded: true })),
-      loadSample: () => setData((d) => ({ ...d, ...SAMPLE, onboarded: true })),
+      setResumeAt: (s) => setData((d) => ({ ...d, resumeAt: s })),
+      loadSample: () => setData((d) => ({ ...d, ...SAMPLE, onboarded: true, resumeAt: null })),
       sendRequest: async (personId, message) => {
         assertClean(message);
         if (isRemoteId(personId)) {

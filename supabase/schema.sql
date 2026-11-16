@@ -361,7 +361,7 @@ create trigger profiles_protect_verified
 -- ---------------------------------------------------------------------------
 -- ID verification (provider-agnostic; Stripe Identity in test mode first)
 -- ---------------------------------------------------------------------------
--- We never store ID images or numbers: only the provider's session id, a status and a timestamp.
+-- We never store ID images or numbers: only the provider's session id, a status, the test/live flag, an error code and timestamps.
 -- id_verifications is private (a user can read only their own row; nobody but the service role can write).
 -- profiles.id_verified is the public badge. A trigger resets any attempt by the app to change it, so only the
 -- identity edge function (service role, after checking the provider's signed webhook) can set it.
@@ -373,6 +373,23 @@ create table if not exists public.id_verifications (
   status text not null default 'pending' check (status in ('unverified', 'pending', 'verified', 'rejected')),
   updated_at timestamptz not null default now()
 );
+-- Minimal metadata only. status: started (session created, nothing submitted) / pending (Stripe processing) /
+-- verified / rejected (needs another attempt; last_error is Stripe's code, e.g. document_expired) / canceled.
+-- livemode=false rows are Stripe test mode: "verified" there never sets profiles.id_verified (the webhook only grants
+-- the public badge for live mode). event_at = created time of the last applied webhook event (ordering guard).
+alter table public.id_verifications add column if not exists livemode boolean not null default false;
+alter table public.id_verifications add column if not exists last_error text;
+alter table public.id_verifications add column if not exists event_at timestamptz;
+alter table public.id_verifications add column if not exists created_at timestamptz not null default now();
+do $$
+declare c text;
+begin -- drop the old status check whatever it was named (the table has no other check constraints)
+  for c in select conname from pg_constraint where conrelid = 'public.id_verifications'::regclass and contype = 'c' loop
+    execute format('alter table public.id_verifications drop constraint %I', c);
+  end loop;
+end $$;
+alter table public.id_verifications add constraint id_verifications_status_check
+  check (status in ('unverified', 'started', 'pending', 'verified', 'rejected', 'canceled'));
 alter table public.id_verifications enable row level security;
 drop policy if exists "id_verifications: read own" on public.id_verifications;
 create policy "id_verifications: read own" on public.id_verifications for select to authenticated using (user_id = (select auth.uid()));
