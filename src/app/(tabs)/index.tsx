@@ -13,7 +13,7 @@ import { ClusterPin, EventPin, NodePin, YouNode, nodeAnchor } from '@/components
 import { PersonCard } from '@/components/PersonCard';
 import { Avatar, Button, Chip } from '@/components/ui';
 import { HOTSPOTS, HOTSPOT_LEVELS, type Hotspot } from '@/data/hotspots';
-import { AREAS, CHARLOTTE_CENTER } from '@/data/options';
+import { AREAS, CHARLOTTE_CENTER, GOALS, fieldLabel } from '@/data/options';
 import { clearSimulatedMatches, dataSource, simulateNearbyMatch } from '@/data/source';
 import type { CommunityEvent, LatLng, NearbyPerson } from '@/data/types';
 import { activeFilterCount, defaultFilters, isFreeToday, withinRange, type Filters } from '@/lib/filters';
@@ -344,6 +344,8 @@ export default function MapScreen() {
     transform: [{ translateY: sheetY.value - height - 12 }],
   }));
   const chipDims = useRef({ w: 0, c: 0, x: 0 });
+  const chipRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  const chipStart = useRef(false);
   const updateChipEdge = () => {
     const { w, c, x } = chipDims.current;
     const next = { start: x <= 4, end: c - w - x > 4 };
@@ -351,6 +353,15 @@ export default function MapScreen() {
   };
   const moved = !following && distanceMi(mapCenter, searchCenter) > 0.6;
   const fCount = activeFilterCount(filters);
+  const restrictions = [
+    realOnly ? 'Real people only' : '',
+    filters.availability === 'today' ? 'Free today' : '',
+    ...filters.fields.map((f) => `Field: ${fieldLabel(f)}`),
+    ...filters.goals.map((g) => GOALS.find((x) => x.id === g)?.label ?? g),
+    ...filters.interests,
+    `Within ${filters.distanceMi} mi`,
+  ].filter(Boolean);
+  const demoAvail = pool.some((p) => p.isDemo);
   const nearCharlotte = distanceMi(searchCenter, CHARLOTTE_CENTER) < 40;
 
   const selectHotspot = (h: Hotspot) => {
@@ -487,7 +498,7 @@ export default function MapScreen() {
             })
           : null}
         {showHotspots
-          ? HOTSPOTS.filter((h) => h.id === hotspotId || (region?.latitudeDelta ?? 1) < 0.12).map((h) => {
+          ? HOTSPOTS.map((h) => {
               const lv = HOTSPOT_LEVELS[h.level];
               const on = h.id === hotspotId;
               return (
@@ -596,12 +607,13 @@ export default function MapScreen() {
         {/* One row of four quick filters. Everything else (goals, fields, interests) is in Filters. */}
         <View>
           <ScrollView
+            ref={chipRef}
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.quick}
             scrollEventThrottle={32}
             onLayout={(e) => { chipDims.current.w = e.nativeEvent.layout.width; updateChipEdge(); }}
-            onContentSizeChange={(w) => { chipDims.current.c = w; updateChipEdge(); }}
+            onContentSizeChange={(w) => { chipDims.current.c = w; updateChipEdge(); if (!chipStart.current && w > 0) { chipStart.current = true; chipRef.current?.scrollTo({ x: 0, animated: false }); } }}
             onScroll={(e) => { chipDims.current.x = e.nativeEvent.contentOffset.x; updateChipEdge(); }}
           >
             {prefs.field ? (
@@ -611,9 +623,12 @@ export default function MapScreen() {
                 onPress={() => setFilters((f) => ({ ...f, fields: f.fields.length === 1 && f.fields[0] === prefs.field ? [] : [prefs.field!] }))}
               />
             ) : null}
-            <Chip label="Events" selected={showEvents} onPress={() => setShowEvents((v) => !v)} />
-            <Chip label="Real people" selected={realOnly} onPress={() => setRealOnly((v) => !v)} />
+            <Chip label={`Real people${realCount ? ` (${realCount})` : ''}`} selected={realOnly} onPress={() => setRealOnly((v) => !v)} />
+            <Chip label={`Events${showEvents && mapEvents.length ? ` (${mapEvents.length})` : ''}`} selected={showEvents} onPress={() => setShowEvents((v) => !v)} />
             <Chip label="Free today" selected={filters.availability === 'today'} onPress={() => setFilters((f) => ({ ...f, availability: f.availability === 'today' ? 'any' : 'today' }))} />
+            {GOALS.filter((g) => ['mentorship', 'advice', 'peers', 'collab'].includes(g.id)).map((g) => (
+              <Chip key={g.id} label={g.label} selected={filters.goals.includes(g.id)} onPress={() => setFilters((f) => ({ ...f, goals: f.goals.includes(g.id) ? f.goals.filter((x) => x !== g.id) : [...f.goals, g.id] }))} />
+            ))}
           </ScrollView>
           {!chipEdge.start ? (
             <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(150)} style={[styles.fade, { left: 0 }]} pointerEvents="none">
@@ -673,6 +688,18 @@ export default function MapScreen() {
           <ControlButton icon="layers-outline" active={showLayers || look !== 'network'} label="Layers" onPress={() => setShowLayers(true)} />
         </View>
       </Animated.View>
+
+      {/* Hotspot key: visible whenever Hotspots is on (not tied to the viewport); rides above the sheet, left of the buttons. */}
+      {showHotspots ? (
+        <Animated.View style={[styles.key, shadow, railStyle]} pointerEvents="none" accessible accessibilityLabel="Map key: Major hub, Active hub, Emerging spot">
+          {(['high', 'medium', 'emerging'] as const).map((lvl) => (
+            <View key={lvl} style={styles.keyRow}>
+              <View style={[styles.keySwatch, { backgroundColor: HOTSPOT_LEVELS[lvl].fill, borderColor: HOTSPOT_LEVELS[lvl].color }]} />
+              <Text style={styles.keyText} numberOfLines={1}>{HOTSPOT_LEVELS[lvl].label}</Text>
+            </View>
+          ))}
+        </Animated.View>
+      ) : null}
 
       {height ? (
         <GorhomSheet
@@ -821,7 +848,18 @@ export default function MapScreen() {
               })}
               <Text style={[T.small, { textAlign: 'center', paddingVertical: S.md }]}>Shown at their neighborhood, never a live location · demo profiles are marked</Text>
             </View>
-          ) : loading ? null : (
+          ) : loading ? null : !people.length && tab !== 'doors' ? (
+            <View style={styles.emptyCard} accessibilityLiveRegion="polite">
+              <Text style={styles.emptyTitle}>{realOnly ? 'No real members match yet' : 'No one matches here yet'}</Text>
+              <Text style={T.small}>Active: {restrictions.join(' · ')}</Text>
+              <Text style={T.small}>{realOnly && demoAvail ? 'Demo profiles are hidden. They are sample people, not real members.' : 'Try fewer filters or a wider distance.'}</Text>
+              <View style={styles.emptyActions}>
+                {fCount ? <Button label="Clear filters" small variant="secondary" onPress={() => setFilters(defaultFilters(filters.distanceMi))} /> : null}
+                {filters.distanceMi < POOL_RADIUS_MI ? <Button label={`Widen to ${POOL_RADIUS_MI} mi`} small variant="secondary" onPress={() => setFilters((f) => ({ ...f, distanceMi: POOL_RADIUS_MI }))} /> : null}
+                {realOnly && demoAvail ? <Button label="Explore demo people" small onPress={() => { if (!app.showDemo) app.setShowDemoPeople(true); setFilters(defaultFilters(filters.distanceMi)); setRealOnly(false); }} /> : null}
+              </View>
+            </View>
+          ) : (
             <View style={styles.empty}>
               <Ionicons name={tab === 'doors' ? 'enter-outline' : 'git-network-outline'} size={22} color={C.ink3} />
               <View style={{ flex: 1, gap: 1 }}>
@@ -937,6 +975,12 @@ const styles = StyleSheet.create({
   handle: { width: 40, height: 5, backgroundColor: C.line2 },
   handleHit: { paddingTop: 10, paddingBottom: 6 },
   sheetCounts: { fontSize: 13, color: C.ink3, fontWeight: '500', marginTop: -S.sm },
+  key: { position: 'absolute', left: S.md, bottom: 0, flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: R.pill, borderWidth: 1, borderColor: C.line, paddingHorizontal: 11, minHeight: 32 },
+  keyRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  keySwatch: { width: 13, height: 13, borderRadius: 7, borderWidth: 1.5 },
+  keyText: { fontSize: 11.5, color: C.ink2, fontWeight: '600' },
+  emptyCard: { gap: S.sm, paddingHorizontal: S.lg, paddingVertical: S.md, marginBottom: S.lg },
+  emptyActions: { flexDirection: 'row', flexWrap: 'wrap', gap: S.sm, marginTop: S.xs },
   emptyTitle: { fontSize: 15, fontWeight: '700', color: C.ink },
   hotLabel: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 8, borderWidth: 1.5, borderColor: 'transparent', paddingHorizontal: 7, paddingVertical: 3, shadowColor: '#2A1E5C', shadowOpacity: 0.12, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
   hotDot: { width: 7, height: 7, borderRadius: 4 },
