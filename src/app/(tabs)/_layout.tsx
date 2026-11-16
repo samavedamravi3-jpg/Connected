@@ -1,11 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Redirect, Tabs } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
+import { dataSource } from '@/data/source';
+import { conversations } from '@/lib/conversations';
 import { useApp } from '@/state/AppState';
 import { C, F } from '@/theme';
 
 export default function TabLayout() {
-  const { hydrated, onboarded, requests, incoming, now, showDemo } = useApp();
+  const { hydrated, onboarded, requests, incoming, messages, blocked, lastRead, now, showDemo } = useApp();
   if (!hydrated) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg }}>
@@ -15,10 +17,17 @@ export default function TabLayout() {
   }
   if (!onboarded) return <Redirect href="/onboarding" />;
 
+  // Same unread chats the Inbox "Chats" section shows; a just-accepted request that is also unread counts once.
+  const unread = new Set(
+    conversations({ requests, incoming, messages, showDemo, blocked, lastRead, nameOf: (id) => dataSource.getPerson(id)?.name ?? '' })
+      .filter((c) => c.unread)
+      .map((c) => c.id),
+  );
   const waiting =
     (showDemo ? incoming.filter((i) => i.state === 'new').length : 0) +
     requests.filter((r) => r.incoming && r.status === 'requested').length +
-    requests.filter((r) => !r.incoming && r.status === 'accepted' && r.updatedAt > now - 60 * 60_000).length;
+    unread.size +
+    requests.filter((r) => !r.incoming && r.status === 'accepted' && r.updatedAt > now - 60 * 60_000 && !unread.has(r.id)).length;
 
   return (
     <Tabs

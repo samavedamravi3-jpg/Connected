@@ -37,6 +37,8 @@ export type AppData = {
   showDemoEvents: boolean;
   /** Notify me (while the app is open) when a real member is within 1 mile. */
   nearbyAlerts: boolean;
+  /** When you last opened each chat (by request id), for unread dots. Kept on this phone only. */
+  lastRead: Record<string, number>;
 };
 
 export const emptyPrefs: Prefs = {
@@ -46,7 +48,7 @@ export const emptyPrefs: Prefs = {
 const emptyProfile: Profile = { name: '', lastName: '', status: null, org: '', intro: '', offer: '', photoUri: null };
 
 const fresh = (): AppData => ({
-  onboarded: false, prefs: emptyPrefs, profile: emptyProfile, requests: [], messages: {}, incoming: DEMO_INCOMING, doors: [], savedEvents: [], blocked: [], muted: [], hiddenEvents: [], mutedHosts: [], showDemo: true, showDemoEvents: false, nearbyAlerts: false,
+  onboarded: false, prefs: emptyPrefs, profile: emptyProfile, requests: [], messages: {}, incoming: DEMO_INCOMING, doors: [], savedEvents: [], blocked: [], muted: [], hiddenEvents: [], mutedHosts: [], showDemo: true, showDemoEvents: false, nearbyAlerts: false, lastRead: {},
 });
 
 export const SAMPLE: Pick<AppData, 'prefs' | 'profile'> = {
@@ -104,6 +106,8 @@ type Ctx = Omit<AppData, 'requests' | 'messages'> & {
   simulateReply: (id: string, status: Extract<RequestStatus, 'accepted' | 'declined'>) => void;
   sendMessage: (requestId: string, text: string) => Promise<void>;
   respondIncoming: (id: string, state: IncomingRequest['state']) => void;
+  /** Marks a chat read up to `at`. */
+  markRead: (id: string, at: number) => void;
   saveDoor: (door: OpenDoor) => void;
   endDoor: (id: string) => void;
   toggleSavedEvent: (id: string) => void;
@@ -314,6 +318,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setPrefs = useCallback((p: Partial<Prefs>) => setData((d) => ({ ...d, prefs: { ...d.prefs, ...p } })), []);
   const setProfile = useCallback((p: Partial<Profile>) => setData((d) => ({ ...d, profile: { ...d.profile, ...p } })), []);
+  const markRead = useCallback((id: string, at: number) => setData((d) => ((d.lastRead[id] ?? 0) >= at ? d : { ...d, lastRead: { ...d.lastRead, [id]: at } })), []);
 
   // Merge real requests/messages into the same shapes the screens already use.
   const merged = useMemo(() => {
@@ -437,7 +442,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const t = Date.now();
         setData((d) => ({ ...d, messages: { ...d.messages, [requestId]: [...(d.messages[requestId] ?? []), { id: `m${t}`, from: 'me', text, at: t }] } }));
       },
-      respondIncoming: (id, state) => setData((d) => ({ ...d, incoming: d.incoming.map((x) => (x.id === id ? { ...x, state } : x)) })),
+      respondIncoming: (id, state) =>
+        setData((d) => {
+          const i = d.incoming.find((x) => x.id === id);
+          // Accepting a demo request starts its (local, simulated) chat with their request as the first message.
+          const seed = state === 'accepted' && i && !d.messages[id]?.length ? { [id]: [{ id: `first-${id}`, from: 'them' as const, text: i.message, at: Date.now() }] } : {};
+          return { ...d, incoming: d.incoming.map((x) => (x.id === id ? { ...x, state } : x)), messages: { ...d.messages, ...seed } };
+        }),
+      markRead,
       saveDoor: (door) => setData((d) => ({ ...d, doors: d.doors.some((x) => x.id === door.id) ? d.doors.map((x) => (x.id === door.id ? door : x)) : [...d.doors, door] })),
       endDoor: (id) => setData((d) => ({ ...d, doors: d.doors.map((x) => (x.id === id ? { ...x, endedAt: Date.now() } : x)) })),
       toggleSavedEvent: (id) => setData((d) => ({ ...d, savedEvents: d.savedEvents.includes(id) ? d.savedEvents.filter((x) => x !== id) : [...d.savedEvents, id] })),
@@ -479,7 +491,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setData(fresh());
       },
     }),
-    [data, merged, hydrated, now, here, session, authReady, verification, refreshVerification, remoteHiddenEvents, idStatus, refreshId, setPrefs, setProfile, resolve, loadRemote],
+    [data, merged, hydrated, now, here, session, authReady, verification, refreshVerification, remoteHiddenEvents, idStatus, refreshId, setPrefs, setProfile, markRead, resolve, loadRemote],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

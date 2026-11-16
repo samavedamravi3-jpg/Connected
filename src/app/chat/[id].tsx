@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MeetSpots } from '@/components/MeetSpots';
@@ -21,18 +21,28 @@ export default function Chat() {
   const [sending, setSending] = useState(false);
   const req = app.requests.find((r) => r.id === id);
   const p = req ? dataSource.getPerson(req.personId) : undefined;
+  // Demo requests sent to you have no person record; only accepted ones have a chat.
+  const demoIn = req || !app.showDemo ? undefined : app.incoming.find((i) => i.id === id && i.state === 'accepted');
   const msgs = app.messages[id] ?? [];
+  const lastAt = msgs.at(-1)?.at ?? 0;
+  const { markRead } = app;
+  useEffect(() => {
+    // Message times share one clock (server or this phone), so compare against the newest one rather than Date.now().
+    if (id && lastAt) markRead(id, lastAt);
+  }, [id, lastAt, markRead]);
 
-  if (!req || !p) return <Text style={[T.body, { padding: S.lg }]}>{app.session ? 'Loading conversation…' : 'Conversation not found.'}</Text>;
-  const canWrite = req.status === 'accepted';
-  const first = firstName(p.name);
+  const name = p?.name ?? demoIn?.name;
+  if (!name || (req && !p)) return <Text style={[T.body, { padding: S.lg }]}>{app.session ? 'Loading conversation…' : 'Conversation not found.'}</Text>;
+  const isBlocked = !!req && app.blocked.includes(req.personId);
+  const canWrite = (req ? req.status === 'accepted' : !!demoIn) && !isBlocked;
+  const first = firstName(name);
   const send = async () => {
     const body = text.trim();
     if (!body || sending) return;
     if (!(await allowed(body))) return;
     setSending(true);
     try {
-      await app.sendMessage(req.id, body);
+      await app.sendMessage(id, body);
       setText('');
     } catch (e) {
       Alert.alert('Message not sent', e instanceof Error ? e.message : 'Check your connection and try again.');
@@ -43,16 +53,16 @@ export default function Chat() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: C.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
-      <Stack.Screen options={{ title: p.name }} />
+      <Stack.Screen options={{ title: name }} />
       <FlatList
         data={msgs}
         keyExtractor={(m) => m.id}
         contentContainerStyle={{ padding: S.lg, gap: S.md }}
         ListHeaderComponent={
           <Note icon="shield-checkmark-outline">
-            {req.remote
+            {req?.remote
               ? `Meet somewhere public, like a library or café, and tell a friend where you'll be. Only you and ${first} can see this chat.`
-              : `Meet somewhere public, like a library or café. ${first} is a demo profile, so messages stay on your phone and replies are simulated.`}
+              : `Meet somewhere public, like a library or café. ${first} is a demo profile, so messages stay on your phone and ${demoIn ? 'no one will reply' : 'replies are simulated'}.`}
           </Note>
         }
         renderItem={({ item }) => {
@@ -69,18 +79,20 @@ export default function Chat() {
       />
       {canWrite ? (
         <View style={[styles.composerWrap, { paddingBottom: insets.bottom + S.sm }]}>
-          <Pressable onPress={() => setPicking(true)} accessibilityRole="button" style={({ pressed }) => [styles.meetBtn, pressed && { backgroundColor: C.accentSoft }]}>
-            <Ionicons name="restaurant-outline" size={16} color={C.accent} />
-            <Text style={styles.meetText}>Where to meet?</Text>
-            <Text style={T.small}>Spots you&apos;d both like, halfway between you</Text>
-          </Pressable>
+          {p ? (
+            <Pressable onPress={() => setPicking(true)} accessibilityRole="button" style={({ pressed }) => [styles.meetBtn, pressed && { backgroundColor: C.accentSoft }]}>
+              <Ionicons name="restaurant-outline" size={16} color={C.accent} />
+              <Text style={styles.meetText}>Where to meet?</Text>
+              <Text style={T.small}>Spots you&apos;d both like, halfway between you</Text>
+            </Pressable>
+          ) : null}
           <View style={styles.composer}>
             <TextInput value={text} onChangeText={setText} placeholder={`Message ${first}`} placeholderTextColor={C.ink3} style={styles.input} multiline accessibilityLabel="Message" />
             <Button label={sending ? '…' : 'Send'} small disabled={!text.trim() || sending} onPress={send} />
           </View>
         </View>
       ) : (
-        <Text style={[T.small, { padding: S.lg }]}>You can write here once {first} accepts.</Text>
+        <Text style={[T.small, { padding: S.lg }]}>{isBlocked ? `You blocked ${first}. Unblock them in Profile to message.` : `You can write here once ${first} accepts.`}</Text>
       )}
 
       <Modal visible={picking} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setPicking(false)}>
@@ -90,14 +102,16 @@ export default function Chat() {
             <IconButton icon="close" label="Close" onPress={() => setPicking(false)} />
           </View>
           <ScrollView contentContainerStyle={{ padding: S.lg, paddingBottom: insets.bottom + S.xl }}>
-            <MeetSpots
-              person={p}
-              useLabel="Use in message"
-              onUse={(s) => {
-                setText((t) => `${t.trim() ? `${t.trim()} ` : ''}How about ${s.name} in ${s.area}? It's about halfway between us.`);
-                setPicking(false);
-              }}
-            />
+            {p ? (
+              <MeetSpots
+                person={p}
+                useLabel="Use in message"
+                onUse={(s) => {
+                  setText((t) => `${t.trim() ? `${t.trim()} ` : ''}How about ${s.name} in ${s.area}? It's about halfway between us.`);
+                  setPicking(false);
+                }}
+              />
+            ) : null}
           </ScrollView>
         </View>
       </Modal>

@@ -705,15 +705,18 @@ export default function MapScreen() {
         </View>
       </Animated.View>
 
-      {/* Hotspot key: visible whenever Hotspots is on (not tied to the viewport); rides above the sheet, left of the buttons. */}
+      {/* Hotspot key: visible whenever Hotspots is on (not tied to the viewport); rides above the sheet, left of the buttons.
+          One row that scrolls sideways when it doesn't fit; only the key takes touches, and none once it has faded out with the sheet expanded. */}
       {showHotspots ? (
-        <Animated.View style={[styles.key, shadow, keyStyle]} pointerEvents="none" accessible accessibilityLabel="Map key: Major hub, Active hub, Emerging spot">
-          {(['high', 'medium', 'emerging'] as const).map((lvl) => (
-            <View key={lvl} style={styles.keyRow}>
-              <View style={[styles.keySwatch, { backgroundColor: HOTSPOT_LEVELS[lvl].fill, borderColor: HOTSPOT_LEVELS[lvl].color }]} />
-              <Text style={styles.keyText} numberOfLines={1}>{HOTSPOT_LEVELS[lvl].label}</Text>
-            </View>
-          ))}
+        <Animated.View style={[styles.key, shadow, keyStyle]} pointerEvents={sheetIndex === 2 ? 'none' : 'box-none'} accessible accessibilityLabel="Map key: Major hub, Active hub, Emerging spot">
+          <ScrollView horizontal bounces={false} showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={styles.keyScroll}>
+            {(['high', 'medium', 'emerging'] as const).map((lvl) => (
+              <View key={lvl} style={styles.keyRow}>
+                <View style={[styles.keySwatch, { backgroundColor: HOTSPOT_LEVELS[lvl].fill, borderColor: HOTSPOT_LEVELS[lvl].color }]} />
+                <Text style={styles.keyText} numberOfLines={1}>{HOTSPOT_LEVELS[lvl].label}</Text>
+              </View>
+            ))}
+          </ScrollView>
         </Animated.View>
       ) : null}
 
@@ -991,8 +994,9 @@ const styles = StyleSheet.create({
   handle: { width: 36, height: 4, backgroundColor: C.line2 },
   handleHit: { paddingTop: 10, paddingBottom: 6 },
   sheetCounts: { fontSize: 13, lineHeight: 18, color: C.ink2, marginTop: -S.xs },
-  // maxWidth keeps the key clear of the right-hand control rail; it wraps upward on narrow screens or large text.
-  key: { position: 'absolute', left: S.md, bottom: 0, maxWidth: '74%', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: S.md, rowGap: S.xs, backgroundColor: 'rgba(252,251,247,0.96)', borderRadius: R.md, borderWidth: 1, borderColor: C.line, paddingHorizontal: 10, paddingVertical: 8 },
+  // maxWidth keeps the key clear of the right-hand control rail; past that it scrolls sideways instead of wrapping or shrinking.
+  key: { position: 'absolute', left: S.md, bottom: 0, maxWidth: '74%', backgroundColor: 'rgba(252,251,247,0.96)', borderRadius: R.md, borderWidth: 1, borderColor: C.line },
+  keyScroll: { flexDirection: 'row', alignItems: 'center', columnGap: S.md, paddingHorizontal: 10, paddingVertical: 8 },
   keyRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   keySwatch: { width: 12, height: 12, borderRadius: 6, borderWidth: 1.5 },
   keyText: { fontSize: 12, color: C.ink2, fontWeight: '500' },
