@@ -41,7 +41,7 @@ export default function AssistantScreen() {
   const send = async (raw: string) => {
     const q = raw.trim();
     if (!q || thinking) return;
-    if (!(await allowed(q))) return;
+    if (!(await allowed('Your question', q))) return;
     // The conversation only grows, so its length makes a unique id.
     const userMsg: AssistantMsg = { id: `u${msgs.length}`, role: 'user', text: q };
     const history = [...msgs, userMsg];

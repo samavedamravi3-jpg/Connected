@@ -74,6 +74,8 @@ export default function OpenDoorScreen() {
       const today = app.doors.filter((d) => Date.now() - Number(d.id.replace('door-', '')) < 864e5).length;
       if (today >= 6) return Alert.alert('That’s plenty for today', 'You can host up to 6 Open Doors a day.');
     }
+    // Topics can also come from your skills; check them all again before the door is shown to anyone.
+    if (!allowedNow('A topic', ...topics)) return;
     const door: OpenDoor = { id: existing?.id ?? `door-${Date.now()}`, venueId, start: effectiveStart, end, lengthMin, topics, audience };
     app.saveDoor(door);
     router.back();
@@ -167,7 +169,7 @@ export default function OpenDoorScreen() {
           </View>
           <View style={{ flexDirection: 'row', gap: S.sm }}>
             <TextInput value={custom} onChangeText={setCustom} placeholder="Add your own topic" placeholderTextColor={C.ink3} style={styles.input} accessibilityLabel="Add your own topic" />
-            <Button label="Add" variant="secondary" small onPress={() => { const t = custom.trim(); if (t && !allowedNow(t)) return; if (t && !topics.includes(t)) setTopics([...topics, t]); setCustom(''); }} />
+            <Button label="Add" variant="secondary" small onPress={() => { const t = custom.trim(); if (t && !allowedNow('That topic', t)) return; if (t && !topics.includes(t)) setTopics([...topics, t]); setCustom(''); }} />
           </View>
         </Block>
 

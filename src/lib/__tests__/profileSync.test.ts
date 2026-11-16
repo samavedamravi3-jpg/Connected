@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BLOCKED_MESSAGE } from '../moderation';
+import { BLOCKED_MESSAGE, ContentRejectedError } from '../moderation';
 import { createProfileSync, NOT_SAVED_MESSAGE, REJECTED_MESSAGE, saveIssue, type SyncState } from '../profileSync';
 
 type Row = { id: string; name: string };
 
-function harness(fail?: (row: Row) => unknown) {
+function harness(fail?: (row: Row) => unknown, held?: () => string[]) {
   const saved: Row[] = [];
   const states: SyncState[] = [];
   const sync = createProfileSync<Row>(
@@ -14,6 +14,8 @@ function harness(fail?: (row: Row) => unknown) {
       const e = fail?.(row);
       if (e) throw e;
       saved.push(row);
+      const h = held?.() ?? [];
+      return h.length ? { held: h } : undefined;
     },
     60_000, // a long debounce: only an explicit flush can save within the test
     (s) => states.push(s),
@@ -83,4 +85,33 @@ test('switching user drops the old queue and ignores a late result for the previ
   h.sync.setOwner(null);
   assert.equal(await h.sync.flush(), false);
   assert.deepEqual(h.saved.map((r) => r.id), ['u1']);
+});
+
+test('text held for review: the row exists (ready), the draft notice shows, and Try again re-sends it', async () => {
+  let down = true;
+  const h = harness(undefined, () => (down ? ['intro'] : []));
+  h.sync.schedule({ id: 'u1', name: 'Alex' });
+  assert.equal(await h.sync.flush(), true, 'the row was saved, so the ID step can go on');
+  assert.equal(h.last().ready, true);
+  assert.equal(h.last().issue?.draft, true);
+  assert.equal(h.last().issue?.rejected, false);
+  assert.match(h.last().issue!.message, /private draft/);
+  down = false;
+  assert.equal(await h.sync.flush(), true, 'Try again re-sends the kept row');
+  assert.equal(h.last().issue, null);
+  assert.equal(h.saved.length, 2);
+});
+
+test('a server rejection carries per-field messages and is never shown while a save is running', async () => {
+  const h = harness(() => new ContentRejectedError({ intro: 'ai', first_name: 'contact' }));
+  h.sync.schedule({ id: 'u1', name: 'Alex' });
+  const p = h.sync.flush();
+  assert.equal(h.last().saving, true);
+  assert.equal(h.last().issue, null, 'no rejection claimed while saving');
+  assert.equal(await p, false);
+  const issue = h.last().issue!;
+  assert.equal(issue.rejected, true);
+  assert.match(issue.fields!.intro, /A little about you.*community guidelines/);
+  assert.match(issue.fields!.first_name, /can only be a name/);
+  assert.equal(h.last().ready, false, 'nothing was saved');
 });

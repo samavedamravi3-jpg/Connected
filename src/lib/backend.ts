@@ -6,10 +6,10 @@ import { CHARLOTTE_CENTER, statusLabel } from '@/data/options';
 import type {
   AvailabilityId, ChallengeId, DietId, Experience, FieldId, FoodId, GoalId, LatLng, MeetMode, Mode, Person, Prefs, Profile, RequestStatus, ShareMode, StatusId, TraitId,
 } from '@/data/types';
-import { cleanExperience, experienceTexts } from './experience';
+import { cleanExperience } from './experience';
 import { cleanPrefLists } from './lists';
 import { fieldLabelShort } from './match';
-import { assertClean, dbError } from './moderation';
+import { assertClean, ContentRejectedError, dbError, experienceProblem, PROFILE_TEXT, profileRuleErrors, type FieldError } from './moderation';
 import { supabase } from './supabase';
 
 export type ProfileRow = {
@@ -119,12 +119,12 @@ export function myRow(userId: string, profile: Profile, prefs: Prefs, here: { co
   const keepArea = prefs.shareMode === 'area' && !here;
   const row: MyRow = {
     id: userId,
-    first_name: profile.name.trim().slice(0, 60),
-    last_name: profile.lastName.trim().slice(0, 60),
+    first_name: profile.name.trim().slice(0, PROFILE_TEXT.first_name.max),
+    last_name: profile.lastName.trim().slice(0, PROFILE_TEXT.last_name.max),
     status: profile.status,
-    org: profile.org.trim().slice(0, 120),
-    intro: profile.intro.slice(0, 400),
-    offer: profile.offer.slice(0, 300),
+    org: profile.org.trim().slice(0, PROFILE_TEXT.org.max),
+    intro: profile.intro.slice(0, PROFILE_TEXT.intro.max),
+    offer: profile.offer.slice(0, PROFILE_TEXT.offer.max),
     field: prefs.field,
     from_field: prefs.fromField,
     mode: prefs.mode,
@@ -172,10 +172,35 @@ export async function loadMyRow(userId: string): Promise<ProfileRow | null> {
   return (data as ProfileRow | null) ?? null;
 }
 
-export async function saveMyRow(row: MyRow): Promise<void> {
-  assertClean(row.first_name, row.last_name, row.org, row.intro, row.offer);
-  const { error } = await db().from('profiles').upsert(row);
-  if (error) throw dbError(error);
+export const RATE_LIMITED_MESSAGE = 'You’ve made a lot of profile changes. Try again in a few minutes.';
+
+/**
+ * Saves your profile through the profile-write edge function (the database no longer accepts direct profile writes).
+ * Resolves `{ held }` when some text is kept as a private draft because the server couldn't review it yet.
+ * Throws ContentRejectedError (per-field reasons) when the rules or the review said no; nothing is saved then.
+ */
+export async function saveMyRow(row: MyRow): Promise<{ held: string[] } | void> {
+  const local = profileRuleErrors(row);
+  if (Object.keys(local).length) throw new ContentRejectedError(local);
+  const { data, error } = await db().functions.invoke('profile-write', { body: { row } });
+  if (!error) {
+    const d = data as { status?: string; held?: string[] } | null;
+    if (d?.status === 'draft') return { held: Array.isArray(d.held) ? d.held : [] };
+    if (d?.status === 'published') return;
+    throw new Error('Unexpected answer from profile-write');
+  }
+  const res = (error as { context?: Response }).context;
+  const body = (res && typeof res.json === 'function' ? await res.json().catch(() => null) : null) as { fields?: Record<string, FieldError> } | null;
+  if (res?.status === 422) throw new ContentRejectedError(body?.fields ?? {});
+  if (res?.status === 429) throw Object.assign(new Error(RATE_LIMITED_MESSAGE), { code: 'rate_limited' });
+  throw error;
+}
+
+/** Your profile text held back for review (only you can read it), or null. */
+export async function loadMyDraft(userId: string): Promise<{ org?: string; intro?: string; offer?: string } | null> {
+  const { data, error } = await db().from('profile_drafts').select('fields').eq('user_id', userId).maybeSingle();
+  if (error) throw error;
+  return ((data as { fields?: Record<string, unknown> } | null)?.fields as { org?: string; intro?: string; offer?: string } | undefined) ?? null;
 }
 
 export async function fetchNearby(center: LatLng, radiusMi: number): Promise<Person[]> {
@@ -230,7 +255,8 @@ export async function fetchMyExperiences(userId: string): Promise<Experience[]> 
 
 /** Makes the stored list match `list`: upserts every entry and removes the ones you deleted. */
 export async function syncMyExperiences(userId: string, list: Experience[]): Promise<void> {
-  assertClean(...list.flatMap(experienceTexts));
+  const problem = list.map(experienceProblem).find(Boolean);
+  if (problem) throw new Error(problem);
   if (list.length) {
     const rows = list.map((e) => ({ id: e.id, user_id: userId, title: e.title, org: e.org, start_month: e.start, end_month: e.end, description: e.description, skills: e.skills }));
     const { error } = await db().from('experiences').upsert(rows);

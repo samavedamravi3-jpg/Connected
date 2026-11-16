@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { Button, Card, Chip, Row } from '@/components/ui';
 import type { Experience } from '@/data/types';
-import { EXP_LIMITS, experienceTexts, fmtRange, parseMonth, validateExperience } from '@/lib/experience';
+import { EXP_LIMITS, fmtRange, parseMonth, validateExperience } from '@/lib/experience';
+import { experienceProblem } from '@/lib/moderation';
 import { allowed, allowedNow } from '@/lib/guard';
 import { C, R, S, T } from '@/theme';
 
@@ -21,7 +22,7 @@ export function ExperienceEditor({ initial, onSave, onClose }: { initial: Experi
   const addSkill = () => {
     const s = skill.trim().slice(0, EXP_LIMITS.skill);
     if (!s) return;
-    if (!allowedNow(s)) return;
+    if (!allowedNow('That skill', s)) return;
     if (e.skills.length >= EXP_LIMITS.skills) return setErr('Up to 15 skills.');
     if (!e.skills.some((x) => x.toLowerCase() === s.toLowerCase())) setE({ ...e, skills: [...e.skills, s] });
     setSkill('');
@@ -32,10 +33,10 @@ export function ExperienceEditor({ initial, onSave, onClose }: { initial: Experi
     const end = current ? null : parseMonth(endText);
     if (!current && !end) return setErr('Add an end date like 08/2023, or mark it as present.');
     const next: Experience = { ...e, title: e.title.trim(), org: e.org.trim(), description: e.description.trim(), start, end };
-    const problem = validateExperience(next);
+    const problem = validateExperience(next) ?? experienceProblem(next);
     if (problem) return setErr(problem);
     setBusy(true);
-    const ok = await allowed(...experienceTexts(next));
+    const ok = await allowed('The description', next.description, ...next.skills);
     setBusy(false);
     if (ok) onSave(next);
   };
@@ -98,8 +99,11 @@ export function ResumeReview({ initial, onSaveAll, onClose }: { initial: Experie
   const saveAll = async () => {
     const bad = drafts.find((d) => validateExperience(d));
     if (bad) return Alert.alert('Finish this entry first', `${bad.title || 'An entry'}: ${validateExperience(bad)}`);
+    // Resume text is untrusted: every imported entry gets the same rules as one typed by hand.
+    const dirty = drafts.map((d) => [d, experienceProblem(d)] as const).find(([, p]) => p);
+    if (dirty) return Alert.alert('Edit this entry first', `${dirty[0].title || 'An entry'}: ${dirty[1]}`);
     setBusy(true);
-    const ok = await allowed(...drafts.flatMap(experienceTexts));
+    const ok = await allowed('An imported description', ...drafts.flatMap((d) => [d.description, ...d.skills]));
     setBusy(false);
     if (ok) onSaveAll(drafts);
   };

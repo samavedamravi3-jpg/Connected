@@ -161,6 +161,16 @@ export default function ProfileTab() {
           <KV k="Status" v={statusLabel(profile.status)} />
           <KV k="Organization" v={profile.org || 'Not set'} />
           {profile.offer ? <KV k="Can offer" v={profile.offer} /> : null}
+          {app.profileSaveIssue ? (
+            <View style={{ gap: S.sm }} accessibilityRole="alert">
+              <Note tone={app.profileSaveIssue.draft ? 'neutral' : 'warn'} icon={app.profileSaveIssue.draft ? 'time-outline' : 'alert-circle-outline'}>{app.profileSaveIssue.message}</Note>
+              {app.profileSaveIssue.rejected ? (
+                <Button label="Edit profile" small variant="secondary" onPress={() => router.push({ pathname: '/onboarding', params: { edit: 'profile' } })} />
+              ) : (
+                <Button label="Try again" small variant="secondary" icon="refresh" onPress={() => { app.ensureProfileSaved(); }} />
+              )}
+            </View>
+          ) : null}
         </View>
       </Section>
 

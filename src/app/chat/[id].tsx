@@ -43,7 +43,7 @@ export default function Chat() {
   const send = async () => {
     const body = text.trim();
     if (!body || sending) return;
-    if (!(await allowed(body))) return;
+    if (!(await allowed('Your message', body))) return;
     setSending(true);
     try {
       await app.sendMessage(id, body);

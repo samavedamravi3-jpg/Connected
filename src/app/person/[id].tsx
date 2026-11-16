@@ -96,7 +96,7 @@ export default function PersonScreen() {
       Alert.alert('Add a little more', `A sentence or two helps ${first} know what you'd like to talk about.`);
       return;
     }
-    if (!(await allowed(msg))) return;
+    if (!(await allowed('Your note', msg))) return;
     // Real people need real membership (enforced by the database too); demo people stay a simulation for everyone.
     if (app.backendEnabled && isRemoteId(p.id) && idBlocks(app.idStatus, 'send connection requests')) return;
     try {

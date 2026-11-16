@@ -4,7 +4,7 @@ import { DEMO_INCOMING } from '@/data/demo';
 import { dataSource, rememberPeople, setBackendUser, setShowDemo } from '@/data/source';
 import type { ConnectionRequest, Experience, IncomingRequest, LatLng, Message, OpenDoor, Prefs, Profile, RequestStatus } from '@/data/types';
 import {
-  blockRemote, fetchHiddenEventIds, fetchMessages, fetchMyExperiences, syncMyExperiences, fetchMyRequests, fetchPeopleByIds, isRemoteId, loadMyRow, muteRemote, myRow, reportEventRemote, reportRemote, rowToMine, saveMyRow, unmuteRemote, type MyRow,
+  blockRemote, fetchHiddenEventIds, fetchMessages, fetchMyExperiences, syncMyExperiences, fetchMyRequests, fetchPeopleByIds, isRemoteId, loadMyDraft, loadMyRow, muteRemote, myRow, reportEventRemote, reportRemote, rowToMine, saveMyRow, unmuteRemote, type MyRow,
   sendRemoteMessage, sendRemoteRequest, setRemoteRequestStatus, subscribeToMine, unblockRemote, type RemoteMessage, type RemoteRequest,
 } from '@/lib/backend';
 import { EXP_LIMITS, sortExperiences } from '@/lib/experience';
@@ -426,7 +426,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const row = await loadMyRow(d.user.id).catch(() => null);
         if (row) {
           const mine = rowToMine(row);
-          setData((cur) => ({ ...cur, onboarded: true, resumeAt: null, prefs: { ...cur.prefs, ...mine.prefs }, profile: { ...cur.profile, ...mine.profile } }));
+          // Text held back for review comes back into the editor (private), so the next save retries it.
+          const draft = await loadMyDraft(d.user.id).catch(() => null);
+          const held = draft ? { ...(typeof draft.org === 'string' && { org: draft.org }), ...(typeof draft.intro === 'string' && { intro: draft.intro }), ...(typeof draft.offer === 'string' && { offer: draft.offer }) } : {};
+          setData((cur) => ({ ...cur, onboarded: true, resumeAt: null, prefs: { ...cur.prefs, ...mine.prefs }, profile: { ...cur.profile, ...mine.profile, ...held } }));
         }
         return { hasProfile: !!row };
       },

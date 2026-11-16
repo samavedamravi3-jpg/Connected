@@ -1,21 +1,22 @@
 import { Alert } from 'react-native';
-import { BLOCKED_MESSAGE, BLOCKED_TITLE, UNAVAILABLE_MESSAGE, checkAll, moderate } from './moderation';
+import { BLOCKED_TITLE, checkAll, fieldMessage, moderate } from './moderation';
 
-/** Sync check with a friendly alert. Returns true when the text is fine. */
-export function allowedNow(...texts: (string | null | undefined)[]): boolean {
-  if (checkAll(...texts).ok) return true;
-  Alert.alert(BLOCKED_TITLE, BLOCKED_MESSAGE);
+/** Sync rules check with an alert that names the field (`label`, e.g. "That skill"). Returns true when the text is fine. */
+export function allowedNow(label: string, ...texts: (string | null | undefined)[]): boolean {
+  const r = checkAll(...texts);
+  if (r.ok) return true;
+  Alert.alert(BLOCKED_TITLE, fieldMessage(r.reason, label));
   return false;
 }
 
-/** Local check plus the optional AI check. Returns true when everything is fine. */
-export async function allowed(...texts: (string | null | undefined)[]): Promise<boolean> {
-  if (!allowedNow(...texts)) return false;
+/** Rules plus the best-effort AI check (see moderate). Returns true when everything is fine. */
+export async function allowed(label: string, ...texts: (string | null | undefined)[]): Promise<boolean> {
+  if (!allowedNow(label, ...texts)) return false;
   for (const t of texts) {
     const r = t ? await moderate(t) : null;
     if (r && !r.ok) {
-      if (r.reason === 'ai_unavailable') Alert.alert('Try again in a moment', UNAVAILABLE_MESSAGE);
-      else Alert.alert(BLOCKED_TITLE, BLOCKED_MESSAGE);
+      if (r.reason === 'ai_unavailable') Alert.alert('Try again in a moment', fieldMessage('ai_unavailable'));
+      else Alert.alert(BLOCKED_TITLE, fieldMessage(r.reason, label));
       return false;
     }
   }

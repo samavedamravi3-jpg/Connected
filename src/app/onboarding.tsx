@@ -13,7 +13,7 @@ import { AVAILABILITY, CHALLENGES, CHARLOTTE_CENTER, DIETS, FIELDS, FOODS, GOALS
 import { dataSource } from '@/data/source';
 import type { NearbyPerson } from '@/data/types';
 import { fullName, matchPoints, matchScore } from '@/lib/match';
-import { BLOCKED_MESSAGE, checkAll, checkText } from '@/lib/moderation';
+import { checkText, fieldMessage, PROFILE_TEXT, profileFieldMessages } from '@/lib/moderation';
 import { allowedNow } from '@/lib/guard';
 import { pickProfilePhoto } from '@/lib/photo';
 import { useApp } from '@/state/AppState';
@@ -49,11 +49,17 @@ export default function Onboarding() {
   const [i, setI] = useState(resumeAt && resumeAt !== 'idverify' ? Math.max(0, ALL_STEPS.indexOf(resumeAt as StepId)) : 0);
   const [err, setErr] = useState('');
   const [customSkill, setCustomSkill] = useState('');
+  const [tried, setTried] = useState(false); // field messages show after Continue, then update as you type
   const { prefs, profile, setPrefs, setProfile } = app;
   const step = steps[i];
+  // Per-field problems: the shared rules on what's typed now, plus what the server refused on the last save.
+  const localErrs = profileFieldMessages({ first_name: profile.name, last_name: profile.lastName, org: profile.org, intro: profile.intro, offer: profile.offer });
+  const serverErrs = app.profileSaveIssue?.rejected ? app.profileSaveIssue.fields ?? {} : {};
+  const fieldErr = (col: string) => (tried ? localErrs[col] : undefined) ?? serverErrs[col];
 
   const go = (n: number) => {
     setErr('');
+    setTried(false);
     setI(n);
     scroll.current?.scrollTo({ y: 0, animated: false });
     // Steps after the ID check reopen where you left off (browser trip, app closed). Guests have no account to resume.
@@ -99,14 +105,16 @@ export default function Onboarding() {
     if (step === 'goals' && !prefs.goals.length) return 'Pick at least one thing you’re hoping to find.';
     if (step === 'goals' && prefs.goals.includes('other') && !prefs.goalOther.trim()) return 'Tell us briefly what you’re looking for.';
     if (step === 'challenges' && !prefs.challenges.length) return 'Pick at least one. It’s the biggest factor in who we suggest.';
-    if (step === 'goals' && !checkText(prefs.goalOther).ok) return BLOCKED_MESSAGE;
-    if (step === 'profile' && !checkAll(profile.name, profile.lastName, profile.org, profile.intro, profile.offer).ok) return BLOCKED_MESSAGE;
+    const goal = checkText(prefs.goalOther);
+    if (step === 'goals' && !goal.ok) return fieldMessage(goal.reason, 'What you’re looking for');
+    if (step === 'profile' && Object.keys(localErrs).length) return 'Please fix the fields marked above.';
     if (step === 'profile' && !profile.name.trim()) return 'Add your first name.';
     if (step === 'profile' && !profile.lastName.trim()) return 'Add your last name. It helps people recognize you when you meet.';
     return '';
   }
 
   function next() {
+    setTried(true);
     const e = validate();
     if (e) return setErr(e);
     if (edit) return i < steps.length - 1 ? go(i + 1) : router.back();
@@ -327,9 +335,9 @@ export default function Onboarding() {
                   style={[styles.input, { flex: 1 }]}
                   accessibilityLabel="Add another skill"
                   returnKeyType="done"
-                  onSubmitEditing={() => { const s = customSkill.trim(); if (s && !allowedNow(s)) return; if (s && !prefs.skills.includes(s)) setPrefs({ skills: [...prefs.skills, s] }); setCustomSkill(''); }}
+                  onSubmitEditing={() => { const s = customSkill.trim(); if (s && !allowedNow('That skill', s)) return; if (s && !prefs.skills.includes(s)) setPrefs({ skills: [...prefs.skills, s] }); setCustomSkill(''); }}
                 />
-                <Button label="Add" variant="secondary" onPress={() => { const s = customSkill.trim(); if (s && !allowedNow(s)) return; if (s && !prefs.skills.includes(s)) setPrefs({ skills: [...prefs.skills, s] }); setCustomSkill(''); }} />
+                <Button label="Add" variant="secondary" onPress={() => { const s = customSkill.trim(); if (s && !allowedNow('That skill', s)) return; if (s && !prefs.skills.includes(s)) setPrefs({ skills: [...prefs.skills, s] }); setCustomSkill(''); }} />
               </View>
             </View>
           </>
@@ -418,23 +426,23 @@ export default function Onboarding() {
             </View>
             <View style={styles.nameRow}>
               <View style={{ flex: 1 }}>
-                <Field label="First name">
+                <Field label="First name" error={fieldErr('first_name')}>
                   <TextInput value={profile.name} onChangeText={(t) => { setProfile({ name: t }); setErr(''); }} placeholder="Alex" placeholderTextColor={C.ink3} style={styles.input} autoComplete="given-name" textContentType="givenName" autoCapitalize="words" accessibilityLabel="First name" />
                 </Field>
               </View>
               <View style={{ flex: 1 }}>
-                <Field label="Last name">
+                <Field label="Last name" error={fieldErr('last_name')}>
                   <TextInput value={profile.lastName} onChangeText={(t) => { setProfile({ lastName: t }); setErr(''); }} placeholder="Rivera" placeholderTextColor={C.ink3} style={styles.input} autoComplete="family-name" textContentType="familyName" autoCapitalize="words" accessibilityLabel="Last name" />
                 </Field>
               </View>
             </View>
-            <Field label="School or workplace" hint="Optional">
+            <Field label="School or workplace" hint="Optional" error={fieldErr('org')}>
               <TextInput value={profile.org} onChangeText={(t) => setProfile({ org: t })} placeholder="UNC Charlotte" placeholderTextColor={C.ink3} style={styles.input} accessibilityLabel="School or workplace, optional" />
             </Field>
-            <Field label="A little about you" hint={`${profile.intro.length}/280`}>
+            <Field label="A little about you" hint={`${profile.intro.length}/${PROFILE_TEXT.intro.max}`} error={fieldErr('intro')}>
               <TextInput
                 value={profile.intro}
-                onChangeText={(t) => setProfile({ intro: t.slice(0, 280) })}
+                onChangeText={(t) => setProfile({ intro: t.slice(0, PROFILE_TEXT.intro.max) })}
                 placeholder="What you're working toward, in your own words."
                 placeholderTextColor={C.ink3}
                 style={[styles.input, styles.area]}
@@ -443,10 +451,10 @@ export default function Onboarding() {
               />
             </Field>
             {prefs.mode !== 'seeking' && (
-              <Field label="What could you help others with?" hint="Optional">
+              <Field label="What could you help others with?" hint="Optional" error={fieldErr('offer')}>
                 <TextInput
                   value={profile.offer}
-                  onChangeText={(t) => setProfile({ offer: t.slice(0, 200) })}
+                  onChangeText={(t) => setProfile({ offer: t.slice(0, PROFILE_TEXT.offer.max) })}
                   placeholder="e.g. Resume reviews for people getting into healthcare"
                   placeholderTextColor={C.ink3}
                   style={[styles.input, styles.area, { minHeight: 80 }]}
@@ -577,11 +585,12 @@ function Done() {
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: ReactNode }) {
   return (
     <View style={{ gap: 6 }}>
       <Label right={hint ? <Text style={T.small}>{hint}</Text> : undefined}>{label}</Label>
       {children}
+      {error ? <Text style={styles.err} accessibilityRole="alert">{error}</Text> : null}
     </View>
   );
 }

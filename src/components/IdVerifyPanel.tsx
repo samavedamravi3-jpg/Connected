@@ -158,7 +158,9 @@ export function IdVerifyPanel({ onDone, onSignIn, onEditProfile }: { onDone?: ()
   const capturing = opened && (notStarted || status === 'started');
   const showIntro = fresh && !capturing;
   const issue = app.profileSaveIssue;
-  const saveProblem = status === 'pending' ? null : issue ?? (notReady ? { message: NOT_SAVED_MESSAGE, rejected: false } : null);
+  // A draft (text waiting for review) doesn't block the ID check: the row is saved, only that text isn't public yet.
+  const draftNote = issue?.draft ? issue.message : null;
+  const saveProblem = status === 'pending' ? null : (issue?.draft ? null : issue) ?? (notReady ? { message: NOT_SAVED_MESSAGE, rejected: false } : null);
   const settingUp = !ready && status !== 'pending';
   const editProfile = onEditProfile ?? (() => router.push({ pathname: '/onboarding', params: { edit: 'profile' } }));
   const primary =
@@ -189,6 +191,12 @@ export function IdVerifyPanel({ onDone, onSignIn, onEditProfile }: { onDone?: ()
         </View>
       ) : null}
       {err ? <Text style={{ color: C.bad, fontSize: 14 }} accessibilityRole="alert">{err}</Text> : null}
+      {draftNote ? (
+        <>
+          <Note icon="time-outline">{draftNote}</Note>
+          <Button label="Try again" icon="refresh" variant="secondary" small loading={busy === 'save'} disabled={!!busy} onPress={() => run('save')} />
+        </>
+      ) : null}
       {saveProblem ? (
         <>
           <View accessibilityRole="alert">
