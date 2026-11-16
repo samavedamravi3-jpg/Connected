@@ -67,8 +67,8 @@ const MAX_LINES = 6;
 const PEEK_MIN = 144;
 /** Assistant button + gap + two map controls + the 12px lift above the sheet. */
 const RAIL_H = 44 + 8 + 95 + 12;
-/** Room kept under the hub key so the map attribution (Apple "Legal" / Google logo) never sits beneath it. */
-const KEY_CLEARANCE = 44;
+/** Gap between the sheet's top edge and the floating rail / hub key. */
+const LIFT = 12;
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 type MapLook = 'network' | 'city3d' | 'satellite';
@@ -108,6 +108,7 @@ export default function MapScreen() {
 
   const [height, setHeight] = useState(0);
   const [topH, setTopH] = useState(0);
+  const [keyH, setKeyH] = useState(0);
   const [live, setLive] = useState(true);
   const [following, setFollowing] = useState(false);
   const [showLines, setShowLines] = useState(true);
@@ -373,17 +374,20 @@ export default function MapScreen() {
   const snap = useCallback((i: number) => sheetRef.current?.snapToIndex(i), []);
   // The map buttons and hotspot key sit 12px above the sheet and fade out as it opens past half way.
   // They also fade when the sheet would push them up into the header/chips (short phones, status pill showing).
+  // The hub key gets its own full-width row on the sheet; the rail sits on top of it (keyRoom), measured, not guessed.
+  const keyRoom = showHotspots && keyH ? keyH + S.sm : 0;
+  const railHidden = sheetIndex === 2 || (sheetIndex === 1 && snaps[1] < topH + RAIL_H + keyRoom);
   const railStyle = useAnimatedStyle(() => ({
     opacity: Math.min(
       interpolate(sheetY.value, [height * 0.12, height * 0.34], [0, 1], Extrapolation.CLAMP),
-      interpolate(sheetY.value, [topH + RAIL_H - 8, topH + RAIL_H + 8], [0, 1], Extrapolation.CLAMP),
+      interpolate(sheetY.value, [topH + RAIL_H + keyRoom - 8, topH + RAIL_H + keyRoom + 8], [0, 1], Extrapolation.CLAMP),
     ),
-    transform: [{ translateY: sheetY.value - height - 12 }],
+    transform: [{ translateY: sheetY.value - height - LIFT - keyRoom }],
   }));
   // The hub key is short, so it keeps the original fade only (visible whenever Hotspots is on and the sheet isn't expanded).
   const keyStyle = useAnimatedStyle(() => ({
     opacity: interpolate(sheetY.value, [height * 0.12, height * 0.34], [0, 1], Extrapolation.CLAMP),
-    transform: [{ translateY: sheetY.value - height - 12 }],
+    transform: [{ translateY: sheetY.value - height - LIFT }],
   }));
   const chipDims = useRef({ w: 0, c: 0, x: 0 });
   const chipRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
@@ -480,7 +484,7 @@ export default function MapScreen() {
         pitchEnabled={look !== 'network'}
         toolbarEnabled={false}
         showsCompass={look !== 'network'}
-        mapPadding={{ top: insets.top + 110, right: 0, bottom: peek + (showHotspots ? KEY_CLEARANCE : 0), left: 0 }}
+        mapPadding={{ top: insets.top + 110, right: 0, bottom: peek + LIFT + keyRoom, left: 0 }}
         onPanDrag={() => { if (following) setFollowing(false); }}
         onRegionChangeComplete={(r) => {
           regionRef.current = r;
@@ -722,7 +726,7 @@ export default function MapScreen() {
       </View>
 
       {/* Two map buttons, plus the assistant. They ride just above the sheet and fade out when it opens. */}
-      <Animated.View style={[styles.rail, railStyle]} pointerEvents={sheetIndex === 1 && snaps[1] < topH + RAIL_H ? 'none' : 'box-none'}>
+      <Animated.View style={[styles.rail, railStyle]} pointerEvents={railHidden ? 'none' : 'box-none'}>
         <Pressable onPress={() => router.push('/assistant')} accessibilityRole="button" accessibilityLabel="Ask the Connected assistant" style={({ pressed }) => [styles.askBtn, shadow, pressed && { backgroundColor: C.accentPressed }]}>
           <Ionicons name="chatbubble-ellipses-outline" size={20} color={C.white} />
         </Pressable>
@@ -733,18 +737,19 @@ export default function MapScreen() {
         </View>
       </Animated.View>
 
-      {/* Hotspot key: visible whenever Hotspots is on (not tied to the viewport); rides above the sheet, left of the buttons.
-          One row that scrolls sideways when it doesn't fit; only the key takes touches, and none once it has faded out with the sheet expanded. */}
+      {/* Hotspot key: visible whenever Hotspots is on (not tied to the viewport); its own row just above the sheet, under the rail.
+          All three labels on one line when they fit, otherwise whole items wrap (large text). It has no controls, so it
+          only takes touches on its own box, and none once it has faded out with the sheet expanded. */}
       {showHotspots ? (
-        <Animated.View style={[styles.key, shadow, keyStyle]} pointerEvents={sheetIndex === 2 ? 'none' : 'box-none'} accessible accessibilityLabel="Map key: Major hub, Active hub, Emerging spot">
-          <ScrollView horizontal bounces={false} showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={styles.keyScroll}>
+        <Animated.View style={[styles.keyRow, keyStyle]} pointerEvents={sheetIndex === 2 ? 'none' : 'box-none'} onLayout={(e) => setKeyH(Math.round(e.nativeEvent.layout.height))}>
+          <View style={[styles.key, shadow]} accessible accessibilityLabel="Map key: Major hub, Active hub, Emerging spot">
             {(['high', 'medium', 'emerging'] as const).map((lvl) => (
-              <View key={lvl} style={styles.keyRow}>
+              <View key={lvl} style={styles.keyItem}>
                 <View style={[styles.keySwatch, { backgroundColor: HOTSPOT_LEVELS[lvl].fill, borderColor: HOTSPOT_LEVELS[lvl].color }]} />
-                <Text style={styles.keyText} numberOfLines={1}>{HOTSPOT_LEVELS[lvl].label}</Text>
+                <Text style={styles.keyText}>{HOTSPOT_LEVELS[lvl].label}</Text>
               </View>
             ))}
-          </ScrollView>
+          </View>
         </Animated.View>
       ) : null}
 
@@ -1029,12 +1034,11 @@ const styles = StyleSheet.create({
   handle: { width: 36, height: 4, backgroundColor: C.line2 },
   handleHit: { paddingTop: 10, paddingBottom: 6 },
   sheetCounts: { fontSize: 13, lineHeight: 18, color: C.ink2, marginTop: -S.xs },
-  // maxWidth keeps the key clear of the right-hand control rail; past that it scrolls sideways instead of wrapping or shrinking.
-  key: { position: 'absolute', left: S.md, bottom: 0, maxWidth: '74%', backgroundColor: alpha(C.surface, 0.96), borderRadius: R.md, borderWidth: 1, borderColor: C.line },
-  keyScroll: { flexDirection: 'row', alignItems: 'center', columnGap: S.md, paddingHorizontal: 10, paddingVertical: 8 },
-  keyRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  keyRow: { position: 'absolute', left: S.md, right: S.md, bottom: 0, flexDirection: 'row' },
+  key: { flexShrink: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: S.lg, rowGap: S.xs, paddingHorizontal: S.md, paddingVertical: S.sm, backgroundColor: alpha(C.surface, 0.96), borderRadius: R.md, borderWidth: 1, borderColor: C.line },
+  keyItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   keySwatch: { width: 12, height: 12, borderRadius: 6, borderWidth: 1.5 },
-  keyText: { fontSize: 12, color: C.ink2, fontWeight: '500' },
+  keyText: { fontSize: 13, lineHeight: 18, color: C.ink2, fontWeight: '500' },
   emptyCard: { gap: S.sm, paddingHorizontal: S.lg, paddingVertical: S.md, marginBottom: S.lg },
   emptyActions: { flexDirection: 'row', flexWrap: 'wrap', gap: S.sm, marginTop: S.xs },
   emptyTitle: { fontSize: 15, lineHeight: 20, fontWeight: '600', color: C.ink },
