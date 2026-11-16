@@ -119,8 +119,10 @@ export function reusable(row: Row | null, wantLive: boolean, nowMs: number): boo
 }
 
 /** What to do with a retrieved Stripe session for this user. */
-export function resumeAction(s: { status?: string; url?: string | null; metadata?: { user_id?: string } } | null, userId: string): 'open' | 'processing' | 'new' {
+export function resumeAction(s: { status?: string; url?: string | null; metadata?: { user_id?: string; capture?: string } } | null, userId: string, capture?: Capture): 'open' | 'processing' | 'new' {
   if (!s || s.metadata?.user_id !== userId) return 'new';
+  // A session made with different capture rules (e.g. before test mode dropped live capture) is replaced, not resumed.
+  if (capture && s.metadata?.capture !== capture) return 'new';
   if (s.status === 'requires_input' && typeof s.url === 'string' && s.url.startsWith('https://')) return 'open';
   if (s.status === 'processing' || s.status === 'verified') return 'processing'; // the webhook finalizes it
   return 'new';
@@ -129,22 +131,28 @@ export function resumeAction(s: { status?: string; url?: string | null; metadata
 /**
  * Stripe Idempotency-Key for creating a session. Concurrent taps see the same stored row, so they send the same key and
  * Stripe returns one session instead of two. A new key only appears after the stored session changes.
- * "idv2": the create parameters changed (live capture, allowed types); Stripe rejects a reused key with different params.
+ * "idv3": the create parameters changed again (capture mode); Stripe rejects a reused key with different params, so the mode is in the key.
  */
-export const createKey = (userId: string, row: Row | null) => `idv2:${userId}:${row?.session_id || 'first'}`;
+export type Capture = 'live' | 'any';
+export const createKey = (userId: string, row: Row | null, capture: Capture = 'live') => `idv3:${capture}:${userId}:${row?.session_id || 'first'}`;
+
+/** Stripe test mode runs no real checks and offers predefined test cases; forcing live camera capture there made a test attempt fail with document_unverified_other. */
+export const captureFor = (test: boolean): Capture => (test ? 'any' : 'live');
 
 /**
  * Create-session parameters (documented options only): a government photo ID (driving licence, passport or national ID
  * card) captured live with the device camera (no uploads), plus a matching selfie. No ID number check, no return_url
  * (Stripe documents return_url as a web URL; Expo Go has no stable app URL, so the app re-reads status instead).
  */
-export function sessionParams(userId: string): URLSearchParams {
+export function sessionParams(userId: string, capture: Capture = 'live'): URLSearchParams {
   const p = new URLSearchParams({
     type: 'document',
     'metadata[user_id]': userId,
-    'options[document][require_live_capture]': 'true',
+    'metadata[capture]': capture,
     'options[document][require_matching_selfie]': 'true',
   });
+  // Live mode always requires the device camera. Test mode ('any') leaves it off so the test-case flow works; a test pass never unlocks Connected.
+  if (capture === 'live') p.set('options[document][require_live_capture]', 'true');
   for (const t of ['driving_license', 'passport', 'id_card']) p.append('options[document][allowed_types][]', t);
   return p;
 }

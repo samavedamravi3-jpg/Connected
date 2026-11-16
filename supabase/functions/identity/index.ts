@@ -12,7 +12,7 @@
 // Live mode stays off unless IDENTITY_LIVE_ENABLED=true is also set. See docs/id-verification.md.
 // Deploy:  supabase functions deploy identity --project-ref avfahjcgczcfyvcnhzyy   (gateway JWT check ON)
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { createKey, isRealMember, providerMode, resumeAction, reusable, sessionParams, type Row } from '../_shared/identityCore.ts';
+import { captureFor, createKey, isRealMember, providerMode, resumeAction, reusable, sessionParams, type Row } from '../_shared/identityCore.ts';
 
 const STRIPE = 'https://api.stripe.com/v1/identity/verification_sessions';
 const json = (status: number, body: object) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -63,6 +63,7 @@ Deno.serve(async (req) => {
   // Same rule as SQL is_real_member: a bare id_verified flag (no live verified row) must be able to verify again.
   if (isRealMember(prof.id_verified, row)) return json(409, { error: 'You’re already ID verified.' });
   const wantLive = !mode.test;
+  const capture = captureFor(mode.test);
 
   // 1) Resume the stored session when Stripe says it is still open (fresh single-use URL on every retrieve).
   let gone = false; // Stripe has no such session (404): just create a new one
@@ -70,7 +71,7 @@ Deno.serve(async (req) => {
     const r = await stripe(`/${encodeURIComponent(row!.session_id)}`, 'GET');
     gone = r.status === 404;
     if (!r.s && !gone) return json(502, { error: 'Couldn’t reach the verification service. Try again.' });
-    const next = r.s ? resumeAction(r.s, uid) : 'new';
+    const next = r.s ? resumeAction(r.s, uid, capture) : 'new';
     if (next === 'open') return json(200, { url: r.s!.url, test: mode.test });
     if (next === 'processing') return json(200, { state: 'processing', test: mode.test });
   }
@@ -78,7 +79,7 @@ Deno.serve(async (req) => {
   // 2) Otherwise replace it. Best-effort cancel of the old session first so it can't be finished later; all errors ignored.
   if (row?.session_id && !gone) await stripe(`/${encodeURIComponent(row.session_id)}/cancel`, 'POST');
   // The idempotency key makes concurrent taps get the same session from Stripe; 409 = another request with it is in flight.
-  const c = await stripe('', 'POST', sessionParams(uid), createKey(uid, row));
+  const c = await stripe('', 'POST', sessionParams(uid, capture), createKey(uid, row, capture));
   if (c.status === 409) return json(409, { error: BUSY });
   const s = c.s;
   if (!s?.id || !s.url) return json(502, { error: 'Couldn’t start verification. Try again later.' });

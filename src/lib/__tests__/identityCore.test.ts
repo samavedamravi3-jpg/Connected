@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { test } from 'node:test';
 import {
-  createKey, decide, isRealMember, parseSessionEvent, providerMode, resumeAction, reusable, sessionParams, statusFromStripe, verifyStripeSignature, SESSION_MAX_AGE_MS, type Row, type SessionEvent,
+  captureFor, createKey, decide, isRealMember, parseSessionEvent, providerMode, resumeAction, reusable, sessionParams, statusFromStripe, verifyStripeSignature, SESSION_MAX_AGE_MS, type Row, type SessionEvent,
 } from '../../../supabase/functions/_shared/identityCore.ts';
 import { toIdStatus } from '../idStatus';
 
@@ -130,8 +130,9 @@ test('concurrent creates share one idempotency key; a new session gets a new key
   assert.notEqual(createKey('u1', row()), createKey('u1', row({ session_id: 'vs_2' })));
   assert.notEqual(createKey('u1', null), createKey('u2', null));
   // Keys made before the options changed must not be replayed with the new parameters (Stripe would reject them).
-  assert.ok(createKey('u1', null).startsWith('idv2:'));
-  assert.notEqual(createKey('u1', null), 'idv:u1:first');
+  assert.ok(createKey('u1', null).startsWith('idv3:live:'));
+  assert.notEqual(createKey('u1', null), 'idv2:u1:first');
+  assert.notEqual(createKey('u1', null, 'live'), createKey('u1', null, 'any'), 'capture mode is part of the key');
 });
 
 test('client status: only the flag plus a live verified row is verified', () => {
@@ -190,4 +191,24 @@ test('session options: live capture, matching selfie, three ID types; no ID numb
   assert.equal(p.has('options[document][require_id_number]'), false);
   assert.equal(p.has('return_url'), false);
   assert.equal([...p.keys()].some((k) => k.startsWith('provided_details')), false, 'no personal details sent');
+});
+
+test('test mode drops live capture only; live mode still requires the camera, selfie and ID types', () => {
+  assert.equal(captureFor(true), 'any');
+  assert.equal(captureFor(false), 'live');
+  const t = sessionParams('u1', 'any');
+  assert.equal(t.has('options[document][require_live_capture]'), false);
+  assert.equal(t.get('options[document][require_matching_selfie]'), 'true');
+  assert.equal(t.get('metadata[capture]'), 'any');
+  const l = sessionParams('u1', captureFor(false));
+  assert.equal(l.get('options[document][require_live_capture]'), 'true');
+  assert.equal(l.get('metadata[capture]'), 'live');
+  assert.deepEqual(l.getAll('options[document][allowed_types][]'), ['driving_license', 'passport', 'id_card']);
+});
+
+test('a session made under other capture rules is replaced, not resumed', () => {
+  const open = { status: 'requires_input', url: 'https://verify.stripe.com/x' };
+  assert.equal(resumeAction({ ...open, metadata: { user_id: 'u1', capture: 'live' } }, 'u1', 'any'), 'new');
+  assert.equal(resumeAction({ ...open, metadata: { user_id: 'u1' } }, 'u1', 'any'), 'new', 'sessions from before the capture tag');
+  assert.equal(resumeAction({ ...open, metadata: { user_id: 'u1', capture: 'any' } }, 'u1', 'any'), 'open');
 });
