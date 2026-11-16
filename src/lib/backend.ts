@@ -159,7 +159,7 @@ export function rowToMine(r: ProfileRow): { profile: Partial<Profile>; prefs: Pa
     prefs: {
       field: r.field, fromField: r.from_field, mode: r.mode, goals: r.goals, challenges: r.challenges, wantTraits: r.want_traits,
       interests: r.interests, skills: r.skills, languages: r.languages, foods: r.foods, diet: r.diet, availability: r.availability,
-      meetMode: r.meet_mode, shareMode: r.share_mode, discoverable: r.discoverable, showExperience: r.show_experience ?? true,
+      meetMode: r.meet_mode, shareMode: r.share_mode, discoverable: r.discoverable, showExperience: r.show_experience ?? false,
     },
   };
 }

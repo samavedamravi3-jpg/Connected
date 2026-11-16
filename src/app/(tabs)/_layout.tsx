@@ -5,7 +5,7 @@ import { useApp } from '@/state/AppState';
 import { C } from '@/theme';
 
 export default function TabLayout() {
-  const { hydrated, onboarded, requests, incoming, now } = useApp();
+  const { hydrated, onboarded, requests, incoming, now, showDemo } = useApp();
   if (!hydrated) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg }}>
@@ -16,7 +16,7 @@ export default function TabLayout() {
   if (!onboarded) return <Redirect href="/onboarding" />;
 
   const waiting =
-    incoming.filter((i) => i.state === 'new').length +
+    (showDemo ? incoming.filter((i) => i.state === 'new').length : 0) +
     requests.filter((r) => r.incoming && r.status === 'requested').length +
     requests.filter((r) => !r.incoming && r.status === 'accepted' && r.updatedAt > now - 60 * 60_000).length;
 

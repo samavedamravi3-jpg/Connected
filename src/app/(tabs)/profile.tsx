@@ -80,71 +80,10 @@ export default function ProfileTab() {
 
       <ResumeExperienceCard />
 
-      {app.backendEnabled ? (
-        <Card>
-          {app.session ? (
-            <>
-              <View style={styles.switchRow}>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={T.label}>Signed in</Text>
-                  <Text style={T.small} numberOfLines={1}>{app.session.email}</Text>
-                </View>
-                <Button
-                  label="Sign out"
-                  variant="secondary"
-                  small
-                  onPress={() =>
-                    Alert.alert('Sign out?', 'You won’t receive requests on this phone until you sign in again.', [
-                      { text: 'Cancel', style: 'cancel' },
-                      { text: 'Sign out', style: 'destructive', onPress: () => { app.signOut(); } },
-                    ])
-                  }
-                />
-              </View>
-              <View style={styles.switchRow}>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={T.label}>{app.verification.verified ? 'Verified' : 'Get verified'}</Text>
-                  <Text style={T.small}>
-                    {app.verification.verified ? `Confirmed with a ${app.verification.kind ?? ''} email. People in your field can get nearby alerts about you.` : 'Confirm a school or work email to get a check. Only verified people trigger nearby alerts.'}
-                  </Text>
-                </View>
-                {app.verification.verified ? <VerifiedBadge label size={18} /> : <Button label="Verify" small onPress={() => router.push('/verify')} />}
-              </View>
-              <View style={styles.switchRow}>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={T.label}>{app.idStatus === 'verified' ? 'ID verified' : 'Verify your ID'}</Text>
-                  <Text style={T.small}>
-                    {app.idStatus === 'verified' ? 'Your ID was checked. People see an ID badge.' : app.idStatus === 'pending' ? 'Your check is being reviewed.' : app.idStatus === 'rejected' ? 'We couldn’t verify that ID. You can try again.' : 'A quick ID and selfie check. Unlocks sending requests and hosting events.'}
-                  </Text>
-                </View>
-                {app.idStatus === 'verified' ? <IdBadge label size={18} /> : <Button label={app.idStatus === 'pending' ? 'Status' : app.idStatus === 'rejected' ? 'Retry' : 'Verify'} small onPress={() => router.push('/verify-id')} />}
-              </View>
-              <Text style={T.small}>
-                {prefs.shareMode === 'area'
-                  ? 'Your profile is saved to your account. People see your neighborhood on the map, never your exact location.'
-                  : 'Your profile is saved to your account. You chose public places only, so you appear in search but not on the map.'}
-              </Text>
-            </>
-          ) : (
-            <>
-              <Text style={T.label}>Create an account</Text>
-              <Text style={T.small}>Save your profile so real people nearby can find you, and send real requests and messages.</Text>
-              <View style={{ flexDirection: 'row', gap: S.sm }}>
-                <Button label="Create account" small onPress={() => router.push({ pathname: '/onboarding', params: { edit: 'account' } })} style={{ flex: 1 }} />
-                <Button label="Sign in" small variant="secondary" onPress={() => router.push('/auth')} style={{ flex: 1 }} />
-              </View>
-            </>
-          )}
-          <View style={styles.divider} />
-          <View style={styles.switchRow}>
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={T.label}>Show demo people</Text>
-              <Text style={T.small}>Built-in sample profiles, marked &quot;Demo&quot;. Turn off once real people are on.</Text>
-            </View>
-            <Switch value={app.showDemo} onValueChange={app.setShowDemoPeople} trackColor={{ true: C.accent, false: C.line2 }} accessibilityLabel="Show demo people" />
-          </View>
-        </Card>
+      {!app.session ? (
+        <Note icon="flask-outline">{app.backendEnabled ? 'Guest mode: this profile lives on this phone and you only see demo people. Create an account in Account below to meet real members.' : 'Demo mode: this profile lives on this phone.'}</Note>
       ) : null}
+
 
       <Card>
         <View style={styles.switchRow}>
@@ -236,6 +175,72 @@ export default function ProfileTab() {
           {profile.offer ? <KV k="Can offer" v={profile.offer} /> : null}
         </View>
       </Section>
+
+      {app.backendEnabled ? (
+        <Card>
+          {app.session ? (
+            <>
+              <View style={styles.switchRow}>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={T.label}>Signed in</Text>
+                  <Text style={T.small} numberOfLines={1}>{app.session.email}</Text>
+                </View>
+                <Button
+                  label="Sign out"
+                  variant="secondary"
+                  small
+                  onPress={() =>
+                    Alert.alert('Sign out?', 'You won’t receive requests on this phone until you sign in again.', [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Sign out', style: 'destructive', onPress: () => { app.signOut(); } },
+                    ])
+                  }
+                />
+              </View>
+              <View style={styles.switchRow}>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={T.label}>{app.verification.verified ? 'Verified' : 'Get verified'}</Text>
+                  <Text style={T.small}>
+                    {app.verification.verified ? `Confirmed with a ${app.verification.kind ?? ''} email. People in your field can get nearby alerts about you.` : 'Confirm a school or work email to get a check. Only verified people trigger nearby alerts.'}
+                  </Text>
+                </View>
+                {app.verification.verified ? <VerifiedBadge label size={18} /> : <Button label="Verify" small onPress={() => router.push('/verify')} />}
+              </View>
+              <View style={styles.switchRow}>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={T.label}>{app.idStatus === 'verified' ? 'ID verified' : 'Verify your ID'}</Text>
+                  <Text style={T.small}>
+                    {app.idStatus === 'verified' ? 'Your ID was checked. People see an ID badge.' : app.idStatus === 'pending' ? 'Your check is being reviewed.' : app.idStatus === 'rejected' ? 'We couldn’t verify that ID. You can try again.' : 'A quick ID and selfie check. Unlocks sending requests and hosting events.'}
+                  </Text>
+                </View>
+                {app.idStatus === 'verified' ? <IdBadge label size={18} /> : <Button label={app.idStatus === 'pending' ? 'Status' : app.idStatus === 'rejected' ? 'Retry' : 'Verify'} small onPress={() => router.push('/verify-id')} />}
+              </View>
+              <Text style={T.small}>
+                {prefs.shareMode === 'area'
+                  ? 'Your profile is saved to your account. People see your neighborhood on the map, never your exact location.'
+                  : 'Your profile is saved to your account. You chose public places only, so you appear in search but not on the map.'}
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={T.label}>Create an account</Text>
+              <Text style={T.small}>Save your profile so real people nearby can find you, and send real requests and messages.</Text>
+              <View style={{ flexDirection: 'row', gap: S.sm }}>
+                <Button label="Create account" small onPress={() => router.push({ pathname: '/onboarding', params: { edit: 'account' } })} style={{ flex: 1 }} />
+                <Button label="Sign in" small variant="secondary" onPress={() => router.push('/auth')} style={{ flex: 1 }} />
+              </View>
+            </>
+          )}
+          <View style={styles.divider} />
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={T.label}>Show demo people</Text>
+              <Text style={T.small}>Built-in sample profiles, marked &quot;Demo&quot;. Turn off once real people are on.</Text>
+            </View>
+            <Switch value={app.showDemo} onValueChange={app.setShowDemoPeople} trackColor={{ true: C.accent, false: C.line2 }} accessibilityLabel="Show demo people" />
+          </View>
+        </Card>
+      ) : null}
 
       <Section title="Privacy">
         <Note icon="lock-closed-outline">

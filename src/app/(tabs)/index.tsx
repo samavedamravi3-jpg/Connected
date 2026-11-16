@@ -16,7 +16,7 @@ import { HOTSPOTS, HOTSPOT_LEVELS, type Hotspot } from '@/data/hotspots';
 import { AREAS, CHARLOTTE_CENTER } from '@/data/options';
 import { clearSimulatedMatches, dataSource, simulateNearbyMatch } from '@/data/source';
 import type { CommunityEvent, LatLng, NearbyPerson } from '@/data/types';
-import { activeFilterCount, applyFilters, defaultFilters, isFreeToday, type Filters } from '@/lib/filters';
+import { activeFilterCount, defaultFilters, isFreeToday, withinRange, type Filters } from '@/lib/filters';
 import { sortMyFieldFirst } from '@/lib/fieldClassifier';
 import { useClusters, type MapView as MapRegion } from '@/lib/cluster';
 import { approxDistance, deltaForMiles, distanceMi, travelTime } from '@/lib/geo';
@@ -220,8 +220,10 @@ export default function MapScreen() {
   const placeLabel = me ? (loc.place ?? 'Your location') : areaName;
 
   const people = useMemo(() => {
-    return applyFilters(realOnly ? pool.filter((p) => !p.isDemo) : pool, filters, blocked)
-      .map((p) => ({ ...p, distanceMi: distanceMi(origin, p.coord), strength: matchStrength(p, prefs) }))
+    // Measure from the same origin the list shows (your live position, else the search area) BEFORE filtering,
+    // so "Within N mi" always matches the distances on screen.
+    return withinRange(realOnly ? pool.filter((p) => !p.isDemo) : pool, origin, filters, blocked)
+      .map((p) => ({ ...p, strength: matchStrength(p, prefs) }))
       .sort((a, b) => Number(!!prefs.field && b.field === prefs.field) - Number(!!prefs.field && a.field === prefs.field) || matchScore(b, prefs) - matchScore(a, prefs) || a.distanceMi - b.distanceMi);
   }, [pool, filters, blocked, prefs, origin, realOnly]);
   const realCount = people.filter((p) => !p.isDemo).length;
@@ -439,7 +441,7 @@ export default function MapScreen() {
         accessibilityLabel="Map of your network nearby"
       >
         {look === 'network' ? <Polygon coordinates={wash} fillColor={WASH} strokeWidth={0} strokeColor="transparent" zIndex={0} tappable={false} /> : null}
-        <Circle center={searchCenter} radius={filters.distanceMi * 1609.34} strokeColor="rgba(91,53,201,0.22)" fillColor="rgba(91,53,201,0.03)" strokeWidth={1} zIndex={1} />
+        <Circle center={origin} radius={filters.distanceMi * 1609.34} strokeColor="rgba(91,53,201,0.22)" fillColor="rgba(91,53,201,0.03)" strokeWidth={1} zIndex={1} />
         {eventClusters.clusters.map((c) =>
           c.kind === 'cluster' ? (
             <Marker
@@ -708,7 +710,7 @@ export default function MapScreen() {
               <View style={styles.sheetHead}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                   <Text style={styles.sheetTitle}>Your network nearby</Text>
-                  <Text style={styles.sheetMeta}>Within {filters.distanceMi} mi</Text>
+                  <Text style={styles.sheetMeta} numberOfLines={1}>Within {filters.distanceMi} mi of {me ? 'you' : areaName}</Text>
                 </View>
                 <Text style={styles.sheetCounts} numberOfLines={1}>
                   {loading ? 'Loading your network…' : `${strongCount} strong · ${realCount} real member${realCount === 1 ? '' : 's'}${people.length > realCount ? ` · ${people.length - realCount} demo` : ''}`}
@@ -812,11 +814,12 @@ export default function MapScreen() {
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         <Text style={styles.contactName} numberOfLines={1}>{p.name}</Text>
                         {p.strength === 'strong' ? <Text style={styles.strong}>Strong match</Text> : null}
+                        {p.isDemo ? <Text style={styles.demoPill}>DEMO</Text> : null}
                       </View>
                       <Text style={styles.contactRole} numberOfLines={1}>{p.role} · {p.org}</Text>
                       {tags.length ? (
                         <View style={styles.tagRow}>
-                          {tags.map((t) => <Text key={t.text} style={styles.tag} numberOfLines={1}>{t.text}</Text>)}
+                          {tags.map((t) => <Text key={t.text} style={styles.tag} numberOfLines={2}>{t.text}</Text>)}
                         </View>
                       ) : null}
                     </View>
@@ -835,13 +838,15 @@ export default function MapScreen() {
               <Ionicons name={tab === 'doors' ? 'enter-outline' : 'git-network-outline'} size={22} color={C.ink3} />
               <View style={{ flex: 1, gap: 1 }}>
                 <Text style={styles.emptyTitle}>
-                  {tab === 'doors' ? 'No Open Doors right now' : tab === 'best' && people.length ? 'No strong matches in range' : nearCharlotte ? 'No one matches here yet' : 'No one nearby yet'}
+                  {realOnly && !people.length ? 'No real members in range yet' : tab === 'doors' ? 'No Open Doors right now' : tab === 'best' && people.length ? 'No strong matches in range' : nearCharlotte ? 'No one matches here yet' : 'No one nearby yet'}
                 </Text>
                 <Text style={T.small}>
-                  {tab === 'doors' ? 'They appear when someone posts one for people like you.' : nearCharlotte ? 'Try a wider distance or fewer filters.' : 'This demo only has profiles in Charlotte, NC.'}
+                  {realOnly && !people.length ? 'Demo profiles are hidden. Show them to see how Connected works, or widen the distance.' : tab === 'doors' ? 'They appear when someone posts one for people like you.' : nearCharlotte ? 'Try a wider distance or fewer filters.' : 'This demo only has profiles in Charlotte, NC.'}
                 </Text>
               </View>
-              {tab !== 'all' && people.length ? (
+              {realOnly && !people.length ? (
+                <Button label="Show demo" small variant="secondary" onPress={() => setRealOnly(false)} />
+              ) : tab !== 'all' && people.length ? (
                 <Button label="See everyone" small variant="secondary" onPress={() => setTab('all')} />
               ) : nearCharlotte ? (
                 <Button label="Clear" small variant="secondary" onPress={() => setFilters(defaultFilters(POOL_RADIUS_MI))} />
@@ -874,7 +879,7 @@ export default function MapScreen() {
       <FilterSheet
         visible={modal === 'filters'}
         value={filters}
-        resultCount={applyFilters(pool, filters, blocked).length}
+        resultCount={withinRange(pool, origin, filters, blocked).length}
         onChange={setFilters}
         onReset={() => setFilters(defaultFilters(prefs.travelMi))}
         onClose={() => {
@@ -977,8 +982,9 @@ const styles = StyleSheet.create({
   contactName: { fontSize: 16, fontWeight: '700', color: C.ink, flexShrink: 1 },
   contactRole: { fontSize: 13, color: C.ink2 },
   strong: { fontSize: 11, fontWeight: '700', color: C.accent, backgroundColor: C.accentSoft, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5, overflow: 'hidden' },
-  tagRow: { flexDirection: 'row', gap: 6, flexWrap: 'nowrap', overflow: 'hidden' },
-  tag: { fontSize: 11, color: C.ink2, borderWidth: 1, borderColor: C.line, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5, maxWidth: 150 },
+  tagRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  tag: { fontSize: 12, color: C.ink2, borderWidth: 1, borderColor: C.line, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, flexShrink: 1 },
+  demoPill: { fontSize: 10, fontWeight: '700', color: C.ink3, borderWidth: 1, borderColor: C.line2, paddingHorizontal: 5, borderRadius: 5, overflow: 'hidden' },
   contactRight: { alignItems: 'flex-end', gap: 2, minWidth: 64 },
   dist: { fontSize: 15, fontWeight: '700', color: C.ink, fontVariant: ['tabular-nums'] },
   travel: { fontSize: 11, color: C.ink3 },

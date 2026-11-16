@@ -1,4 +1,5 @@
-import type { AvailabilityId, FieldId, GoalId, NearbyPerson } from '@/data/types';
+import type { AvailabilityId, FieldId, GoalId, LatLng, NearbyPerson } from '@/data/types';
+import { distanceMi } from './geo';
 import { doorActive, doorState } from './match';
 import { dayLabel } from './time';
 
@@ -30,4 +31,9 @@ export function applyFilters(people: NearbyPerson[], f: Filters, blocked: string
     if (f.availability !== 'any' && f.availability !== 'today' && !p.availability.includes(f.availability) && !(f.availability === 'week' && isFreeToday(p))) return false;
     return true;
   });
+}
+
+/** Distances are measured from `origin` (the same point the list displays) BEFORE filtering, so "Within N mi" is truthful. */
+export function withinRange(people: NearbyPerson[], origin: LatLng, f: Filters, blocked: string[]): NearbyPerson[] {
+  return applyFilters(people.map((p) => ({ ...p, distanceMi: distanceMi(origin, p.coord) })), f, blocked);
 }

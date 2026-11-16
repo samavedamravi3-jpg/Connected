@@ -40,11 +40,13 @@ export function PersonCard({ person: p, distanceFromLabel, prefs, profile, onOpe
             {p.verified ? <VerifiedBadge /> : null}
             {p.idVerified ? <IdBadge /> : null}
             {strength === 'strong' ? <Text style={styles.badge}>Strong match</Text> : null}
+            {p.isDemo ? <Text style={styles.demoBadge}>DEMO</Text> : null}
           </View>
           <Text style={T.small} numberOfLines={1}>{p.role}, {p.org}</Text>
           <Text style={[T.small, { color: C.ink2 }]} numberOfLines={1}>
-            {approxDistance(p.distanceMi)} {distanceFromLabel}{travel ? ` · ${travel}` : ''} · {free}
+            {approxDistance(p.distanceMi)} {distanceFromLabel}{travel ? ` · ${travel}` : ''}
           </Text>
+          <Text style={styles.open} numberOfLines={1}>Open to connecting · {free}</Text>
         </View>
         <IconButton icon="close" label="Close" onPress={onClose} style={{ marginTop: -8, marginRight: -8 }} />
       </View>
@@ -56,7 +58,7 @@ export function PersonCard({ person: p, distanceFromLabel, prefs, profile, onOpe
           {points.map((pt) => (
             <View key={pt.text} style={styles.point}>
               <Ionicons name={pt.icon} size={15} color={C.accent} />
-              <Text style={styles.pointText} numberOfLines={1}>{pt.text}</Text>
+              <Text style={styles.pointText} numberOfLines={3}>{pt.text}</Text>
             </View>
           ))}
         </View>
@@ -75,7 +77,7 @@ export function PersonCard({ person: p, distanceFromLabel, prefs, profile, onOpe
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.md }}>
         <Button label="View profile" onPress={onOpen} style={{ flex: 1 }} />
-        <Text style={styles.demo}>{p.isDemo ? 'Demo profile' : 'Connected member'}</Text>
+        <Text style={styles.demo}>{p.isDemo ? 'Demo profile, not a real person' : 'Connected member'}</Text>
       </View>
     </View>
   );
@@ -88,8 +90,10 @@ const styles = StyleSheet.create({
   name: { fontSize: 18, fontWeight: '700', color: C.ink, flexShrink: 1 },
   badge: { fontSize: 11, fontWeight: '700', color: C.accent, backgroundColor: C.accentSoft, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, overflow: 'hidden' },
   bio: { fontSize: 15, lineHeight: 21, color: C.ink2 },
-  point: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  point: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   pointText: { fontSize: 14, color: C.ink, fontWeight: '500', flex: 1 },
   door: { flexDirection: 'row', gap: S.sm, alignItems: 'center', backgroundColor: C.accentSoft, borderRadius: R.md, paddingHorizontal: S.md, paddingVertical: 10 },
   demo: { fontSize: 12, color: C.ink3 },
+  open: { fontSize: 13, color: C.ok, fontWeight: '600' },
+  demoBadge: { fontSize: 10, fontWeight: '700', color: C.ink3, borderWidth: 1, borderColor: C.line2, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 5, overflow: 'hidden' },
 });

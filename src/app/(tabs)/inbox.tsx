@@ -22,13 +22,13 @@ const failed = (what: string) => (e: unknown) => Alert.alert(`Couldn’t ${what}
 
 export default function Inbox() {
   const app = useApp();
-  const [tab, setTab] = useState<'sent' | 'received'>('sent');
   const [refreshing, setRefreshing] = useState(false);
   const byNewest = (a: ConnectionRequest, b: ConnectionRequest) => b.updatedAt - a.updatedAt;
   const sent = app.requests.filter((r) => !r.incoming).sort(byNewest);
   const received = app.requests.filter((r) => r.incoming && r.status !== 'cancelled').sort(byNewest);
-  const newCount = app.incoming.filter((i) => i.state === 'new').length + received.filter((r) => r.status === 'requested').length;
+  const newCount = (app.showDemo ? app.incoming.filter((i) => i.state === 'new').length : 0) + received.filter((r) => r.status === 'requested').length;
 
+  const [tab, setTab] = useState<'sent' | 'received'>(newCount > 0 ? 'received' : 'sent'); // land where the badge points
   const refresh = () => {
     setRefreshing(true);
     app.refreshRemote();
@@ -62,8 +62,15 @@ export default function Inbox() {
       ) : (
         <>
           {received.map((r) => <RequestRow key={r.id} r={r} />)}
-          {app.session && !received.length ? (
-            <Text style={T.small}>No one has sent you a request yet. Keep &quot;Let people nearby find me&quot; on in Profile so people can find you.</Text>
+          {!received.length && !(app.showDemo && app.incoming.length) ? (
+            <View style={styles.empty}>
+              <Ionicons name="mail-open-outline" size={36} color={C.ink3} />
+              <Text style={T.h3}>No requests yet</Text>
+              <Text style={[T.muted, { textAlign: 'center' }]}>
+                {app.session ? 'Keep “Let people nearby find me” on in Profile so people can find you.' : 'Create an account to receive requests from real people, or turn on demo people to try it.'}
+              </Text>
+              <Button label={app.session ? 'Review my profile' : 'Go to Profile'} onPress={() => router.navigate('/profile')} />
+            </View>
           ) : null}
           {!app.session && app.backendEnabled ? (
             <Note icon="person-add-outline">Create an account (Profile tab) to receive requests from real people.</Note>

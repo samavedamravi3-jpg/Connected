@@ -26,7 +26,7 @@ const CATS: { id: Cat; label: string; icon: IconName; colors: [string, string] }
 ];
 const WHEN: { id: When; label: string }[] = [
   { id: 'any', label: 'Any time' },
-  { id: 'week', label: 'This week' },
+  { id: 'week', label: 'Next 7 days' },
   { id: 'month', label: 'This month' },
 ];
 const MILES = [5, 10, 25];
@@ -63,13 +63,16 @@ export default function Events() {
     const now = app.now;
     const limit = when === 'week' ? now + 7 * 864e5 : when === 'month' ? now + 31 * 864e5 : Infinity;
     return all
-      .filter((e) => !eventHidden(e))
+      .filter((e) => e.end > now && !eventHidden(e))
       .map((e) => ({ ...e, mi: e.online ? 0 : distanceMi(origin, e.coord) }))
       .filter((e) => (cat === 'all' || cat === 'saved' || e.category === cat) && (cat !== 'saved' || app.savedEvents.includes(e.id)))
       .filter((e) => e.start <= limit && e.mi <= maxMi)
       .sort((a, b) => Number(b.field === app.prefs.field && !!app.prefs.field) - Number(a.field === app.prefs.field && !!app.prefs.field) || a.start - b.start);
   }, [all, cat, when, maxMi, app.savedEvents, eventHidden, app.now, origin, app.prefs.field]);
 
+  const upcoming = (all ?? []).filter((e) => e.end > app.now && !eventHidden(e)).length;
+  const online = list.filter((e) => e.online).length;
+  const inPerson = list.length - online;
   const noLive = !!res && !res.liveCount && !withDemo;
   const thisWeek = list.filter((e) => e.start <= app.now + 7 * 864e5);
   const later = list.filter((e) => !thisWeek.includes(e));
@@ -82,7 +85,8 @@ export default function Events() {
     >
       <View style={styles.intro}>
         <View style={{ flex: 1, gap: 2 }}>
-          <Text style={styles.count}>{all ? `${list.length} event${list.length === 1 ? '' : 's'} near you` : 'Finding live events…'}</Text>
+          <Text style={styles.count}>{all ? `${list.length} event${list.length === 1 ? '' : 's'} shown${list.length !== upcoming ? ` of ${upcoming}` : ''}` : 'Finding live events…'}</Text>
+          {all ? <Text style={styles.liveText}>{inPerson} in person within {maxMi} mi {fromLabel} · {online} online</Text> : null}
           {res ? (
             <View style={styles.liveRow}>
               <View style={[styles.liveDot, !res.liveCount && { backgroundColor: C.ink3 }]} />
@@ -107,7 +111,7 @@ export default function Events() {
               <LinearGradient colors={c.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.catCircle, on && styles.catCircleOn]}>
                 <Ionicons name={c.icon} size={24} color={C.white} />
               </LinearGradient>
-              <Text style={[styles.catLabel, on && { color: C.ink, fontWeight: '800' }]}>{c.label}</Text>
+              <Text style={[styles.catLabel, on && { color: C.ink, fontWeight: '800' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>{c.label}</Text>
             </Pressable>
           );
         })}
@@ -147,7 +151,7 @@ export default function Events() {
         <>
           {thisWeek.length ? (
             <View style={{ gap: S.md }}>
-              <Text style={styles.section}>This week</Text>
+              <Text style={styles.section}>Next 7 days</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={272} decelerationRate="fast" contentContainerStyle={{ gap: S.md, paddingHorizontal: S.lg }}>
                 {thisWeek.map((e) => <BigCard key={e.id} e={e} fromLabel={fromLabel} />)}
               </ScrollView>
@@ -207,7 +211,7 @@ function BigCard({ e, fromLabel }: { e: Ev; fromLabel: string }) {
           <Text style={styles.bigKind}>{st.label.toUpperCase()}{e.cost.toLowerCase().startsWith('free') ? ' · FREE' : ''}{e.source ? ` · ${e.source.toUpperCase()}` : ' · DEMO'}</Text>
           <Text style={styles.bigTitle} numberOfLines={2}>{e.title}</Text>
           <Text style={styles.bigMeta} numberOfLines={1}>
-            {e.online ? `${fmtTime(e.start)} · Online` : `${fmtTime(e.start)} · ${e.areaName} · ${miLabel(e.mi)}${fromLabel.startsWith('from you') ? ' away' : ''}`}
+            {e.online ? `${fmtTime(e.start)} · Online event` : `${fmtTime(e.start)} · ${e.areaName} · ${miLabel(e.mi)}${fromLabel.startsWith('from you') ? ' away' : ''}`}
           </Text>
         </View>
       </Cover>
@@ -223,7 +227,8 @@ function Cover({ e, style, small, children }: { e: CommunityEvent; style: ViewSt
     return (
       <ImageBackground source={{ uri: e.image }} style={style} imageStyle={{ borderRadius: radius }} resizeMode="cover">
         <LinearGradient
-          colors={small ? ['rgba(20,14,40,0.45)', 'rgba(20,14,40,0.6)'] : ['rgba(20,14,40,0.1)', 'rgba(20,14,40,0.88)']}
+          colors={small ? ['rgba(20,14,40,0.45)', 'rgba(20,14,40,0.6)'] : ['rgba(20,14,40,0.25)', 'rgba(20,14,40,0.55)', 'rgba(20,14,40,0.94)']}
+          locations={small ? undefined : [0, 0.4, 1]}
           style={[StyleSheet.absoluteFill, { borderRadius: radius }]}
         />
         {children}
@@ -282,7 +287,7 @@ const styles = StyleSheet.create({
   liveText: { fontSize: 12, color: C.ink3, flexShrink: 1 },
   demoToggle: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   demoText: { fontSize: 11, color: C.ink2, fontWeight: '600' },
-  catTile: { alignItems: 'center', gap: 6, width: 72 },
+  catTile: { alignItems: 'center', gap: 6, width: 84 },
   catCircle: { width: 60, height: 60, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   catCircleOn: { borderWidth: 3, borderColor: C.bg, shadowColor: '#2A1E5C', shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6, transform: [{ scale: 1.06 }] },
   catLabel: { fontSize: 12, color: C.ink2, fontWeight: '600' },
@@ -298,7 +303,7 @@ const styles = StyleSheet.create({
   datePillDay: { color: C.white, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
   datePillNum: { color: C.white, fontSize: 20, fontWeight: '800', marginTop: -2 },
   bigKind: { color: 'rgba(255,255,255,0.85)', fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-  bigTitle: { color: C.white, fontSize: 20, fontWeight: '800', letterSpacing: -0.3, lineHeight: 24 },
+  bigTitle: { color: C.white, fontSize: 20, fontWeight: '800', letterSpacing: -0.3, lineHeight: 24, textShadowColor: 'rgba(0,0,0,0.45)', textShadowRadius: 6, textShadowOffset: { width: 0, height: 1 } },
   bigMeta: { color: 'rgba(255,255,255,0.9)', fontSize: 13, fontWeight: '600' },
   save: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg2 },
   saveLight: { backgroundColor: 'rgba(255,255,255,0.22)' },
