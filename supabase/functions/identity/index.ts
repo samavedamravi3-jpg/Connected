@@ -1,6 +1,7 @@
 // Edge function: ID verification for the app (Stripe Identity hosted page). The webhook lives in ../identity-webhook.
 //
 //   POST { action: 'status' }   -> { available, test }                 is a provider configured, and is it test mode?
+//                                  (available && !test = live mode: the only mode whose result unlocks membership)
 //   POST { action: 'session' }  -> { url, test } | { state: 'processing' }  resumes the user's open session or starts one
 //
 // Every call needs the user's Supabase token (Authorization: Bearer, sent by supabase.functions.invoke). The user id
@@ -11,7 +12,7 @@
 // Live mode stays off unless IDENTITY_LIVE_ENABLED=true is also set. See docs/id-verification.md.
 // Deploy:  supabase functions deploy identity --project-ref avfahjcgczcfyvcnhzyy   (gateway JWT check ON)
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { createKey, providerMode, resumeAction, reusable, type Row } from '../_shared/identityCore.ts';
+import { createKey, isRealMember, providerMode, resumeAction, reusable, sessionParams, type Row } from '../_shared/identityCore.ts';
 
 const STRIPE = 'https://api.stripe.com/v1/identity/verification_sessions';
 const json = (status: number, body: object) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -55,11 +56,12 @@ Deno.serve(async (req) => {
 
   const { data: prof } = await admin.from('profiles').select('id_verified').eq('id', uid).maybeSingle();
   if (!prof) return json(409, { error: 'Finish setting up your profile first, then try again.' });
-  if (prof.id_verified) return json(409, { error: 'You’re already ID verified.' });
 
   const read = async () =>
     (await admin.from('id_verifications').select('user_id, session_id, status, livemode, event_at, created_at').eq('user_id', uid).maybeSingle()).data as Row | null;
   const row = await read();
+  // Same rule as SQL is_real_member: a bare id_verified flag (no live verified row) must be able to verify again.
+  if (isRealMember(prof.id_verified, row)) return json(409, { error: 'You’re already ID verified.' });
   const wantLive = !mode.test;
 
   // 1) Resume the stored session when Stripe says it is still open (fresh single-use URL on every retrieve).
@@ -76,8 +78,7 @@ Deno.serve(async (req) => {
   // 2) Otherwise replace it. Best-effort cancel of the old session first so it can't be finished later; all errors ignored.
   if (row?.session_id && !gone) await stripe(`/${encodeURIComponent(row.session_id)}/cancel`, 'POST');
   // The idempotency key makes concurrent taps get the same session from Stripe; 409 = another request with it is in flight.
-  const body = new URLSearchParams({ type: 'document', 'metadata[user_id]': uid, 'options[document][require_matching_selfie]': 'true' });
-  const c = await stripe('', 'POST', body, createKey(uid, row));
+  const c = await stripe('', 'POST', sessionParams(uid), createKey(uid, row));
   if (c.status === 409) return json(409, { error: BUSY });
   const s = c.s;
   if (!s?.id || !s.url) return json(502, { error: 'Couldn’t start verification. Try again later.' });

@@ -10,12 +10,12 @@ import { supabase } from './supabase';
 
 export type { IdStatus };
 
-/** Your own status, read from the server. Others only ever see the public `id_verified` badge. */
+/** Your own status, read from the server: the public flag AND your live verified row (same rule as is_real_member). */
 export async function fetchIdStatus(userId: string, publicVerified: boolean): Promise<IdStatus> {
-  if (publicVerified || !supabase) return toIdStatus(null, publicVerified);
+  if (!supabase) return 'unverified';
   const { data, error } = await supabase.from('id_verifications').select('status, livemode').eq('user_id', userId).maybeSingle();
   if (error) throw error;
-  return toIdStatus(data, false);
+  return toIdStatus(data, publicVerified);
 }
 
 /** Is an ID provider configured on the server, and is it Stripe test mode? Any failure reads as unavailable. */

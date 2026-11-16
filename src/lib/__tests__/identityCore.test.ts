@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { test } from 'node:test';
 import {
-  createKey, decide, parseSessionEvent, providerMode, resumeAction, reusable, statusFromStripe, verifyStripeSignature, SESSION_MAX_AGE_MS, type Row, type SessionEvent,
+  createKey, decide, isRealMember, parseSessionEvent, providerMode, resumeAction, reusable, sessionParams, statusFromStripe, verifyStripeSignature, SESSION_MAX_AGE_MS, type Row, type SessionEvent,
 } from '../../../supabase/functions/_shared/identityCore.ts';
 import { toIdStatus } from '../idStatus';
 
@@ -129,13 +129,65 @@ test('concurrent creates share one idempotency key; a new session gets a new key
   assert.equal(createKey('u1', row()), createKey('u1', row()));
   assert.notEqual(createKey('u1', row()), createKey('u1', row({ session_id: 'vs_2' })));
   assert.notEqual(createKey('u1', null), createKey('u2', null));
+  // Keys made before the options changed must not be replayed with the new parameters (Stripe would reject them).
+  assert.ok(createKey('u1', null).startsWith('idv2:'));
+  assert.notEqual(createKey('u1', null), 'idv:u1:first');
 });
 
-test('client status: test pass is not verified; only the public badge is', () => {
+test('client status: only the flag plus a live verified row is verified', () => {
   assert.equal(toIdStatus({ status: 'verified', livemode: false }, false), 'test_verified');
   assert.equal(toIdStatus({ status: 'verified', livemode: true }, false), 'pending', 'webhook still finishing');
-  assert.equal(toIdStatus(null, true), 'verified');
+  assert.equal(toIdStatus({ status: 'verified', livemode: true }, true), 'verified');
   assert.equal(toIdStatus(null, false), 'unverified');
   assert.equal(toIdStatus({ status: 'canceled' }, false), 'canceled');
   assert.equal(toIdStatus({ status: 'bogus' }, false), 'unverified');
+});
+
+test('forged or stale flags never make a member (same rule as SQL is_real_member)', () => {
+  assert.equal(isRealMember(true, { status: 'verified', livemode: true }), true);
+  assert.equal(isRealMember(true, null), false, 'flag without a row');
+  assert.equal(isRealMember(true, { status: 'verified', livemode: false }), false, 'flag + test-mode pass');
+  assert.equal(isRealMember(false, { status: 'verified', livemode: true }), false, 'live row, webhook not finished');
+  assert.equal(isRealMember(true, { status: 'pending', livemode: true }), false);
+  assert.equal(isRealMember('true' as unknown as boolean, { status: 'verified', livemode: 'true' as unknown as boolean }), false, 'truthy strings are not true');
+  assert.equal(toIdStatus(null, true), 'unverified', 'client flag alone is not verified');
+  assert.equal(toIdStatus({ status: 'verified', livemode: false }, true), 'test_verified', 'flag + test pass stays a test result');
+});
+
+test('sandbox success can never grant the badge, whatever the order or repeats', () => {
+  let r = row();
+  for (const e of [ev({ status: 'pending', createdS: NOW }), ev({ status: 'verified', createdS: NOW + 1 }), ev({ status: 'verified', createdS: NOW + 1 }), ev({ status: 'pending', createdS: NOW - 5 })]) {
+    for (const live of [false, true]) {
+      const d = decide(r, e, live);
+      if (d.apply) assert.equal(d.grantBadge, false, 'test-mode event granted the badge');
+    }
+    const d = decide(r, e, false);
+    if (d.apply) r = { ...r, ...d.patch };
+  }
+  assert.equal(r.status, 'verified');
+  assert.equal(isRealMember(false, r), false);
+});
+
+test('live: duplicate and out-of-order webhooks grant once and never downgrade', () => {
+  const live = row({ livemode: true });
+  const first = decide(live, ev({ livemode: true, createdS: NOW + 10 }), true);
+  assert.ok(first.apply && first.grantBadge);
+  const after = { ...live, ...(first.apply ? first.patch : {}) };
+  assert.deepEqual(decide(after, ev({ livemode: true, createdS: NOW + 10 }), true), { apply: false, reason: 'final' }, 'duplicate');
+  assert.deepEqual(decide(after, ev({ livemode: true, status: 'pending', createdS: NOW + 2 }), true), { apply: false, reason: 'final' }, 'late processing');
+  assert.deepEqual(decide(after, ev({ livemode: true, status: 'rejected', createdS: NOW + 20, lastError: 'x' }), true), { apply: false, reason: 'final' });
+  const rejectedLate = decide(row({ livemode: true, status: 'rejected', event_at: new Date((NOW + 30) * 1000).toISOString() }), ev({ livemode: true, status: 'pending', createdS: NOW + 5 }), true);
+  assert.deepEqual(rejectedLate, { apply: false, reason: 'stale' });
+});
+
+test('session options: live capture, matching selfie, three ID types; no ID number, no return_url', () => {
+  const p = sessionParams('u1');
+  assert.equal(p.get('type'), 'document');
+  assert.equal(p.get('metadata[user_id]'), 'u1');
+  assert.equal(p.get('options[document][require_live_capture]'), 'true');
+  assert.equal(p.get('options[document][require_matching_selfie]'), 'true');
+  assert.deepEqual(p.getAll('options[document][allowed_types][]'), ['driving_license', 'passport', 'id_card']);
+  assert.equal(p.has('options[document][require_id_number]'), false);
+  assert.equal(p.has('return_url'), false);
+  assert.equal([...p.keys()].some((k) => k.startsWith('provided_details')), false, 'no personal details sent');
 });

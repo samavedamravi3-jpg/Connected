@@ -7,6 +7,8 @@
 --   * Locations are stored at neighborhood level (rounded to ~1 km); "public places only" stores none.
 --   * Requests and messages are visible only to the two people involved.
 --   * Messages can only be sent after a request is accepted.
+--   * Other people's data and every interaction need real membership on both sides: a live-mode government ID +
+--     selfie check (public.is_real_member). Your own profile can be created and edited before that.
 
 -- ---------------------------------------------------------------------------
 -- Tables
@@ -133,6 +135,27 @@ as $$
   );
 $$;
 
+-- Real membership (mandatory government photo ID + selfie). The single predicate behind every gate on other people's
+-- data and on interactions: profiles.id_verified (set only by identity-webhook for a LIVE-mode check) AND a live
+-- verified id_verifications row. A Stripe test pass, a bare id_verified flag and the email badge never count.
+-- Always on: there is no switch. plpgsql so it can be defined before id_verifications (bodies resolve at run time).
+create or replace function public.is_real_member(uid uuid)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  return uid is not null and exists (
+    select 1
+    from public.profiles p
+    join public.id_verifications v on v.user_id = p.id
+    where p.id = uid and p.id_verified and v.status = 'verified' and v.livemode
+  );
+end;
+$$;
+
 -- Profiles: keep location coarse, and store none for "public places only".
 create or replace function public.profiles_before_write()
 returns trigger
@@ -178,6 +201,9 @@ begin
   end if;
   if new.status in ('accepted', 'declined') and not (old.status = 'requested' and auth.uid() = old.to_user) then
     raise exception 'Only the recipient can accept or decline a pending request';
+  end if;
+  if new.status = 'accepted' and not (public.is_real_member(old.from_user) and public.is_real_member(old.to_user)) then
+    raise exception 'id_required' using errcode = '42501';
   end if;
   if new.status = 'cancelled' and not (old.status in ('requested', 'accepted') and auth.uid() in (old.from_user, old.to_user)) then
     raise exception 'This request can no longer be cancelled';
@@ -230,11 +256,13 @@ drop policy if exists "profiles: read visible" on public.profiles;
 create policy "profiles: read visible" on public.profiles
   for select to authenticated
   using (
-    id = auth.uid()
+    id = (select auth.uid())
     or (
-      not hidden
-      and not public.is_blocked(auth.uid(), id)
-      and (discoverable or public.has_connection(auth.uid(), id))
+      (select public.is_real_member((select auth.uid())))
+      and public.is_real_member(id)
+      and not hidden
+      and not public.is_blocked((select auth.uid()), id)
+      and (discoverable or public.has_connection((select auth.uid()), id))
     )
   );
 
@@ -255,7 +283,8 @@ create policy "blocks: own" on public.blocks
 
 drop policy if exists "requests: participants read" on public.connection_requests;
 create policy "requests: participants read" on public.connection_requests
-  for select to authenticated using (auth.uid() in (from_user, to_user));
+  for select to authenticated
+  using ((select auth.uid()) in (from_user, to_user) and (select public.is_real_member((select auth.uid()))));
 
 drop policy if exists "requests: send" on public.connection_requests;
 create policy "requests: send" on public.connection_requests
@@ -270,16 +299,18 @@ create policy "requests: participants update" on public.connection_requests
 
 drop policy if exists "messages: participants read" on public.messages;
 create policy "messages: participants read" on public.messages
-  for select to authenticated using (public.is_participant(request_id));
+  for select to authenticated
+  using (public.is_participant(request_id) and (select public.is_real_member((select auth.uid()))));
 
 drop policy if exists "messages: send when accepted" on public.messages;
 create policy "messages: send when accepted" on public.messages
   for insert to authenticated
   with check (
-    sender = auth.uid()
+    sender = (select auth.uid())
     and exists (
       select 1 from public.connection_requests r
-      where r.id = request_id and r.status = 'accepted' and auth.uid() in (r.from_user, r.to_user)
+      where r.id = request_id and r.status = 'accepted' and (select auth.uid()) in (r.from_user, r.to_user)
+        and public.is_real_member(r.from_user) and public.is_real_member(r.to_user)
     )
   );
 
@@ -292,14 +323,17 @@ create policy "reports: file own" on public.reports
 -- ---------------------------------------------------------------------------
 
 revoke all on public.profiles, public.blocks, public.connection_requests, public.messages, public.reports from anon;
-grant select, insert, update on public.profiles to authenticated;
-revoke delete on public.profiles from authenticated;
+-- Profiles: read here; insert/update are column-level grants at the end of this file (the app can't write badges or flags).
+grant select on public.profiles to authenticated;
+revoke insert, update, delete on public.profiles from authenticated;
 grant select, insert, delete on public.blocks to authenticated;
 grant select, insert, update on public.connection_requests to authenticated;
 grant select, insert on public.messages to authenticated;
 grant insert on public.reports to authenticated;
 grant execute on function public.nearby_profiles(double precision, double precision, double precision) to authenticated;
 grant execute on function public.is_blocked(uuid, uuid), public.has_connection(uuid, uuid), public.is_participant(uuid) to authenticated;
+revoke all on function public.is_real_member(uuid) from public, anon;
+grant execute on function public.is_real_member(uuid) to authenticated;
 revoke execute on function public.nearby_profiles(double precision, double precision, double precision) from anon;
 
 -- ---------------------------------------------------------------------------
@@ -423,24 +457,23 @@ create trigger profiles_protect_id_verified
   before insert or update on public.profiles
   for each row execute function public.profiles_protect_id_verified();
 
--- Gate switch. Off until the ID provider works end to end, so nobody is locked out while it is unavailable.
--- Turn on with:  update public.app_config set value = 'on' where key = 'id_gate';
+-- The ID gate is mandatory and always on (public.is_real_member, defined with the helpers above). There is no switch:
+-- id_gate_on() is a constant kept only for older app builds that still call it, and app_config can't turn it off.
 create table if not exists public.app_config (key text primary key, value text not null);
 alter table public.app_config enable row level security; -- no policies: service role / SQL editor only
 revoke all on public.app_config from anon, authenticated;
-insert into public.app_config (key, value) values ('id_gate', 'off') on conflict (key) do nothing;
+delete from public.app_config where key = 'id_gate';
 
 create or replace function public.id_gate_on()
 returns boolean
 language sql
-stable
-security definer
+immutable
 set search_path = ''
-as $$ select exists (select 1 from public.app_config where key = 'id_gate' and value = 'on') $$;
+as $$ select true $$;
 revoke all on function public.id_gate_on() from public, anon;
 grant execute on function public.id_gate_on() to authenticated;
 
--- With the gate on, only ID-verified members can send connection requests (the API cannot bypass this).
+-- Only real members can send connection requests, and only to real members (the API cannot bypass this).
 create or replace function public.require_id_for_requests()
 returns trigger
 language plpgsql
@@ -451,8 +484,11 @@ begin
   if coalesce((select p.hidden from public.profiles p where p.id = new.from_user), false) then
     raise exception 'account_restricted' using errcode = '42501';
   end if;
-  if public.id_gate_on() and not coalesce((select p.id_verified from public.profiles p where p.id = new.from_user), false) then
+  if not public.is_real_member(new.from_user) then
     raise exception 'id_required' using errcode = '42501';
+  end if;
+  if not public.is_real_member(new.to_user) then
+    raise exception 'recipient_unavailable' using errcode = '42501';
   end if;
   return new;
 end;
@@ -640,7 +676,9 @@ create policy "experiences: read own or shown" on public.experiences
   using (
     user_id = (select auth.uid())
     or (
-      not public.is_blocked((select auth.uid()), user_id)
+      (select public.is_real_member((select auth.uid())))
+      and public.is_real_member(user_id)
+      and not public.is_blocked((select auth.uid()), user_id)
       and exists (
         select 1 from public.profiles p
         where p.id = experiences.user_id
@@ -689,7 +727,7 @@ create trigger experiences_before_write
 -- ---------------------------------------------------------------------------
 -- Nearby alerts (real path): PostGIS radius search over rounded positions
 -- The app calls set_my_area while the map is open; profiles_before_write rounds it to 0.01 degrees
--- (about a mile) and clears it for "public places only". alert_candidates returns verified members in the
+-- (about a mile) and clears it for "public places only". alert_candidates returns real (ID-verified) members in the
 -- caller's own field within the radius who had the map open in the last 30 minutes. Runs as the caller, so RLS
 -- (blocks, discoverable) still applies.
 -- ---------------------------------------------------------------------------
@@ -742,6 +780,7 @@ as $$
 declare n int;
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
+  if not public.is_real_member(auth.uid()) then return; end if; -- non-members get an empty list
   insert into public.alert_rate as r (user_id, window_start, calls) values (auth.uid(), now(), 1)
   on conflict (user_id) do update set
     window_start = case when r.window_start < now() - interval '1 minute' then now() else r.window_start end,
@@ -765,7 +804,7 @@ begin
     and p.field = me.field
     and p.id <> me.id
     and not exists (select 1 from public.mutes mu where mu.muter = auth.uid() and mu.muted = p.id)
-    and p.verified
+    and public.is_real_member(p.id)
     and p.discoverable
     and p.area_lat is not null and p.area_lng is not null
     and p.area_seen_at > now() - interval '30 minutes'
@@ -811,7 +850,7 @@ create index if not exists rate_log_lookup on public.rate_log (user_id, kind, at
 alter table public.rate_log enable row level security;
 revoke all on public.rate_log from anon, authenticated;
 
--- Brand-new (under 24 h) or unverified accounts (no email or ID check) get the stricter limit.
+-- Brand-new (under 24 h) or unverified accounts (no email check and not a real member) get the stricter limit.
 create or replace function public.rate_check(p_kind text, p_limit_strict int, p_limit int, p_window interval)
 returns void
 language plpgsql
@@ -825,7 +864,7 @@ declare
 begin
   if uid is null then return; end if; -- service role / SQL editor are not limited
   is_strict := coalesce((select u.created_at > now() - interval '24 hours' from auth.users u where u.id = uid), true)
-            or not coalesce((select p.verified or p.id_verified from public.profiles p where p.id = uid), false);
+            or not (coalesce((select p.verified from public.profiles p where p.id = uid), false) or public.is_real_member(uid));
   select count(*) into n from public.rate_log where user_id = uid and kind = p_kind and at > now() - p_window;
   if n >= (case when is_strict then p_limit_strict else p_limit end) then
     raise exception 'rate_limited: slow down and try again later' using errcode = '54000';
@@ -991,3 +1030,16 @@ revoke all on public.admin_review_queue from anon, authenticated;
 
 -- Hardening: Supabase default grants include TRUNCATE (which skips RLS), REFERENCES and TRIGGER. The app never needs them.
 revoke truncate, references, trigger on all tables in schema public from anon, authenticated;
+
+-- Profiles: the app may write only its own profile fields (RLS limits it to its own row). The badges (verified*,
+-- id_verified*), hidden, created_at and updated_at are server-only; the protect triggers above also reset them.
+-- Here at the end because every column must exist first. A new client-written column must be added to these lists.
+revoke insert, update on public.profiles from anon, authenticated;
+grant insert (id, first_name, last_name, status, org, intro, offer, field, from_field, mode, goals, challenges, want_traits,
+              interests, skills, languages, foods, diet, availability, meet_mode, share_mode, discoverable, show_experience,
+              area_name, area_lat, area_lng)
+  on public.profiles to authenticated;
+grant update (id, first_name, last_name, status, org, intro, offer, field, from_field, mode, goals, challenges, want_traits,
+              interests, skills, languages, foods, diet, availability, meet_mode, share_mode, discoverable, show_experience,
+              area_name, area_lat, area_lng, area_seen_at)
+  on public.profiles to authenticated;

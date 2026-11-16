@@ -129,5 +129,29 @@ export function resumeAction(s: { status?: string; url?: string | null; metadata
 /**
  * Stripe Idempotency-Key for creating a session. Concurrent taps see the same stored row, so they send the same key and
  * Stripe returns one session instead of two. A new key only appears after the stored session changes.
+ * "idv2": the create parameters changed (live capture, allowed types); Stripe rejects a reused key with different params.
  */
-export const createKey = (userId: string, row: Row | null) => `idv:${userId}:${row?.session_id || 'first'}`;
+export const createKey = (userId: string, row: Row | null) => `idv2:${userId}:${row?.session_id || 'first'}`;
+
+/**
+ * Create-session parameters (documented options only): a government photo ID (driving licence, passport or national ID
+ * card) captured live with the device camera (no uploads), plus a matching selfie. No ID number check, no return_url
+ * (Stripe documents return_url as a web URL; Expo Go has no stable app URL, so the app re-reads status instead).
+ */
+export function sessionParams(userId: string): URLSearchParams {
+  const p = new URLSearchParams({
+    type: 'document',
+    'metadata[user_id]': userId,
+    'options[document][require_live_capture]': 'true',
+    'options[document][require_matching_selfie]': 'true',
+  });
+  for (const t of ['driving_license', 'passport', 'id_card']) p.append('options[document][allowed_types][]', t);
+  return p;
+}
+
+/**
+ * Real membership, same rule as SQL public.is_real_member(): the public flag (set only by the webhook for a live check)
+ * AND a live-mode verified row. A test-mode pass, a bare flag or a forged client value never count.
+ */
+export const isRealMember = (idVerifiedFlag: boolean | null | undefined, row: Pick<Row, 'status' | 'livemode'> | null) =>
+  idVerifiedFlag === true && row?.status === 'verified' && row.livemode === true;
