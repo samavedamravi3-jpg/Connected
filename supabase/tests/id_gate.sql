@@ -1,6 +1,7 @@
 -- Authorization checks for the mandatory ID gate (supabase/migrations/20261116120000_mandatory_id_gate.sql).
 -- Run AFTER the migration (and, since phase 4, after 20261116180000_moderation_write_path.sql: profile writes go through
--- the profile-write function), as the postgres role:
+-- the profile-write function; since phase 5, after 20261116200000_nearby_recommendations.sql: alert_candidates()
+-- takes no coordinates), as the postgres role:
 --   SQL editor: paste the whole file and Run.   psql: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/id_gate.sql
 -- Everything happens in one transaction that is rolled back: no data is kept. Any failed check stops the script with
 -- an error naming it; success ends with the row 'id_gate: all checks passed'.
@@ -70,7 +71,7 @@ do $$ declare n int; begin
   assert n = 0, format('A sees %s other profiles (want 0)', n);
   select count(*) into n from public.nearby_profiles(35.22, -80.84, 5);
   assert n = 0, format('A nearby_profiles returned %s (want 0)', n);
-  select count(*) into n from public.alert_candidates(35.22, -80.84, 1);
+  select count(*) into n from public.alert_candidates();
   assert n = 0, format('A alert_candidates returned %s (want 0)', n);
   select count(*) into n from public.experiences where user_id <> '00000000-0000-4000-8000-0000000000a1';
   assert n = 0, format('A sees %s experiences of others (want 0)', n);
