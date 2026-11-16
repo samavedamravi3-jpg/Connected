@@ -77,6 +77,8 @@ export default function Events() {
   const online = list.filter((e) => e.online).length;
   const inPerson = list.length - online;
   const noLive = !!res && !res.liveCount && !withDemo;
+  // The ID gate hides live events and demo events are off, so the empty list is the lock, not the filters.
+  const lockedOut = locked && !withDemo;
   const thisWeek = list.filter((e) => e.start <= app.now + 7 * 864e5);
   const later = list.filter((e) => !thisWeek.includes(e));
 
@@ -130,15 +132,17 @@ export default function Events() {
       ) : !list.length ? (
         <View style={styles.empty}>
           <Ionicons name={cat === 'saved' ? 'bookmark-outline' : 'calendar-clear-outline'} size={28} color={C.ink3} />
-          <Text style={T.h3}>{cat === 'saved' ? 'Nothing saved yet' : noLive ? 'No live events loaded' : 'Nothing matches'}</Text>
+          <Text style={T.h3}>{cat === 'saved' ? 'Nothing saved yet' : lockedOut ? 'Live events are locked' : noLive ? 'No live events loaded' : 'Nothing matches'}</Text>
           <Text style={[T.small, { textAlign: 'center' }]}>
             {cat === 'saved'
               ? 'Tap the bookmark on any event to keep it here.'
-              : noLive
+              : lockedOut
+                ? 'Unlock them with the step above, or turn on demo events to look around.'
+                : noLive
                 ? 'Meetup and Devpost could not be reached. Pull down to retry, or turn on demo events.'
                 : 'Try a wider distance or another date.'}
           </Text>
-          {noLive && cat !== 'saved' ? (
+          {(noLive || lockedOut) && cat !== 'saved' ? (
             <Button label="Show demo events" small onPress={() => app.setShowDemoEvents(true)} style={{ marginTop: S.sm }} />
           ) : null}
         </View>
