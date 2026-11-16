@@ -1,5 +1,6 @@
 -- Authorization checks for the mandatory ID gate (supabase/migrations/20261116120000_mandatory_id_gate.sql).
--- Run AFTER the migration, as the postgres role:
+-- Run AFTER the migration (and, since phase 4, after 20261116180000_moderation_write_path.sql: profile writes go through
+-- the profile-write function), as the postgres role:
 --   SQL editor: paste the whole file and Run.   psql: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/id_gate.sql
 -- Everything happens in one transaction that is rolled back: no data is kept. Any failed check stops the script with
 -- an error naming it; success ends with the row 'id_gate: all checks passed'.
@@ -89,9 +90,11 @@ end $$;
 
 -- Own profile and own verification row stay usable; badges and verification rows are not writable.
 do $$ declare n int; begin
-  update public.profiles set intro = 'Still setting up' where id = '00000000-0000-4000-8000-0000000000a1';
-  get diagnostics n = row_count;
-  assert n = 1, 'A could not edit their own profile';
+  -- Since the moderation write path (20261116180000), profile text is written only through profile-write.
+  begin
+    update public.profiles set intro = 'Still setting up' where id = '00000000-0000-4000-8000-0000000000a1';
+    raise exception 'FAIL: client edited profile text directly';
+  exception when insufficient_privilege then null; end;
   select count(*) into n from public.profiles where id = '00000000-0000-4000-8000-0000000000a1';
   assert n = 1, 'A cannot read their own profile';
   begin
@@ -134,15 +137,27 @@ do $$ declare n int; begin
   exception when insufficient_privilege then null; end;
 end $$;
 
--- A brand-new account can create and update its profile before any verification (no circular dependency).
+-- A brand-new account can create and update its profile before any verification (no circular dependency), through the
+-- profile-write function (service role). Direct client writes are refused since the moderation write path.
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000c1","role":"authenticated"}', true);
+do $$ begin
+  begin
+    insert into public.profiles (id, first_name, last_name, intro) values ('00000000-0000-4000-8000-0000000000c1', 'Nina', 'Park', 'Hello');
+    raise exception 'FAIL: client inserted its profile directly';
+  exception when insufficient_privilege then null; end;
+end $$;
+reset role;
+set local role service_role;
+insert into public.profiles (id, first_name, last_name, intro) values ('00000000-0000-4000-8000-0000000000c1', 'Nina', 'Park', 'Hello')
+  on conflict (id) do update set first_name = excluded.first_name, last_name = excluded.last_name, intro = excluded.intro;
+insert into public.profiles (id, first_name, last_name, intro) values ('00000000-0000-4000-8000-0000000000c1', 'Nina', 'Park', 'Hello again')
+  on conflict (id) do update set first_name = excluded.first_name, last_name = excluded.last_name, intro = excluded.intro;
+reset role;
+set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000c1","role":"authenticated"}', true);
 do $$ declare n int; begin
-  insert into public.profiles (id, first_name, last_name, intro) values ('00000000-0000-4000-8000-0000000000c1', 'Nina', 'Park', 'Hello')
-    on conflict (id) do update set first_name = excluded.first_name, last_name = excluded.last_name, intro = excluded.intro;
-  insert into public.profiles (id, first_name, last_name, intro) values ('00000000-0000-4000-8000-0000000000c1', 'Nina', 'Park', 'Hello again')
-    on conflict (id) do update set first_name = excluded.first_name, last_name = excluded.last_name, intro = excluded.intro;
   select count(*) into n from public.profiles where id = '00000000-0000-4000-8000-0000000000c1' and intro = 'Hello again' and not id_verified;
-  assert n = 1, 'N could not upsert their own profile before verifying';
+  assert n = 1, 'N could not create their own profile (via profile-write) before verifying';
   begin
     insert into public.profiles (id, first_name, id_verified) values ('00000000-0000-4000-8000-0000000000c1', 'Nina', true)
       on conflict (id) do update set id_verified = excluded.id_verified;

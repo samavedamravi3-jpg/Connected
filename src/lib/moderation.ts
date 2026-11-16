@@ -1,85 +1,79 @@
 /**
- * Content guardrails. `checkText` blocks slurs, sexual content, harassment and threats before
- * anything is sent or saved. It is a first line of defense: the same rules run inside Supabase
- * (supabase/schema.sql) so a modified client cannot bypass them, and an optional AI check
- * (`aiModerate`) catches what a word list can't.
+ * Content guardrails in the app. The rules themselves live in supabase/functions/_shared/moderationRules.ts, shared
+ * with the `profile-write` edge function and (generated) the database triggers, so a modified app cannot bypass them.
+ * This file adds what only the app needs: friendly per-field messages and the optional AI pre-check for chat text.
  *
- * It also catches tricks: leetspeak ("k1ll"), spaced-out letters ("k i l l"), punctuation between
- * letters ("f.u.c.k"), stretched letters ("fuuuck"), accents and zero-width characters.
+ * Layers, honestly:
+ *   - Every surface: these rules here (instant feedback) and the same rules in the database (authoritative).
+ *   - Profile text (org, "A little about you", "can offer"): also a contextual AI check on the server before it is
+ *     public. If that check can't run, the text is kept as a private draft, never published.
+ *   - Chat, connection notes, experience: rules are authoritative; the AI check below is a best-effort extra in the app.
+ * Nothing here is evasion-proof.
  */
-import { BORDERLINE, HOMOGLYPHS, RAW, WORDS } from './moderationWords';
+import { checkText, PROFILE_TEXT, profileRuleErrors, type FieldError, type FieldKind, type Reason, type RuleResult } from '../../supabase/functions/_shared/moderationRules';
+import type { Experience } from '@/data/types';
 
-export type ModerationResult =
-  | { ok: true }
-  | { ok: false; reason: keyof typeof WORDS | 'contact' | 'ai' | 'ai_unavailable' };
+export { checkText, normalize, normalizeRaw, profileRuleErrors, PROFILE_TEXT, type FieldError, type FieldKind } from '../../supabase/functions/_shared/moderationRules';
 
-/** Friendly message to show when text is blocked. */
+export type ModerationResult = RuleResult | { ok: false; reason: 'ai' | 'ai_unavailable' };
+
+/** Generic fallback text (kept for older call sites and errors from the database trigger). */
 export const BLOCKED_TITLE = 'Let’s keep it respectful';
 export const BLOCKED_MESSAGE = 'That message includes language, links, contact details or offers that aren’t allowed in Connected. Please reword it and try again.';
 export const UNAVAILABLE_MESSAGE = 'We couldn’t check that text right now. Please try again in a moment.';
 
-const HOMO_RE = new RegExp(`[${Object.keys(HOMOGLYPHS).join('')}]`, 'g');
-/** Lowercase text with accents, zero-width characters and lookalike letters folded, but digits and symbols kept. */
-export function normalizeRaw(input: string): string {
-  return input
-    .normalize('NFKC')
-    .replace(/[̀-ͯ​-‏⁠﻿­]/g, '')
-    .toLowerCase()
-    .replace(HOMO_RE, (c) => HOMOGLYPHS[c] ?? c);
-}
-const rawRes = RAW.map((p) => new RegExp(p));
+/** How each profile column is named in messages. */
+export const FIELD_LABELS: Record<string, string> = {
+  first_name: 'Your first name', last_name: 'Your last name', org: 'School or workplace', intro: '“A little about you”', offer: '“What you could help with”',
+  area_name: 'Your area', interests: 'Your interests', skills: 'Your skills', languages: 'Your languages', goals: 'What you’re looking for',
+};
 
-const LEET: Record<string, string> = { '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '7': 't', '8': 'b', '9': 'g', '@': 'a', $: 's', '!': 'i', '|': 'i', '+': 't' };
-
-/** Lowercase letters and single spaces only. Mirrors moderation_normalize() in schema.sql. */
-export function normalize(input: string): string {
-  let t = input
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[​-‏⁠﻿­]/g, '')
-    .toLowerCase()
-    .replace(HOMO_RE, (c) => HOMOGLYPHS[c] ?? c);
-  // "!", "|" and "+" only stand in for letters when a letter follows ("k!ll"), so "income!!!" stays "income".
-  t = t.replace(/[!|+](?=[a-z0-9@$])/g, (c) => LEET[c] ?? c);
-  t = t.replace(/[0134578@$9]/g, (c) => LEET[c] ?? c);
-  t = t.replace(/[^a-z]+/g, ' ').trim();
-  // Join runs of 3+ single letters: "k i l l" -> "kill".
-  const tokens = t.split(' ');
-  const out: string[] = [];
-  let run = '';
-  const flush = () => {
-    if (run.length >= 3) out.push(run);
-    else if (run) out.push(...run.split(''));
-    run = '';
-  };
-  for (const tok of tokens) {
-    if (tok.length === 1) run += tok;
-    else {
-      flush();
-      out.push(tok);
-    }
+/** A message that says what is wrong in this field, without repeating the text back. */
+export function fieldMessage(reason: FieldError | 'ai_unavailable', label = 'That text', kind: FieldKind = 'text'): string {
+  if (kind === 'name' && reason === 'contact') return `${label} can only be a name: no links, emails, phone numbers or handles.`;
+  switch (reason) {
+    case 'contact': return `${label} can’t include links, emails, phone numbers or social handles. People reach you through Connected.`;
+    case 'scams': return `${label} can’t include payment requests, investment or crypto pitches, requests for codes or passwords, or asking people to move off Connected.`;
+    case 'sexual': return `${label} can’t include sexual content or dating requests.`;
+    case 'drugs': return `${label} can’t offer drugs or weapons.`;
+    case 'doxxing': return `${label} can’t include someone’s address or ID, card or account numbers.`;
+    case 'too_long': return `${label} is too long. Shorten it a little.`;
+    case 'invalid': return `${label} couldn’t be saved. Edit it and try again.`;
+    case 'ai': return `${label} doesn’t fit Connected’s community guidelines. Please reword it.`;
+    case 'ai_unavailable': return UNAVAILABLE_MESSAGE;
+    default: return `${label} includes language that isn’t allowed on Connected. Please reword it.`;
   }
-  flush();
-  // Collapse stretched letters: "fuuuck" -> "fuck".
-  return out.join(' ').replace(/(.)\1{2,}/g, '$1');
 }
 
-const compiled = (Object.keys(WORDS) as (keyof typeof WORDS)[]).map((reason) => ({
-  reason,
-  re: new RegExp(`\\b(?:${WORDS[reason].join('|')})\\b`),
-}));
-
-export function checkText(text: string | null | undefined): ModerationResult {
-  if (!text || !text.trim()) return { ok: true };
-  const n = normalize(text);
-  for (const { reason, re } of compiled) if (re.test(n)) return { ok: false, reason };
-  const raw = normalizeRaw(text);
-  if (rawRes.some((re) => re.test(raw))) return { ok: false, reason: 'contact' };
-  return { ok: true };
+/** Profile save refused by our rules or by the server's review. `fields` maps column -> reason. */
+export class ContentRejectedError extends Error {
+  fields: Record<string, FieldError>;
+  constructor(fields: Record<string, FieldError>) {
+    super(Object.values(messagesFor(fields))[0] ?? 'Some of your profile details weren’t accepted. Edit your profile, then try again.');
+    this.fields = fields;
+  }
 }
 
-/** First blocked value among several fields, or ok. */
-export function checkAll(...texts: (string | null | undefined)[]): ModerationResult {
+/** Per-column messages for a profile row, from the shared rules (instant feedback before saving). */
+export function profileFieldMessages(row: Record<string, unknown>): Record<string, string> {
+  return messagesFor(profileRuleErrors(row));
+}
+export function messagesFor(errors: Record<string, FieldError>): Record<string, string> {
+  return Object.fromEntries(Object.entries(errors).map(([col, r]) => [col, fieldMessage(r, FIELD_LABELS[col] ?? 'That text', PROFILE_TEXT[col]?.kind ?? 'text')]));
+}
+
+/** First problem in an experience entry: title and organisation are name-like, description and skills free text. */
+export function experienceProblem(e: Pick<Experience, 'title' | 'org' | 'description' | 'skills'>): string | null {
+  const checks: [string, string, FieldKind][] = [['The title', e.title, 'name'], ['The organization', e.org, 'name'], ['The description', e.description, 'text'], ...e.skills.map((s): [string, string, FieldKind] => ['A skill', s, 'text'])];
+  for (const [label, t, kind] of checks) {
+    const r = checkText(t, kind);
+    if (!r.ok) return fieldMessage(r.reason, label, kind);
+  }
+  return null;
+}
+
+/** First blocked value among several free-text values, or ok. */
+export function checkAll(...texts: (string | null | undefined)[]): RuleResult {
   for (const t of texts) {
     const r = checkText(t);
     if (!r.ok) return r;
@@ -89,22 +83,27 @@ export function checkAll(...texts: (string | null | undefined)[]): ModerationRes
 
 /** Backstop for data layers: throws a friendly error if any text is blocked. */
 export function assertClean(...texts: (string | null | undefined)[]): void {
-  if (!checkAll(...texts).ok) throw new Error(BLOCKED_MESSAGE);
+  const r = checkAll(...texts);
+  if (!r.ok) throw new Error(fieldMessage(r.reason, 'That message'));
 }
 
-/** Turns a Supabase error from the moderation trigger into the friendly message. */
+/** Turns a Supabase error from a moderation trigger into the friendly message. */
 export function dbError(error: { message?: string }): Error {
   return error.message?.includes('content_blocked') ? new Error(BLOCKED_MESSAGE) : (error as unknown as Error);
 }
 
+export type { Reason };
+
 /**
- * Optional second check through the server proxy (a free LLM provider, see server/src/index.ts). Runs only when
- * the proxy is configured. It fails CLOSED: if the check errors or times out, the text is not accepted, because
- * these fields are public. The caller only asks for borderline text, so ordinary text is never held up.
+ * Best-effort AI check through the server proxy, for chat, connection notes and experience text. Not authoritative:
+ * the database rules are. Profile text is checked on the server instead (profile-write), where a missing provider keeps
+ * the text as an unpublished draft. Here, with no proxy configured the check is skipped (`skipped: true`), and an error
+ * or timeout refuses the text (the user can retry).
  */
-export async function aiModerate(text: string): Promise<ModerationResult> {
+export async function aiModerate(text: string): Promise<ModerationResult & { skipped?: boolean }> {
   const base = process.env.EXPO_PUBLIC_ASSISTANT_URL;
-  if (!base || !text.trim()) return { ok: true };
+  if (!base) return { ok: true, skipped: true };
+  if (!text.trim()) return { ok: true };
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 6_000);
   try {
@@ -115,8 +114,9 @@ export async function aiModerate(text: string): Promise<ModerationResult> {
       signal: ctrl.signal,
     });
     if (!res.ok) return { ok: false, reason: 'ai_unavailable' };
-    const data = (await res.json()) as { ok?: boolean };
-    return data.ok === true ? { ok: true } : { ok: false, reason: 'ai' };
+    const data = (await res.json()) as { ok?: unknown };
+    if (data.ok === true) return { ok: true };
+    return data.ok === false ? { ok: false, reason: 'ai' } : { ok: false, reason: 'ai_unavailable' };
   } catch {
     return { ok: false, reason: 'ai_unavailable' };
   } finally {
@@ -124,7 +124,11 @@ export async function aiModerate(text: string): Promise<ModerationResult> {
   }
 }
 
-/** Local check, then the AI check when configured. Use before sending free text. */
+/** Text with money, contact or urgency hints is "borderline": only that goes to the best-effort AI check. */
+export const BORDERLINE =
+  /\b(money|pay|paid|payment|invest\w*|crypto|bitcoin|usdt|wallet|profit|earn\w*|income|loan|cash|deal|offer|opportunit\w*|hiring|recruit\w*|telegram|whatsapp|snap\w*|text me|call me|contact me|link|click|account|password|code|verify|urgent|free|win|won|prize|reward|dot|regret|date|single)\b/i;
+
+/** Local rules, then the best-effort AI check for borderline text. Use before sending chat or connection text. */
 export async function moderate(text: string): Promise<ModerationResult> {
   const local = checkText(text);
   if (!local.ok) return local;

@@ -8,3 +8,7 @@ verify_jwt = false
 # The app calls this with the user's Supabase token; keep the gateway check on.
 [functions.identity]
 verify_jwt = true
+
+# The app calls this with the user's Supabase token; keep the gateway check on. The function re-validates the token.
+[functions.profile-write]
+verify_jwt = true

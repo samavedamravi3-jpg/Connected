@@ -1,7 +1,8 @@
 // Run: npm test   (node's built-in test runner through tsx)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkText, normalize } from '../moderation';
+import { checkText, experienceProblem, fieldMessage, normalize, profileFieldMessages } from '../moderation';
+import { checkText as rule, profileRuleErrors } from '../../../supabase/functions/_shared/moderationRules';
 
 const blocked = (label: string, list: string[]) =>
   test(`blocks: ${label}`, () => {
@@ -68,3 +69,65 @@ test('normalize folds tricks to plain letters', () => {
   assert.equal(normalize('fuuuuck'), 'fuck');
   assert.equal(normalize('sеnd'), 'send'); // Cyrillic е
 });
+
+// ---- Phase 4: evasion, field-appropriate rules, false positives, multilingual text ----
+
+blocked('evasion: defanged and spelled-out links, scam and phishing phrases', [
+  'hxxp://evil[.]com', 'hxxps://x', 'visit evil dot com', 'example(dot)com/offer', 'evil[.]com', 't . me/joinme', 'wa . me/123', 'www . site',
+  'h t t p : / / x', 'visit mysite.com today', 'join at evil.io', 'Send USDT to my wallet', 'Apple Pay me for a referral',
+  'Crypto mentor, 300% gains every month', 'Verify your ID at connected-verify dot com', 'Send me the 6 digit code you just got',
+  'Tell me your login and I will set up your profile', 'send me your password', 'Seeking a sugar daddy', 'DTF tonight', 'fwb only',
+]);
+
+blocked('evasion: lookalikes, small capitals, invisible characters, misspellings', [
+  'fսck you', 'ꜰᴜᴄᴋ ʏᴏᴜ', 'por⁣n', 'k⁡ill you', 'fvck you', 'phuck off', 'fuck this', 'Immigrants are vermin', 'Cross me and I will make you pay',
+]);
+
+allowed('false positives: healthcare, education and identity', [
+  'Sexual health nurse at Atrium', 'LGBTQ+ mentor for first-gen students', 'Rape crisis counselor and volunteer trainer', 'Sex education teacher',
+  'Breast cancer researcher', 'Trans people mentoring network', 'Mentor at Black Women in Tech', 'Graduated magna cum laude', 'Summa cum laude',
+  'Domestic violence advocate', 'HIV prevention outreach', 'Harm reduction counselor',
+]);
+
+allowed('false positives: employers, finance and tech words', [
+  'Engineer at Venmo', 'Product manager on the Zelle team', 'Western Union analyst', 'Studied MLM fraud as a regulator', 'Built USDC payments at a fintech',
+  'Reported monthly returns to clients', 'OTP authentication engineer', 'I survived the dot-com bubble', 'B.Com and M.Com graduate',
+  'I offer more than just coffee chats', 'Pest control: rats are vermin', 'I will triple-check your resume', 'Node.js, Vue.js, ASP.NET',
+]);
+
+test('names and organisations: substrings and real names pass, in any script', () => {
+  for (const t of ['Dick', 'Cummings', 'Scunthorpe', 'Hancock', 'Dickinson', 'Cockburn', 'Sexton', 'Babcock', "O'Brien-Smith", 'Zoë Ðoàn-Nguyễn',
+    'José Martínez Ñúñez', 'Øyvind Ærø', 'Siobhán Ní Bhriain', 'Наташа Кокорина', 'Νίκος Παπαδόπουλος', 'प्रिया शर्मा', '김민준', '王小明',
+    'محمد عبد الله', 'Western Union', 'Booking.com', 'Salesforce.com', 'Zelle', 'Cash App']) {
+    assert.equal(rule(t, 'name').ok, true, `name should pass: ${t}`);
+  }
+  for (const t of ['n i g g e r', 'Mr Asshole', 'me@evil.example', 'insta @cooljohn', 'www.site.com', '704-555-1234']) {
+    assert.equal(rule(t, 'name').ok, false, `name should block: ${t}`);
+  }
+});
+
+test('multilingual free text passes', () => {
+  for (const t of ['我是软件工程师，喜欢帮助新人', 'مهندسة برمجيات في شارلوت', 'Hablo español y English, ¿café?', 'Je suis infirmière à Lyon',
+    'Ich helfe gern beim Lebenslauf', 'मैं सॉफ्टवेयर इंजीनियर हूँ', 'Я помогаю студентам с резюме', 'Μιλάω ελληνικά', 'Tôi là kỹ sư phần mềm', '저는 간호사입니다']) {
+    assert.equal(checkText(t).ok, true, `should allow: ${t}`);
+  }
+});
+
+test('profile rows: field-appropriate rules and limits; messages name the field and the problem', () => {
+  assert.deepEqual(profileRuleErrors({ first_name: 'Dick', last_name: 'Cummings', org: 'Booking.com', intro: 'Engineer at Venmo', offer: '' }), {});
+  assert.deepEqual(profileRuleErrors({ intro: 'DM me on Telegram', org: 'me@x.example', offer: 'x'.repeat(201), skills: ['Excel', 'sugar daddy'], status: 5 }),
+    { intro: 'scams', org: 'contact', offer: 'too_long', skills: 'sexual', status: 'invalid' });
+  const m = profileFieldMessages({ intro: 'call 704-555-1234', first_name: 'www.x.com' });
+  assert.match(m.intro, /A little about you.*phone numbers/);
+  assert.match(m.first_name, /first name can only be a name/);
+  assert.notEqual(fieldMessage('sexual', 'X'), fieldMessage('scams', 'X'));
+  assert.match(fieldMessage('ai_unavailable'), /couldn’t check/);
+});
+
+test('experience: organisation is a name, description is free text', () => {
+  assert.equal(experienceProblem({ title: 'Analyst', org: 'Booking.com', description: 'Built USDC payments', skills: ['SQL'] }), null);
+  assert.match(experienceProblem({ title: 'Analyst', org: 'Acme', description: 'visit evil dot com', skills: [] }) ?? '', /The description/);
+  assert.match(experienceProblem({ title: 'Analyst', org: 'Acme', description: '', skills: ['sugar daddy'] }) ?? '', /A skill/);
+});
+
+allowed('known limit, on purpose: security advice is not a phishing request', ['Never share your password with anyone']);
