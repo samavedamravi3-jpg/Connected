@@ -7,7 +7,7 @@ import {
 import { toIdStatus } from '../idStatus';
 
 const SECRET = 'whsec_test_secret';
-const sign = (body: string, t: number, secret = SECRET) => `t=${t},v1=${createHmac('sha256', secret).update(`${t}.${body}`).digest('hex')}`;
+const sign = (body: string, t: number | string, secret = SECRET) => `t=${t},v1=${createHmac('sha256', secret).update(`${t}.${body}`).digest('hex')}`;
 const NOW = 1_800_000_000;
 
 const row = (over: Partial<Row> = {}): Row => ({
@@ -34,6 +34,13 @@ test('webhook signature: valid accepted, invalid / tampered / stale / missing re
   assert.equal(await verifyStripeSignature(body, sign(body, NOW, 'whsec_other'), SECRET, NOW), false, 'wrong secret');
   assert.equal(await verifyStripeSignature(body.replace('verified', 'canceled'), sign(body, NOW), SECRET, NOW), false, 'tampered body');
   assert.equal(await verifyStripeSignature(body, sign(body, NOW - 301), SECRET, NOW), false, 'outside tolerance');
+  assert.equal(await verifyStripeSignature(body, sign(body, NOW + 301), SECRET, NOW), false, 'future beyond tolerance');
+  assert.equal(await verifyStripeSignature(body, sign(body, NOW + 299), SECRET, NOW), true, 'small clock skew ok');
+  for (const t of [`${NOW}.0`, '1.8e9', `+${NOW}`, '0x6B49D200', '']) {
+    assert.equal(await verifyStripeSignature(body, sign(body, t), SECRET, NOW), false, `non-digit t "${t}"`);
+  }
+  assert.equal(await verifyStripeSignature(body, sign(body, `0${NOW}`), SECRET, NOW), true, 'the raw t string is what is signed');
+  assert.equal(await verifyStripeSignature(body, `t=0${NOW},${sign(body, NOW).split(',')[1]}`, SECRET, NOW), false, 'signature over a different t string');
   assert.equal(await verifyStripeSignature(body, `t=${NOW}`, SECRET, NOW), false, 'no v1');
   assert.equal(await verifyStripeSignature(body, null, SECRET, NOW), false);
   assert.equal(await verifyStripeSignature(body, sign(body, NOW), undefined, NOW), false, 'no secret configured');

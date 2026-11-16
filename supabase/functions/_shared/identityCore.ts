@@ -33,17 +33,18 @@ const sameLen = (a: string, b: string) => a.length === b.length && [...a].reduce
  */
 export async function verifyStripeSignature(raw: string, header: string | null, secret: string | undefined, nowS: number, toleranceS = SIGNATURE_TOLERANCE_S): Promise<boolean> {
   if (!header || !secret) return false;
-  let t = NaN;
+  let t = '';
   const v1: string[] = [];
   for (const part of header.split(',')) {
     const at = part.indexOf('=');
     if (at < 0) continue;
     const k = part.slice(0, at).trim();
     const v = part.slice(at + 1).trim();
-    if (k === 't') t = Number(v);
+    if (k === 't') t = v;
     else if (k === 'v1') v1.push(v);
   }
-  if (!Number.isFinite(t) || !v1.length || Math.abs(nowS - t) > toleranceS) return false;
+  // Digits only, and the exact string Stripe sent is what gets signed (no Number() round-trip). abs() also rejects future t.
+  if (!/^\d+$/.test(t) || !v1.length || Math.abs(nowS - Number(t)) > toleranceS) return false;
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   const mac = hex(await crypto.subtle.sign('HMAC', key, enc.encode(`${t}.${raw}`)));

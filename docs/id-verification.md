@@ -39,7 +39,8 @@ A passed test-mode check is stored as `status=verified, livemode=false`. The app
    supabase functions deploy identity --project-ref avfahjcgczcfyvcnhzyy
    supabase functions deploy identity-webhook --no-verify-jwt --project-ref avfahjcgczcfyvcnhzyy
    ```
-   If the app gets 401 from `identity` before the function runs (gateway can't verify the project's JWT signing keys), redeploy it with `--no-verify-jwt`; the function still checks the token itself.
+   `supabase/config.toml` pins `verify_jwt = false` for `identity-webhook` only and `true` for `identity`; keep it that way and deploy from the repo root so the CLI reads it. After deploy, `list_edge_functions` (Supabase MCP) must show `verify_jwt: false` for `identity-webhook` and `true` for `identity`.
+   If the app gets 401 from `identity` before the function runs (gateway can't verify the project's JWT signing keys), redeploy it with `--no-verify-jwt`; the function still checks the token itself. (That flag overrides config.toml for that deploy only; the next deploy without it turns the check back on.)
 4. Do **not** set `IDENTITY_LIVE_ENABLED`. Live mode stays off.
 
 ## Test (Stripe test mode)

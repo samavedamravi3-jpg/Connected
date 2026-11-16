@@ -364,7 +364,7 @@ create trigger profiles_protect_verified
 -- We never store ID images or numbers: only the provider's session id, a status, the test/live flag, an error code and timestamps.
 -- id_verifications is private (a user can read only their own row; nobody but the service role can write).
 -- profiles.id_verified is the public badge. A trigger resets any attempt by the app to change it, so only the
--- identity edge function (service role, after checking the provider's signed webhook) can set it.
+-- identity-webhook edge function (service role, after checking the provider's signed webhook) can set it.
 
 create table if not exists public.id_verifications (
   user_id uuid primary key references auth.users (id) on delete cascade,

@@ -1,0 +1,10 @@
+# Supabase CLI config. project_id is only the local stack's name (older CLIs require it), not the remote project ref.
+project_id = "connected"
+
+# Stripe calls the webhook without a Supabase token; it authenticates by the Stripe-Signature HMAC instead.
+[functions.identity-webhook]
+verify_jwt = false
+
+# The app calls this with the user's Supabase token; keep the gateway check on.
+[functions.identity]
+verify_jwt = true

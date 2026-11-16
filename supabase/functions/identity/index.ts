@@ -18,12 +18,19 @@ const json = (status: number, body: object) => new Response(JSON.stringify(body)
 
 type StripeSession = { id?: string; url?: string | null; status?: string; livemode?: boolean; metadata?: { user_id?: string } };
 
-async function stripe(path: string, method: 'GET' | 'POST', body?: URLSearchParams, idempotencyKey?: string): Promise<StripeSession | null> {
+const BUSY = 'A check is already starting. Tap Check status, then try again.';
+
+/** status 0 = network error. `s` is null unless Stripe answered 2xx with JSON. */
+async function stripe(path: string, method: 'GET' | 'POST', body?: URLSearchParams, idempotencyKey?: string): Promise<{ status: number; s: StripeSession | null }> {
   const headers: Record<string, string> = { Authorization: `Bearer ${Deno.env.get('STRIPE_SECRET_KEY')}`, 'Content-Type': 'application/x-www-form-urlencoded' };
   if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
-  const res = await fetch(`${STRIPE}${path}`, { method, headers, body });
-  if (!res.ok) return null; // never echo Stripe's body: it can contain the session
-  return (await res.json()) as StripeSession;
+  try {
+    const res = await fetch(`${STRIPE}${path}`, { method, headers, body });
+    if (!res.ok) return { status: res.status, s: null }; // never echo Stripe's body: it can contain the session
+    return { status: res.status, s: (await res.json()) as StripeSession };
+  } catch {
+    return { status: 0, s: null };
+  }
 }
 
 Deno.serve(async (req) => {
@@ -56,17 +63,23 @@ Deno.serve(async (req) => {
   const wantLive = !mode.test;
 
   // 1) Resume the stored session when Stripe says it is still open (fresh single-use URL on every retrieve).
+  let gone = false; // Stripe has no such session (404): just create a new one
   if (reusable(row, wantLive, Date.now())) {
-    const s = await stripe(`/${encodeURIComponent(row!.session_id)}`, 'GET');
-    if (!s) return json(502, { error: 'Couldn’t reach the verification service. Try again.' });
-    const next = resumeAction(s, uid);
-    if (next === 'open') return json(200, { url: s.url, test: mode.test });
+    const r = await stripe(`/${encodeURIComponent(row!.session_id)}`, 'GET');
+    gone = r.status === 404;
+    if (!r.s && !gone) return json(502, { error: 'Couldn’t reach the verification service. Try again.' });
+    const next = r.s ? resumeAction(r.s, uid) : 'new';
+    if (next === 'open') return json(200, { url: r.s!.url, test: mode.test });
     if (next === 'processing') return json(200, { state: 'processing', test: mode.test });
   }
 
-  // 2) Otherwise create one. The idempotency key makes concurrent taps get the same session from Stripe.
+  // 2) Otherwise replace it. Best-effort cancel of the old session first so it can't be finished later; all errors ignored.
+  if (row?.session_id && !gone) await stripe(`/${encodeURIComponent(row.session_id)}/cancel`, 'POST');
+  // The idempotency key makes concurrent taps get the same session from Stripe; 409 = another request with it is in flight.
   const body = new URLSearchParams({ type: 'document', 'metadata[user_id]': uid, 'options[document][require_matching_selfie]': 'true' });
-  const s = await stripe('', 'POST', body, createKey(uid, row));
+  const c = await stripe('', 'POST', body, createKey(uid, row));
+  if (c.status === 409) return json(409, { error: BUSY });
+  const s = c.s;
   if (!s?.id || !s.url) return json(502, { error: 'Couldn’t start verification. Try again later.' });
   if (s.livemode && !mode.liveEnabled) {
     await stripe(`/${encodeURIComponent(s.id)}/cancel`, 'POST');
@@ -81,7 +94,7 @@ Deno.serve(async (req) => {
     : await admin.from('id_verifications').insert({ user_id: uid, ...fields }).select('user_id');
   if (w.error || !w.data?.length) {
     const now2 = await read();
-    if (now2?.session_id !== s.id) return json(409, { error: 'A check is already starting. Tap Check status, then try again.' });
+    if (now2?.session_id !== s.id) return json(409, { error: BUSY });
   }
   return json(200, { url: s.url, test: mode.test });
 });
