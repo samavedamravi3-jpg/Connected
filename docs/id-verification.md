@@ -18,3 +18,6 @@ Setup (project owner):
 5. After a successful test: `update public.app_config set value = 'on' where key = 'id_gate';`
 
 Limits: Open Doors are stored on the phone, so the Open Door gate is client-side only. Gate requires a test of the whole flow with Stripe test documents.
+
+## Onboarding and profile
+Onboarding has optional resume import and experience steps (privacy toggle "Show my experience" defaults off) and a final skippable ID step. The Profile tab shows a Resume & Experience card under the header. See `docs/guardrails.md` for limits and the gate switch.

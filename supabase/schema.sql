@@ -801,14 +801,14 @@ set search_path = ''
 as $$
 declare
   uid uuid := auth.uid();
-  strict boolean;
+  is_strict boolean;
   n int;
 begin
   if uid is null then return; end if; -- service role / SQL editor are not limited
-  strict := coalesce((select u.created_at > now() - interval '24 hours' from auth.users u where u.id = uid), true)
+  is_strict := coalesce((select u.created_at > now() - interval '24 hours' from auth.users u where u.id = uid), true)
             or not coalesce((select p.verified or p.id_verified from public.profiles p where p.id = uid), false);
   select count(*) into n from public.rate_log where user_id = uid and kind = p_kind and at > now() - p_window;
-  if n >= case when strict then p_limit_strict else p_limit end then
+  if n >= (case when is_strict then p_limit_strict else p_limit end) then
     raise exception 'rate_limited: slow down and try again later' using errcode = '54000';
   end if;
   insert into public.rate_log (user_id, kind) values (uid, p_kind);
@@ -969,3 +969,6 @@ create or replace view public.admin_review_queue with (security_invoker = true) 
   order by last_at desc;
 revoke all on public.admin_review_queue from anon, authenticated;
 -- To restore a wrongly hidden profile:  update public.profiles set hidden = false where id = '<uuid>';
+
+-- Hardening: Supabase default grants include TRUNCATE (which skips RLS), REFERENCES and TRIGGER. The app never needs them.
+revoke truncate, references, trigger on all tables in schema public from anon, authenticated;
