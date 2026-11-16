@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
-import GorhomSheet, { BottomSheetScrollView, BottomSheetView } from '@gorhom/bottom-sheet';
+import GorhomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Alert, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { Extrapolation, FadeIn, FadeInUp, FadeOut, FadeOutUp, interpolate, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
@@ -759,56 +759,55 @@ export default function MapScreen() {
           handleIndicatorStyle={styles.handle}
           handleStyle={styles.handleHit}
         >
-          <BottomSheetView style={{ flex: 1 }}>
-            {selected || hotspot ? (
-              <View style={styles.sheetHead}>
-                <Pressable onPress={closeCard} accessibilityRole="button" style={styles.backRow} hitSlop={8}>
-                  <Ionicons name="chevron-back" size={18} color={C.accent} />
-                  <Text style={[T.label, { color: C.accent }]}>Your network</Text>
-                </Pressable>
+          {/* Fixed head (what the collapsed sheet shows), then ONE scroll container for everything else. No BottomSheetView
+              wrapper: it is absolutely positioned and content-sized, so a list inside it never gets a bounded height. */}
+          {selected || hotspot ? (
+            <View style={styles.sheetHead}>
+              <Pressable onPress={closeCard} accessibilityRole="button" style={styles.backRow} hitSlop={8}>
+                <Ionicons name="chevron-back" size={18} color={C.accent} />
+                <Text style={[T.label, { color: C.accent }]}>Your network</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.sheetHead}>
+              <View style={{ gap: 1 }}>
+                <Text style={styles.sheetTitle} accessibilityRole="header" numberOfLines={1}>Your network nearby</Text>
+                <Text style={styles.sheetMeta} numberOfLines={1}>Within {filters.distanceMi} mi of {me ? 'you' : areaName}</Text>
               </View>
-            ) : (
-              <View style={styles.sheetHead}>
-                <View style={{ gap: 1 }}>
-                  <Text style={styles.sheetTitle} accessibilityRole="header" numberOfLines={1}>Your network nearby</Text>
-                  <Text style={styles.sheetMeta} numberOfLines={1}>Within {filters.distanceMi} mi of {me ? 'you' : areaName}</Text>
-                </View>
-                {sheetIndex === 0 ? null : <Text style={styles.sheetCounts} numberOfLines={1}>
-                  {loading ? 'Loading your network…' : `${strongCount} strong · ${realCount} real member${realCount === 1 ? '' : 's'}${people.length > realCount ? ` · ${people.length - realCount} demo` : ''}`}
-                </Text>}
-                <View style={styles.tabs} accessibilityRole="tablist">
-                  {([['best', 'Best matches', best.length], ['doors', 'Open Doors', doors.length], ['all', 'Everyone', people.length]] as const).map(([id, label, n]) => {
-                    const on = tab === id;
-                    return (
-                      <Pressable
-                        key={id}
-                        onPress={() => { setTab(id); if (sheetIndex === 0) snap(1); }}
-                        accessibilityRole="tab"
-                        accessibilityState={{ selected: on }}
-                        style={[styles.tab, on && styles.tabOn]}
-                      >
-                        <Text style={[styles.tabText, on && styles.tabTextOn]}>{label}</Text>
-                        <Text style={[styles.tabCount, on && { color: C.accent }]}>{n}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-                {sheetIndex !== 0 && (loc.perm === 'undetermined' || loc.perm === 'denied') ? (
-                  <View style={styles.permRow}>
-                    <Ionicons name="locate-outline" size={18} color={C.accent} />
-                    <Text style={[T.small, { flex: 1, color: C.ink2 }]}>
-                      {loc.perm === 'denied' ? 'Location is off. Distances are from the area you picked.' : 'Turn on location for live distances. Only you see it.'}
-                    </Text>
-                    {loc.perm === 'undetermined'
-                      ? <Button label="Turn on" small onPress={recenter} />
-                      : <Button label="Settings" small variant="secondary" onPress={() => Linking.openSettings()} />}
-                  </View>
-                ) : null}
+              {sheetIndex === 0 ? null : <Text style={styles.sheetCounts} numberOfLines={1}>
+                {loading ? 'Loading your network…' : `${strongCount} strong · ${realCount} real member${realCount === 1 ? '' : 's'}${people.length > realCount ? ` · ${people.length - realCount} demo` : ''}`}
+              </Text>}
+              <View style={styles.tabs} accessibilityRole="tablist">
+                {([['best', 'Best matches', best.length], ['doors', 'Open Doors', doors.length], ['all', 'Everyone', people.length]] as const).map(([id, label, n]) => {
+                  const on = tab === id;
+                  return (
+                    <Pressable
+                      key={id}
+                      onPress={() => { setTab(id); if (sheetIndex === 0) snap(1); }}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: on }}
+                      style={[styles.tab, on && styles.tabOn]}
+                    >
+                      <Text style={[styles.tabText, on && styles.tabTextOn]}>{label}</Text>
+                      <Text style={[styles.tabCount, on && { color: C.accent }]}>{n}</Text>
+                    </Pressable>
+                  );
+                })}
               </View>
-            )}
-            <BottomSheetScrollView key={selectedId ?? hotspotId ?? tab} contentContainerStyle={{ paddingBottom: 48 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          {selected || hotspot ? null : <MemberLock what="people nearby" style={{ paddingHorizontal: S.lg, paddingTop: S.sm }} />}
-          {selected ? (
+            </View>
+          )}
+          {/* The sheet already ends at the tab bar's top edge (the JS tab bar is laid out below the scene, not over it, and
+              pads itself for the home indicator), so the list needs breathing room only, not tab bar + inset clearance.
+              Remounting per tab/detail resets the scroll to the top. */}
+          <BottomSheetFlatList
+            key={selectedId ?? hotspotId ?? tab}
+            data={selected || hotspot ? [] : listed}
+            keyExtractor={(p) => p.id}
+            contentContainerStyle={{ paddingBottom: S.xl }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            ListHeaderComponent={
+          selected ? (
             <View style={{ paddingHorizontal: S.lg, paddingTop: S.sm }}>
               <PersonCard
                 embedded
@@ -857,14 +856,34 @@ export default function MapScreen() {
               />
               <Text style={T.small}>Hub levels are demo estimates of where offices, campuses and meetups cluster. The people count comes from opted-in profiles.</Text>
             </View>
-          ) : listed.length ? (
-            <View style={{ paddingHorizontal: S.lg, paddingTop: S.xs }}>
-              {listed.map((p) => {
+          ) : (
+            // Notices scroll away with the list instead of permanently taking the expanded viewport; scroll up to reach them.
+            <View style={styles.listHead}>
+              {sheetIndex !== 0 && (loc.perm === 'undetermined' || loc.perm === 'denied') ? (
+                <View style={styles.permRow}>
+                  <Ionicons name="locate-outline" size={18} color={C.accent} />
+                  <Text style={[T.small, { flex: 1, color: C.ink2 }]}>
+                    {loc.perm === 'denied' ? 'Location is off. Distances are from the area you picked.' : 'Turn on location for live distances. Only you see it.'}
+                  </Text>
+                  {loc.perm === 'undetermined'
+                    ? <Button label="Turn on" small onPress={recenter} />
+                    : <Button label="Settings" small variant="secondary" onPress={() => Linking.openSettings()} />}
+                </View>
+              ) : null}
+              <MemberLock what="people nearby" />
+            </View>
+          )
+            }
+            ListFooterComponent={
+              selected || hotspot || !listed.length ? undefined : (
+                <Text style={[T.small, { textAlign: 'center', paddingVertical: S.md, paddingHorizontal: S.lg }]}>Shown at their neighborhood, never a live location · demo profiles are marked</Text>
+              )
+            }
+            renderItem={({ item: p }) => {
                 const door = doorVisible(p);
                 const reason = matchPoints(p, prefs)[0]?.text;
                 return (
                   <Pressable
-                    key={p.id}
                     onPress={() => select(p)}
                     onLongPress={() => openProfile(p)}
                     accessibilityRole="button"
@@ -892,10 +911,9 @@ export default function MapScreen() {
                     </View>
                   </Pressable>
                 );
-              })}
-              <Text style={[T.small, { textAlign: 'center', paddingVertical: S.md }]}>Shown at their neighborhood, never a live location · demo profiles are marked</Text>
-            </View>
-          ) : loading ? null : !people.length && tab !== 'doors' ? (
+            }}
+            ListEmptyComponent={
+          selected || hotspot || loading ? undefined : !people.length && tab !== 'doors' ? (
             <View style={styles.emptyCard} accessibilityLiveRegion="polite">
               <Text style={styles.emptyTitle}>{realOnly ? 'No real members match yet' : 'No one matches here yet'}</Text>
               <Text style={T.small}>Active: {restrictions.join(' · ')}</Text>
@@ -927,9 +945,9 @@ export default function MapScreen() {
                 <Button label="Charlotte" small onPress={() => goToArea(CHARLOTTE_CENTER, 'Charlotte')} />
               )}
             </View>
-          )}
-            </BottomSheetScrollView>
-          </BottomSheetView>
+          )
+            }
+          />
         </GorhomSheet>
       ) : null}
 
@@ -1056,7 +1074,8 @@ const styles = StyleSheet.create({
   tabTextOn: { color: C.accent, fontWeight: '600' },
   tabCount: { fontSize: 13, fontWeight: '600', color: C.ink3, fontVariant: ['tabular-nums'] },
   permRow: { flexDirection: 'row', alignItems: 'center', gap: S.sm, backgroundColor: C.accentSoft, borderRadius: R.md, padding: S.sm, paddingLeft: S.md },
-  contact: { flexDirection: 'row', alignItems: 'center', gap: S.md, paddingVertical: S.md, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: C.line },
+  listHead: { paddingHorizontal: S.lg, paddingTop: S.xs, gap: S.sm },
+  contact: { flexDirection: 'row', alignItems: 'center', gap: S.md, paddingVertical: S.md, paddingHorizontal: 4, marginHorizontal: S.lg, borderBottomWidth: 1, borderBottomColor: C.line },
   contactName: { fontFamily: F.displaySemi, fontSize: 17, lineHeight: 22, color: C.ink, flexShrink: 1 },
   contactRole: { fontSize: 14, lineHeight: 19, color: C.ink2 },
   reason: { fontSize: 13, lineHeight: 18, color: C.ink3 },
