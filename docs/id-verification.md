@@ -21,8 +21,10 @@ people on Connected. Test mode works now; live mode stays off until the owner tu
   - `connection_requests`: read needs membership; insert needs sender **and** recipient to be members (`id_required` / `recipient_unavailable`); accepting needs both.
   - `messages`: read needs membership; send needs both participants to be members.
   - `rate_check`: the relaxed limit needs email or real membership, never a bare flag.
-- Always allowed (no circular dependency): creating/updating your own profile row before verifying, reading your own profile and `id_verifications` row, your own experiences, blocks, mutes, reports, `set_my_area`, `hidden_event_ids`.
-- Client roles can't write `profiles.verified*`, `id_verified*`, `hidden`, `created_at`, `updated_at` (column-level grants; the protect triggers stay as a second layer) and can't write `id_verifications` at all.
+  - Report auto-hide (phase 6, `20261116220000_review_fixes.sql`): only reports from real members count toward the three-reporter threshold (profiles and events). Reports from anyone are still stored.
+- Always allowed (no circular dependency): creating/updating your own profile row before verifying (through profile-write), reading your own profile (`my_profile()`) and `id_verifications` row, your own experiences, blocks, mutes, reports, `set_my_area`, `hidden_event_ids`.
+- Client roles can't write `profiles` at all (since phases 4 and 6: profile-write and `set_my_area` do it), can't read other members' `hidden`, `area_seen_at`, timestamps or badge details (column-level SELECT, phase 6), and can't write `id_verifications` at all. The protect triggers stay as a second layer.
+- `is_blocked` / `has_connection` (SECURITY DEFINER) answer only when the caller is one of the two people, and no SECURITY DEFINER function is executable by `anon` (phase 6).
 - Not in the database, so gated in the app only: Open Door publishing (Open Doors live on the phone) and live event listings (Meetup/Devpost, fetched by the app). There is no user event creation.
 - Authorization checks: `supabase/tests/id_gate.sql` (see "Apply").
 
@@ -61,7 +63,7 @@ Stripe Identity: **$1.50 per verification** for ID document + selfie, "charged w
 - Stripe's native sheet (`@stripe/stripe-identity-react-native`) needs native iOS/Android SDKs, camera permission and an ephemeral key endpoint, so it can't run in Expo Go (development build only). Not used.
 
 ## Apply (owner, in this order; never paste keys into chat)
-1. **Database**: run `supabase/migrations/20261116120000_mandatory_id_gate.sql` on connected-hackathon (SQL editor: paste and Run, or `apply_migration`). Idempotent. Real-member areas lock for everyone without a live verified row as soon as it runs.
+1. **Database**: run `supabase/migrations/20261116120000_mandatory_id_gate.sql` on connected-hackathon (SQL editor: paste and Run, or `apply_migration`), then the later migrations in the order in docs/handoff.md. Idempotent; re-running this one after the later ones is safe (its superseded sections skip themselves). Real-member areas lock for everyone without a live verified row as soon as it runs.
 2. **Check**: run `supabase/tests/id_gate.sql` in the SQL editor (or `psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/id_gate.sql`). It works in a rolled-back transaction and must end with `id_gate: all checks passed`.
 3. **Functions** (from the repo root so `supabase/config.toml` pins `verify_jwt`):
    ```bash

@@ -1,6 +1,6 @@
 -- Phase 4: moderation write path. Idempotent: safe to run again. Mirrored in supabase/schema.sql.
--- Run AFTER 20261116120000_mandatory_id_gate.sql (this tightens its profile column grants; re-running that older
--- migration afterwards would re-open them, so run this one again if you do). Checks: supabase/tests/moderation.sql.
+-- Run AFTER 20261116120000_mandatory_id_gate.sql (this replaces its profile column grants; that migration now skips them
+-- once this one is applied, so re-running it is safe). Checks: supabase/tests/moderation.sql.
 --
 -- 1) Shared rules, regenerated from supabase/functions/_shared/moderationRules.ts: new evasion handling (defanged and
 --    spaced links, "dot com", Armenian and small-capital lookalikes, more invisible characters), fewer false positives
@@ -216,4 +216,9 @@ revoke all on public.moderation_events from anon, authenticated;
 -- 5) Profiles: no direct client insert or update of profile fields any more (column grants from the ID-gate migration
 -- are replaced). Revoking the table privilege also revokes every column privilege.
 revoke insert, update on public.profiles from anon, authenticated;
-grant update (area_lat, area_lng, area_seen_at) on public.profiles to authenticated;
+-- Skipped once 20261116220000 is applied (set_my_area is then a definer function and the app writes no profile column).
+do $guard$
+begin
+  if to_regclass('public.area_checkins') is not null then return; end if;
+  grant update (area_lat, area_lng, area_seen_at) on public.profiles to authenticated;
+end $guard$;

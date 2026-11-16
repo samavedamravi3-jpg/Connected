@@ -11,7 +11,7 @@ Layers: shared rules (`supabase/functions/_shared/moderationRules.ts`) in the ap
 | Server up, no provider key, or provider error | `/moderate` returns 503: borderline chat text is refused with "Try again in a moment"; profile text becomes a draft. |
 
 ## Misuse controls
-- Reports: one per reporter per subject; 3 distinct reporters auto-hide a profile (events via `hidden_event_ids()`). Restore: `update public.profiles set hidden = false where id = '<uuid>';`
+- Reports: one per reporter per subject; 3 distinct reporters who are real members (ID-verified) auto-hide a profile (events via `hidden_event_ids()`); unverified reports are stored but do not count. Restore: `update public.profiles set hidden = false where id = '<uuid>';`
 - Hidden accounts cannot send connection requests (`account_restricted`). Profile rows cannot be deleted by users.
 - Rate limits (`rate_check`): requests 10/day strict (new <24h or unverified), 15 trusted; profile text edits 120/hour; reports 10/30 per day. Strict values were raised for the demo (production: 3 requests/day, 30 edits/hour).
 - Mutes hide someone from alerts server-side; map/search use local state.

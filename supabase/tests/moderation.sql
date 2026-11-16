@@ -51,7 +51,8 @@ insert into public.profile_drafts (user_id, fields) values ('00000000-0000-4000-
 insert into public.moderation_events (user_id, surface, field, decision, reason) values ('00000000-0000-4000-8000-0000000000e1', 'profile', 'intro', 'held', 'ai_unavailable');
 reset role;
 
--- 3) Client (as U): no direct update of any profile text column, clean or dirty; the area columns stay writable for set_my_area.
+-- 3) Client (as U): no direct update of any profile column, clean or dirty (since 20261116220000 the position goes only
+-- through set_my_area, a definer function).
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000e1","role":"authenticated"}', true);
 select pg_temp.denied('client update clean intro', $s$update public.profiles set intro = 'Hello there' where id = '00000000-0000-4000-8000-0000000000e1'$s$, 'permission denied');
@@ -62,7 +63,7 @@ select pg_temp.denied('client update chips', $s$update public.profiles set skill
 select pg_temp.denied('client update area_name', $s$update public.profiles set area_name = 'South End' where id = '00000000-0000-4000-8000-0000000000e1'$s$, 'permission denied');
 select pg_temp.denied('client update badges', $s$update public.profiles set hidden = false, verified = true, id_verified = true where id = '00000000-0000-4000-8000-0000000000e1'$s$, 'permission denied');
 select pg_temp.denied('client upsert', $s$insert into public.profiles (id, intro) values ('00000000-0000-4000-8000-0000000000e1', 'x') on conflict (id) do update set intro = excluded.intro$s$, 'permission denied');
-update public.profiles set area_lat = 35.2271, area_lng = -80.8431 where id = '00000000-0000-4000-8000-0000000000e1';
+select pg_temp.denied('client update area', $s$update public.profiles set area_lat = 35.2271, area_lng = -80.8431 where id = '00000000-0000-4000-8000-0000000000e1'$s$, 'permission denied');
 do $$ begin
   assert (select count(*) from public.profile_drafts) = 1, 'owner reads own draft';
   assert (select count(*) from public.profile_drafts where user_id <> '00000000-0000-4000-8000-0000000000e1') = 0, 'no one else''s drafts';

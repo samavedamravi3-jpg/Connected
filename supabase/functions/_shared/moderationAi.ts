@@ -2,11 +2,18 @@
 // (server/src/index.ts, which holds the provider keys) and the profile-write edge function (which re-checks the
 // server's answer). No imports and no runtime APIs, so node:test covers it (src/lib/__tests__/moderationAi.test.ts).
 
-/** Profile columns that get the AI review, with how they appear in the app. Names get rules only (see moderationRules). */
+/**
+ * Profile columns that get the AI review, with how they appear in the app. Names get rules only (see moderationRules).
+ * For the chip lists only custom (non-catalog) labels that aren't public yet are sent (profileWriteCore.reviewText).
+ */
 export const AI_FIELDS = {
   org: 'School or workplace (a name)',
   intro: '"A little about you" (public bio)',
   offer: '"What I could help others with" (public)',
+  area_name: 'Area name shown with their rough location on the map (a place name)',
+  interests: 'Custom interest labels they added (comma separated)',
+  skills: 'Custom skill labels they added (comma separated)',
+  languages: 'Languages they speak, custom entries (comma separated)',
 } as const;
 export type AiField = keyof typeof AI_FIELDS;
 
@@ -35,7 +42,7 @@ Answer with JSON only, exactly: {"results":[{"field":"<name>","decision":"allow"
 /** The user message: each field delimited, angle brackets neutralised so a value can't close or fake a tag. */
 export function aiUserMessage(fields: Partial<Record<AiField, string>>): string {
   const blocks = (Object.keys(fields) as AiField[]).map((f) => {
-    const v = String(fields[f] ?? '').slice(0, 1000).replace(/</g, '‹').replace(/>/g, '›');
+    const v = String(fields[f] ?? '').slice(0, 2000).replace(/</g, '‹').replace(/>/g, '›');
     return `<field name="${f}" label=${JSON.stringify(AI_FIELDS[f])}>\n${v}\n</field>`;
   });
   return `Review these ${blocks.length} field(s):\n${blocks.join('\n')}`;

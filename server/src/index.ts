@@ -7,12 +7,15 @@
  * text of a resume PDF and has Claude return structured work history for the user to review, and
  * POST /moderate ({ text } -> { ok }), a second AI check for borderline public text (free Groq model when
  * GROQ_API_KEY is set, else Claude). It fails closed (503) on any error.
- * POST /moderate ({ fields: { org?, intro?, offer? } } -> { results: [...] }) is the contextual profile review used by the
+ * POST /moderate ({ fields: { org?, intro?, offer?, area_name?, interests?, skills?, languages? } } -> { results: [...] }) is the contextual profile review used by the
  * profile-write edge function: field-labelled, untrusted-data prompt, strict JSON answer (503 if malformed).
  *
  * Env:
  *   ANTHROPIC_API_KEY  required (or an `ant auth login` profile when running locally)
- *   APP_TOKEN          optional shared token; when set, requests must send header x-app-token
+ *   APP_TOKEN          required shared token for the app routes (header x-app-token). Unset = those routes answer 503
+ *                      (fail closed). It ships inside the app, so it is a speed bump, not a secret: the per-IP limit stays.
+ *   TRUST_PROXY_HOPS   number of reverse proxies in front of this server that append to x-forwarded-for (default 0 =
+ *                      none: the socket address is used and the header ignored). Set 1 behind one platform proxy.
  *   GROQ_API_KEY       optional; free moderation provider (console.groq.com/keys). GROQ_MODERATION_MODEL overrides the model
  *   MODERATION_SERVER_TOKEN  required for the profile review; the profile-write function sends it as x-server-token
  *                      (its MODERATION_TOKEN secret). Those calls skip the per-IP limit (they all come from Supabase).
@@ -21,13 +24,14 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { extractText } from 'unpdf';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { timingSafeEqual } from 'node:crypto';
+import { clientIp, tokenOk } from './net.ts';
 import { AI_FIELDS, AI_SYSTEM, VERDICT_SCHEMA, aiUserMessage, parseVerdicts, type AiField, type Verdict } from '../../supabase/functions/_shared/moderationAi.ts';
 
 const MODEL = 'claude-opus-5-5';
 const MODERATION_MODEL = 'claude-haiku-5-5';
 const PORT = Number(process.env.PORT ?? 8787);
 const APP_TOKEN = process.env.APP_TOKEN ?? '';
+const TRUST_PROXY_HOPS = Math.max(0, Math.floor(Number(process.env.TRUST_PROXY_HOPS ?? 0)) || 0);
 const client = new Anthropic();
 
 // Stable instructions first and cached; per-user context goes after the cache breakpoint.
@@ -176,11 +180,7 @@ async function moderateFields(fields: Partial<Record<AiField, string>>): Promise
 }
 
 const SERVER_TOKEN = process.env.MODERATION_SERVER_TOKEN ?? '';
-const isServer = (req: IncomingMessage) => {
-  const got = Buffer.from(String(req.headers['x-server-token'] ?? ''));
-  const want = Buffer.from(SERVER_TOKEN);
-  return SERVER_TOKEN.length >= 16 && got.length === want.length && timingSafeEqual(got, want);
-};
+const isServer = (req: IncomingMessage) => SERVER_TOKEN.length >= 16 && tokenOk(req.headers['x-server-token'], SERVER_TOKEN);
 
 const RESUME_SYSTEM = `You extract work and education history from resume text for a networking app. Return every job, internship, volunteer role, and education entry you can find (most recent first, at most 15).
 For each: title (job title, or degree for education), org (employer or school), start and end as "YYYY-MM" (use "01" when only a year is given; end null if it is the current role or says Present), description (one or two plain sentences, under 400 characters, no personal contact details), skills (up to 8 short skill names mentioned for that entry).
@@ -268,8 +268,11 @@ const server = createServer(async (req, res) => {
   if (req.method === 'GET' && req.url === '/health') return send(res, 200, { ok: true, model: MODEL });
   if (req.method !== 'POST' || (req.url !== '/assistant' && req.url !== '/moderate' && req.url !== '/resume')) return send(res, 404, { error: 'Not found' });
   const fromFn = req.url === '/moderate' && isServer(req);
-  if (!fromFn && APP_TOKEN && req.headers['x-app-token'] !== APP_TOKEN) return send(res, 401, { error: 'Unauthorized' });
-  const ip = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+  if (!fromFn) {
+    if (!APP_TOKEN) return send(res, 503, { error: 'Assistant is not configured.' }); // fail closed without APP_TOKEN
+    if (!tokenOk(req.headers['x-app-token'], APP_TOKEN)) return send(res, 401, { error: 'Unauthorized' });
+  }
+  const ip = clientIp(req.headers['x-forwarded-for'], req.socket.remoteAddress, TRUST_PROXY_HOPS);
   if (!fromFn && limited(ip)) return send(res, 429, { error: 'Too many requests. Try again in a few minutes.' });
 
   if (req.url === '/resume') {
@@ -298,7 +301,7 @@ const server = createServer(async (req, res) => {
         if (!fromFn) return send(res, 401, { error: 'Unauthorized' });
         const f = body.fields as Record<string, unknown> | null;
         const keys = f && typeof f === 'object' && !Array.isArray(f) ? Object.keys(f) : [];
-        if (!keys.length || keys.some((k) => !(k in AI_FIELDS) || typeof f![k] !== 'string')) return send(res, 400, { error: 'fields must map org/intro/offer to text.' });
+        if (!keys.length || keys.some((k) => !(k in AI_FIELDS) || typeof f![k] !== 'string')) return send(res, 400, { error: `fields must map ${Object.keys(AI_FIELDS).join('/')} to text.` });
         return send(res, 200, { results: await moderateFields(f as Partial<Record<AiField, string>>) });
       }
       if (typeof body.text !== 'string' || !body.text.trim()) return send(res, 400, { error: 'text is required.' });
@@ -344,6 +347,7 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Connected assistant proxy on http://localhost:${PORT} (model ${MODEL})`);
+  if (!APP_TOKEN) console.warn('No APP_TOKEN set: /assistant, /resume and the app\'s /moderate check answer 503 until it is.');
   if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
     console.warn('No ANTHROPIC_API_KEY set. Requests will fail unless an `ant auth login` profile is available.');
   }

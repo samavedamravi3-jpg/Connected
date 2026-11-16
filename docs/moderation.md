@@ -1,4 +1,4 @@
-# Moderation (phase 4)
+# Moderation (phase 4, updated in phase 6)
 
 ## Why "A little about you" let inappropriate text through (root cause)
 
@@ -27,9 +27,10 @@ The live DB was checked read-only. It has 1 profile, 0 experiences, 0 requests a
 | School or workplace (`org`) | `profiles`, public | name rules | profile-write + trigger (name rule) | **yes** (profile-write) |
 | "A little about you" (`intro`) | `profiles`, public | full rules | profile-write + trigger | **yes** |
 | "What could you help with" / "Can offer" (`offer`) | `profiles`, public | full rules | profile-write + trigger | **yes** |
-| Custom skill chip (onboarding interests step) | `profiles.skills`, public | rules on Add and on save | profile-write + trigger (each item, at most 60 chars) | no |
-| Interests, languages, goals, challenges, traits, foods, diet, availability (fixed lists) | `profiles` arrays | rules on save | profile-write + trigger | no |
-| Area label (`area_name`, from location) | `profiles`, public | rules on save | profile-write + trigger | no |
+| Custom skill / interest / language chip (not in the app's catalog) | `profiles.skills` / `interests` / `languages`, public | rules on Add and on save | profile-write + trigger (each item at most 60 chars, at most 30 per list, 3000 chars across all lists: `profiles_chips_len`) | **yes**, only chips that are new and not in the catalog (phase 6) |
+| Catalog chips (interests, skills, languages) | same | rules on save | profile-write + trigger | no (fixed app text) |
+| Status, field, previous field, mode, meet mode, share mode, goals, challenges, traits, foods, diet, availability (option ids) | `profiles` | the app only sends its ids | profile-write allowlists the ids (`_shared/profileOptions.ts`) + DB check constraints `profiles_<col>_ok` (phase 6) | no (no free text accepted) |
+| Area label (`area_name`, from location or a picked place) | `profiles`, public | rules on save | profile-write + trigger | **yes** when changed, except the app's own map area names (phase 6) |
 | Experience title / org / description / skills (Experience editor) | `experiences`, public if "Show my experience" | `experienceProblem` (name rule for title/org) + best-effort AI on borderline description/skills | `experiences_before_write` (name / full rules) | best-effort in the app only |
 | Resume-imported experience (Review screen) | same | every entry is checked like hand entry before Save; same best-effort AI | same trigger | resume parsing treats the PDF text as data; no server AI review |
 | Connection note (request message, person screen) | `connection_requests.message`, the recipient | rules + best-effort AI (borderline) | `requests_moderation` | best-effort in the app only |
@@ -42,14 +43,19 @@ The live DB was checked read-only. It has 1 profile, 0 experiences, 0 requests a
 | Reports (person / event menu) | `reports.reason`, preset strings, admin-only | no free text in the app | not content-moderated on purpose: a report has to be able to quote abuse | no |
 | Events | external listings, not user-editable | – | report / hide / mute only | – |
 
-Honest summary: the contextual AI review is enforced **only for profile `org`, `intro` and `offer`**. Chat, connection notes and experience text get the rules in the database (authoritative), plus a best-effort AI check in the app that a modified app can skip.
+Honest summary: the contextual AI review is enforced for profile `org`, `intro`, `offer`, `area_name` and new custom chips. Option columns accept only the app's ids. Chat, connection notes and experience text (written directly through PostgREST, so the function never sees them) get the rules in the database (authoritative), plus a best-effort AI check in the app that a modified app can skip. Moving experience through profile-write would close that gap; it was not cheap enough for this pass.
 
 ## The mediated write path
 
 ```
 app (shared rules, field messages) --invoke--> profile-write (edge fn, verify_jwt)
-   user id from the validated token; allowlisted columns only; same rules again
-   -> changed org/intro/offer -> assistant server /moderate {fields} (Groq or Claude; keys only there)
+   user id from the validated token
+   -> profile_write_rate 'write' FIRST (120/hour, every request, atomic) -> 429 when over
+   -> allowlisted columns, option ids, same rules again, chips size -> 422 with per-field reasons
+   -> something new to review (org/intro/offer/area_name/custom chips)?
+        profile_write_rate 'ai' (10/hour new or unverified accounts, 30/hour otherwise) -> over it: no review,
+                       the new text is held as a private draft (202), the rest still saves
+        -> assistant server /moderate {fields} (https only, redirects refused; Groq or Claude; keys only there)
         allow       -> upsert public row (service role; DB trigger runs again) -> 200 published
         block       -> nothing saved -> 422 {fields: {intro: 'ai'}}
         unavailable / malformed / not configured -> public row saved WITHOUT that text,
@@ -61,9 +67,9 @@ app (shared rules, field messages) --invoke--> profile-write (edge fn, verify_jw
 - **Fail closed.** Unreviewed text never reaches the public row. The app keeps the text locally (AsyncStorage) and restores the server draft on sign-in. The next save, or "Try again", retries the review.
 - **Readiness (phase 3).** A draft still saves the row, so `profileReady` turns true and the ID step can go on. A rejection saves nothing and shows "Edit profile" with per-field messages. No message is shown while a save is running. `ensureProfileSaved` is unchanged.
 - **No circular dependency.** profile-write does not require real membership, so a new user can save a basic profile before the ID check.
-- **Database backstop.** `authenticated` loses INSERT/UPDATE on `profiles`. It keeps UPDATE on `area_lat`, `area_lng` and `area_seen_at` only, for `set_my_area`. The Phase 3 locks on badges, `hidden` and timestamps stay closed. The rules trigger still runs on service-role writes.
-- **Rate limit.** At most 120 reviewed or refused text edits per user per hour, counted from `moderation_events`. The old `profiles_rate_limit` trigger sees no `auth.uid()` under the service role.
-- **Decision log.** `moderation_events` is service-role only. Nothing punishes accounts automatically.
+- **Database backstop.** `authenticated` has no INSERT/UPDATE/DELETE on `profiles` at all (since phase 6 the position goes through `set_my_area`, a definer function). The Phase 3 locks on badges, `hidden` and timestamps stay closed. The rules trigger and the option/size check constraints still run on service-role writes.
+- **Rate limits (phase 6).** `profile_write_rate(uid, kind)` (service role only) is an atomic per-user check on `rate_log`, serialised with an advisory lock, so parallel requests can't all pass. `write` counts every request first (120/hour), including refused ones; `ai` counts requests that need the review (10/hour for accounts under 24 h old or without an email check or ID, 30/hour otherwise). This bounds AI spend per account; many throwaway accounts can still each spend their 10/hour. The old `profiles_rate_limit` trigger is kept but inert (it sees no `auth.uid()` under the service role, and clients can't update profiles).
+- **Decision log.** `moderation_events` is service-role only and capped at 200 rows per user per hour by a trigger (extra rows are dropped). Nothing punishes accounts automatically.
 
 ## Evasion handling (normalised for matching only; displayed text is never changed)
 
@@ -93,19 +99,22 @@ Remediation (no silent deletion):
 
 ## Reports, blocks, mutes
 
-These are unchanged. Flag: 3 distinct reporters auto-**hide** a profile (reversible, not a ban), and reports are not weighted by verification. Three throwaway accounts could hide someone. The threshold is left as is.
+3 distinct reporters who are **real members** (ID-verified) auto-**hide** a profile or event (reversible, not a ban). Since phase 6, reports from unverified accounts are still stored and show in `admin_review_queue`, but they don't count toward the threshold, so throwaway accounts can't hide anyone. Reports are insert-only for the app (no reading or deleting them).
 
 ## Apply (owner, in this order; never paste keys into chat)
 1. Phase 3 first, if it isn't applied yet: `supabase/migrations/20261116120000_mandatory_id_gate.sql`.
 2. **Assistant server.** Deploy `server/` somewhere Supabase can reach over https, with the current code. It needs:
    - `MODERATION_SERVER_TOKEN`: a random string of 32+ characters.
    - `GROQ_API_KEY` or `ANTHROPIC_API_KEY`.
-   - `APP_TOKEN`, as before.
-3. **Function secrets.** Run `supabase secrets set MODERATION_URL=https://<server> MODERATION_TOKEN=<same value as MODERATION_SERVER_TOKEN> --project-ref avfahjcgczcfyvcnhzyy`. Without these, every bio change becomes a private draft. That is fail closed by design.
+   - `APP_TOKEN`: now **required**. Without it `/assistant`, `/resume` and the app's `/moderate` check answer 503 (the profile review from the function still works). It ships in the app, so it is a speed bump, not a secret.
+   - `TRUST_PROXY_HOPS`: the number of proxies in front of the server that append to `x-forwarded-for` (usually `1` on a hosting platform, `0` when the server is reached directly). With `0` the per-IP limit uses the socket address and ignores the header.
+3. **Function secrets.** Run `supabase secrets set MODERATION_URL=https://<server> MODERATION_TOKEN=<same value as MODERATION_SERVER_TOKEN> --project-ref avfahjcgczcfyvcnhzyy`. Without these, every reviewed change becomes a private draft. That is fail closed by design. `MODERATION_URL` must be `https://` (no credentials in it); anything else counts as "not configured", and a redirect from the server is refused.
 4. **Function.** From the repo root, so `config.toml` keeps `verify_jwt = true`, run `supabase functions deploy profile-write --project-ref avfahjcgczcfyvcnhzyy`. Then `list_edge_functions` must show `verify_jwt: true`.
 5. **App.** Ship or reload the app build that calls profile-write. It works before step 6 too, because it writes with the service role.
-6. **Database.** Apply `supabase/migrations/20261116180000_moderation_write_path.sql`. It is idempotent. From then on, older app builds can't save profiles: they fail closed and publish nothing.
-7. **Check.** Run `supabase/tests/moderation.sql` and `supabase/tests/id_gate.sql`. Both run in a rolled-back transaction and must end with `… all checks passed`.
+6. **Database.** Apply `supabase/migrations/20261116180000_moderation_write_path.sql`, then `20261116200000_nearby_recommendations.sql` and `20261116220000_review_fixes.sql` (full order in docs/handoff.md). All are idempotent, and re-running an older one no longer undoes a newer one. From then on, older app builds can't save profiles: they fail closed and publish nothing. Deploy profile-write from this commit **before** applying `20261116220000`: the function calls `profile_write_rate`, and until the migration exists the function answers 503 (fails closed) — so apply the migration right after the deploy.
+7. **Check.** Run `supabase/tests/id_gate.sql`, `moderation.sql`, `nearby.sql` and `review_fixes.sql`. Each runs in a rolled-back transaction and must end with `… all checks passed`.
+   If `20261116220000` printed a notice that a `profiles_*_ok` / `profiles_chips_len` constraint stays NOT VALID, existing rows break it (new writes are still checked). Find them (read-only), fix each through profile-write or by hand, then `alter table public.profiles validate constraint <name>;`:
+   `select id from public.profiles where not (status is null or status in ('student','early','experienced','changing','between')) or not (mode in ('seeking','offering','both')) or not (goals <@ array['mentorship','advice','peers','collab','recruiting','other']);` (same shape for the other columns; the lists are in the migration).
 8. **Audit.** Run `supabase/audits/legacy_moderation.sql` (read-only) and remediate as described above.
 
 Local SQL tests: `supabase/tests/local_stub.sql` stands in for Supabase's roles and auth in a throwaway `postgis/postgis:16-3.4` container. Run order: stub -> schema -> migrations -> tests.

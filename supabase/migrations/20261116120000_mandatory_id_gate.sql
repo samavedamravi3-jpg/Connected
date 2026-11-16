@@ -1,5 +1,7 @@
 -- Mandatory government photo ID + selfie for real membership (Phase 3). Idempotent: safe to run again.
 -- Mirrored in supabase/schema.sql. Authorization checks: supabase/tests/id_gate.sql.
+-- Re-running it after the later migrations is safe: sections 5-7 are superseded by 20261116200000 (alert_candidates),
+-- 20261116220000 (rate_check) and 20261116180000/220000 (profile grants), and run only while those haven't been applied.
 --
 -- One predicate decides real membership: public.is_real_member(uid) =
 --   profiles.id_verified (set only by identity-webhook for a LIVE-mode verified event)
@@ -155,6 +157,11 @@ create policy "experiences: read own or shown" on public.experiences
   );
 
 -- 5) Nearby alerts: only between real members (was: email-verified). Non-members get an empty list.
+-- Skipped once 20261116200000 is applied (it replaces this with the origin-free alert_candidates()).
+do $guard$
+begin
+  if to_regclass('public.nearby_alert_prefs') is not null then return; end if;
+  execute $sql$
 create or replace function public.alert_candidates(lat double precision, lng double precision, radius_mi double precision default 1)
 returns table (id uuid, name text, field text, distance_mi numeric)
 language plpgsql
@@ -202,10 +209,17 @@ begin
   limit 100;
 end;
 $$;
-revoke all on function public.alert_candidates(double precision, double precision, double precision) from public, anon;
-grant execute on function public.alert_candidates(double precision, double precision, double precision) to authenticated;
+  $sql$;
+  revoke all on function public.alert_candidates(double precision, double precision, double precision) from public, anon;
+  grant execute on function public.alert_candidates(double precision, double precision, double precision) to authenticated;
+end $guard$;
 
 -- 6) Rate limits: the relaxed limit needs real membership (or email), never a bare id_verified flag.
+-- Skipped once 20261116220000 is applied (its rate_check keeps this rule and adds a per-user lock).
+do $guard$
+begin
+  if to_regprocedure('public.rate_check_uid(uuid, text, integer, integer, interval)') is not null then return; end if;
+  execute $sql$
 create or replace function public.rate_check(p_kind text, p_limit_strict int, p_limit int, p_window interval)
 returns void
 language plpgsql
@@ -228,19 +242,26 @@ begin
   delete from public.rate_log where user_id = uid and at < now() - interval '2 days';
 end;
 $$;
+  $sql$;
+end $guard$;
 revoke all on function public.rate_check(text, int, int, interval) from public, anon, authenticated;
 
 -- 7) Column-level write grants on profiles. The app can write only its own profile fields; the badges
 -- (verified*, id_verified*), hidden, created_at and updated_at are server-only (the triggers also reset them).
 -- id_verifications stays read-own only (no client insert/update/delete).
 revoke insert, update on public.profiles from anon, authenticated;
-grant insert (id, first_name, last_name, status, org, intro, offer, field, from_field, mode, goals, challenges, want_traits,
-              interests, skills, languages, foods, diet, availability, meet_mode, share_mode, discoverable, show_experience,
-              area_name, area_lat, area_lng)
-  on public.profiles to authenticated;
-grant update (id, first_name, last_name, status, org, intro, offer, field, from_field, mode, goals, challenges, want_traits,
-              interests, skills, languages, foods, diet, availability, meet_mode, share_mode, discoverable, show_experience,
-              area_name, area_lat, area_lng, area_seen_at)
-  on public.profiles to authenticated;
+-- Skipped once 20261116180000 is applied (profiles are then written only through profile-write, see that migration).
+do $guard$
+begin
+  if to_regclass('public.profile_drafts') is not null then return; end if;
+  grant insert (id, first_name, last_name, status, org, intro, offer, field, from_field, mode, goals, challenges, want_traits,
+                interests, skills, languages, foods, diet, availability, meet_mode, share_mode, discoverable, show_experience,
+                area_name, area_lat, area_lng)
+    on public.profiles to authenticated;
+  grant update (id, first_name, last_name, status, org, intro, offer, field, from_field, mode, goals, challenges, want_traits,
+                interests, skills, languages, foods, diet, availability, meet_mode, share_mode, discoverable, show_experience,
+                area_name, area_lat, area_lng, area_seen_at)
+    on public.profiles to authenticated;
+end $guard$;
 revoke all on public.id_verifications from anon, authenticated;
 grant select on public.id_verifications to authenticated;

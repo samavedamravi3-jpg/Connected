@@ -1,6 +1,6 @@
 -- Phase 5: nearby "You should connect" recommendations. Idempotent: safe to run again. Mirrored in supabase/schema.sql.
--- Run AFTER 20261116120000_mandatory_id_gate.sql and 20261116180000_moderation_write_path.sql. Re-running the ID-gate
--- migration afterwards re-creates the old alert_candidates(lat, lng, radius_mi); run this one again if you do.
+-- Run AFTER 20261116120000_mandatory_id_gate.sql and 20261116180000_moderation_write_path.sql. The ID-gate migration
+-- skips its old alert_candidates(lat, lng, radius_mi) once this one is applied, so re-running it is safe.
 -- Checks: supabase/tests/nearby.sql (and id_gate.sql, which now calls the new signature).
 --
 -- 1) nearby_alert_prefs: per-user proximity alert settings (on/off, radius, cooldown). Separate from the map's search

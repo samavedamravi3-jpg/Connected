@@ -10,7 +10,8 @@ doesn't try to. See "What background alerts would need" below.
 
 The rules live in `public.alert_candidates()` (`supabase/migrations/20261116200000_nearby_recommendations.sql`, mirrored
 in `schema.sql`). The function is a SECURITY DEFINER with `search_path = ''`, uses `auth.uid()`, is granted to
-`authenticated` only, and allows 12 calls a minute per user (`alert_rate`).
+`authenticated` only, and allows 12 calls a minute per user (`alert_rate`, server-only since phase 6: the app can't read,
+reset or delete its counter).
 
 Both people must:
 - be real members (`is_real_member`: a live ID + selfie check)
@@ -25,7 +26,9 @@ The viewer must also:
 
 Distance:
 - The candidate must be within the viewer's alert radius (`alert_radius_mi`, default 1 mi).
-- The radius is measured from the **viewer's own stored coarse area**, which only `set_my_area` writes.
+- The radius is measured from the **viewer's own stored coarse area**. Its freshness (`area_seen_at`) comes only from
+  `set_my_area`; a position written any other way (profile-write) clears it, so alerts never measure from a point
+  `set_my_area` didn't check (phase 6).
 - There is no origin parameter. The old `alert_candidates(lat, lng, radius_mi)` is dropped, so the app can't ask "who is near this point". The map's panned centre and search distance are never used.
 
 There must be a reason. At least one of:
@@ -122,21 +125,39 @@ The demo is isolated:
   - the bucket
   - the labels or intent you both have
 - Never shared: your exact location, experience, resume, or a score.
-- Known limit: a modified app can still lie about its own GPS position to `set_my_area`. That is inherent to client-reported location. The server only stops it from asking about any point other than its own stored area.
+- `set_my_area` (phase 6) is a SECURITY DEFINER function and the only way to set your position (the app has no UPDATE
+  on `profiles`). Refreshing the same rounded spot is free; **30 position changes an hour** (`rate_check('area_move')`);
+  a move of **more than 25 miles within 10 minutes** of your last check-in is refused (`implausible_move`). The last
+  check-in is kept in the private `area_checkins` table, so writing a position through profile-write doesn't reset it.
+  These limits fit walking, transit and driving across town (the app polls once a minute); a long fast drive can hit
+  the 30-an-hour limit, which pauses recommendations until the hour rolls over.
+- Known limit (residual): a modified app can still lie about its own GPS position. Within the limits above it can
+  place itself anywhere up to 25 miles from its last check-in every 10 minutes, or anywhere at all after 10 quiet
+  minutes, and look up who is near that point (about 6 arbitrary origins an hour, 30 nearby cells an hour). That is
+  inherent to client-reported location.
+- **Map positions of others.** Any real member can read other visible members' rounded area (`area_lat`, `area_lng`,
+  `area_name`): the map needs them, and they are the same 0.01° cells shown on the map. `nearby_profiles` takes any
+  map centre (the map pans anywhere) but returns only the readable columns, clamps the radius to **25 miles** and is
+  rate limited (200 calls an hour; the map refreshes every 45 s). Not readable by other members since phase 6:
+  `area_seen_at` (no "online now" signal), `hidden`, `created_at`, `updated_at`, badge details, goals, challenges,
+  traits, previous field, share mode. Residual: because the area cell updates while someone has the map open, a
+  member can still follow another member's movement at about 1 km resolution. Your own full row comes from
+  `my_profile()`.
 
 ## Apply (owner)
 
 1. Phases 3 and 4 first: `20261116120000_mandatory_id_gate.sql`, then `20261116180000_moderation_write_path.sql`.
 2. `supabase/migrations/20261116200000_nearby_recommendations.sql`. It's idempotent. Older app builds that call `alert_candidates(lat, lng, radius_mi)` then get "function not found" and show no alerts (fail closed).
-3. Run `supabase/tests/nearby.sql` and `supabase/tests/id_gate.sql`. Both roll back and must end with `… all checks passed`.
-4. Reload the app.
+3. `supabase/migrations/20261116220000_review_fixes.sql` (phase 6). Older app builds that read profiles with `select *` then get "permission denied" (fail closed: no people shown, own profile not loaded); ship the matching app build.
+4. Run `supabase/tests/id_gate.sql`, `moderation.sql`, `nearby.sql` and `review_fixes.sql`. All roll back and must end with `… all checks passed`.
+5. Reload the app.
 
 No secrets are needed.
 
 Local check: run these against a fresh database in a throwaway `postgis/postgis:16-3.4` container:
 1. `local_stub.sql`
 2. `schema.sql`
-3. the three migrations
+3. the four migrations
 4. the tests
 
 Create the database with `create database t template template0`, because the image's default database already has PostGIS in `public`.

@@ -94,29 +94,30 @@ create table if not exists public.reports (
 -- Helpers
 -- ---------------------------------------------------------------------------
 
--- True when either person has blocked the other. Security definer so it can see both rows.
+-- True when either person has blocked the other. Security definer so it can see both rows; answers only about the
+-- caller's own pairs (every policy passes auth.uid() as one side), so nobody can probe who blocked whom.
 create or replace function public.is_blocked(a uuid, b uuid)
 returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = ''
 as $$
-  select exists (
+  select coalesce((select auth.uid()) in (a, b), false) and exists (
     select 1 from public.blocks
     where (blocker = a and blocked = b) or (blocker = b and blocked = a)
   );
 $$;
 
--- True when the two people have any request between them (so names still show in the inbox).
+-- True when the two people have any request between them (so names still show in the inbox). Caller's own pairs only.
 create or replace function public.has_connection(a uuid, b uuid)
 returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = ''
 as $$
-  select exists (
+  select coalesce((select auth.uid()) in (a, b), false) and exists (
     select 1 from public.connection_requests
     where (from_user = a and to_user = b) or (from_user = b and to_user = a)
   );
@@ -156,10 +157,12 @@ begin
 end;
 $$;
 
--- Profiles: keep location coarse, and store none for "public places only".
+-- Profiles: keep location coarse, and store none for "public places only". Presence (area_seen_at) comes only from
+-- set_my_area; any other change of position clears it, so alerts never measure from a point set_my_area didn't check.
 create or replace function public.profiles_before_write()
 returns trigger
 language plpgsql
+set search_path = ''
 as $$
 begin
   if new.share_mode = 'public' then
@@ -171,8 +174,8 @@ begin
   end if;
   if tg_op = 'INSERT' then
     new.area_seen_at := null;
-  elsif new.area_seen_at is distinct from old.area_seen_at and coalesce(current_setting('app.area_write', true), '') <> '1' then
-    new.area_seen_at := old.area_seen_at;
+  elsif coalesce(current_setting('app.area_write', true), '') <> '1' then
+    new.area_seen_at := case when (new.area_lat, new.area_lng) is not distinct from (old.area_lat, old.area_lng) then old.area_seen_at end;
   end if;
   if new.share_mode = 'public' or not new.discoverable then
     new.area_seen_at := null;
@@ -221,25 +224,51 @@ create trigger requests_before_update
   before update on public.connection_requests
   for each row execute function public.requests_before_update();
 
--- People near a point, within radius_mi. Runs with the caller's permissions, so RLS applies.
-create or replace function public.nearby_profiles(lat double precision, lng double precision, radius_mi double precision default 25)
-returns setof public.profiles
-language sql
-stable
+-- People near a point: only the columns the app may read, radius clamped to 25 miles, rate limited. Runs as the
+-- caller, so RLS applies. The map pans anywhere, so the origin is free (positions are the same rounded areas any
+-- member can read; docs/nearby-alerts.md).
+create or replace function public.nearby_profiles_rate()
+returns void language plpgsql volatile security definer set search_path = '' as $$
+begin
+  perform public.rate_check('nearby', 200, 200, interval '1 hour'); -- the map refreshes every 45 s (80 an hour)
+end;
+$$;
+revoke all on function public.nearby_profiles_rate() from public, anon;
+grant execute on function public.nearby_profiles_rate() to authenticated;
+
+drop function if exists public.nearby_profiles(double precision, double precision, double precision);
+create function public.nearby_profiles(lat double precision, lng double precision, radius_mi double precision default 25)
+returns table (
+  id uuid, first_name text, last_name text, status text, org text, intro text, offer text, field text, mode text,
+  interests text[], skills text[], languages text[], foods text[], diet text[], availability text[], meet_mode text,
+  discoverable boolean, area_name text, area_lat double precision, area_lng double precision, verified boolean, id_verified boolean
+)
+language plpgsql
+volatile
 security invoker
-set search_path = public
+set search_path = ''
 as $$
-  select p.*
+declare r double precision := least(greatest(coalesce(radius_mi, 25), 0), 25);
+begin
+  if lat is null or lng is null or lat not between -90 and 90 or lng not between -180 and 180 then
+    raise exception 'invalid coordinates' using errcode = '22023';
+  end if;
+  perform public.nearby_profiles_rate();
+  return query
+  select p.id, p.first_name, p.last_name, p.status, p.org, p.intro, p.offer, p.field, p.mode,
+         p.interests, p.skills, p.languages, p.foods, p.diet, p.availability, p.meet_mode,
+         p.discoverable, p.area_name, p.area_lat, p.area_lng, p.verified, p.id_verified
   from public.profiles p
-  where p.id <> auth.uid()
+  where p.id <> (select auth.uid())
     and p.discoverable
     and p.area_lat is not null
-    and p.area_lat between lat - radius_mi / 69.0 and lat + radius_mi / 69.0
+    and p.area_lat between lat - r / 69.0 and lat + r / 69.0
     and 3958.8 * 2 * asin(sqrt(
           power(sin(radians(p.area_lat - lat) / 2), 2) +
           cos(radians(lat)) * cos(radians(p.area_lat)) * power(sin(radians(p.area_lng - lng) / 2), 2)
-        )) <= radius_mi
+        )) <= r
   limit 300;
+end;
 $$;
 
 -- ---------------------------------------------------------------------------
@@ -323,18 +352,24 @@ create policy "reports: file own" on public.reports
 -- ---------------------------------------------------------------------------
 
 revoke all on public.profiles, public.blocks, public.connection_requests, public.messages, public.reports from anon;
--- Profiles: read here; insert/update are column-level grants at the end of this file (the app can't write badges or flags).
-grant select on public.profiles to authenticated;
+-- Profiles: column-level select and no direct writes, at the end of this file (every column must exist first).
 revoke insert, update, delete on public.profiles from authenticated;
 grant select, insert, delete on public.blocks to authenticated;
 grant select, insert, update on public.connection_requests to authenticated;
 grant select, insert on public.messages to authenticated;
 grant insert on public.reports to authenticated;
+-- Supabase's default grants give the API roles everything; take back what the app never does (no client edits of
+-- blocks or messages, no deleting requests, no reading reports).
+revoke update on public.blocks from anon, authenticated;
+revoke update, delete on public.messages from anon, authenticated;
+revoke delete on public.connection_requests from anon, authenticated;
+revoke select, update, delete on public.reports from anon, authenticated;
+revoke all on function public.nearby_profiles(double precision, double precision, double precision) from public, anon;
 grant execute on function public.nearby_profiles(double precision, double precision, double precision) to authenticated;
+revoke all on function public.is_blocked(uuid, uuid), public.has_connection(uuid, uuid), public.is_participant(uuid) from public, anon;
 grant execute on function public.is_blocked(uuid, uuid), public.has_connection(uuid, uuid), public.is_participant(uuid) to authenticated;
 revoke all on function public.is_real_member(uuid) from public, anon;
 grant execute on function public.is_real_member(uuid) to authenticated;
-revoke execute on function public.nearby_profiles(double precision, double precision, double precision) from anon;
 
 -- ---------------------------------------------------------------------------
 -- Live updates for requests and messages
@@ -757,24 +792,58 @@ create index if not exists profiles_area_geog_idx on public.profiles
   using gist ((extensions.st_setsrid(extensions.st_makepoint(area_lng, area_lat), 4326)::extensions.geography))
   where area_lat is not null and area_lng is not null;
 
+-- Last position each user reported through set_my_area (rounded). Private: definer functions only.
+create table if not exists public.area_checkins (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  lat double precision not null,
+  lng double precision not null,
+  at timestamptz not null default now()
+);
+alter table public.area_checkins enable row level security;
+revoke all on public.area_checkins from anon, authenticated;
+
+-- Saves your rounded position and presence. 30 position changes an hour (refreshing the same spot is free); a move of
+-- more than 25 miles within 10 minutes of your last check-in is refused (spoofed GPS within that stays possible).
 create or replace function public.set_my_area(lat double precision, lng double precision)
 returns void
 language plpgsql
-security invoker
-set search_path = public
+volatile
+security definer
+set search_path = ''
 as $$
+declare
+  uid uuid := auth.uid();
+  rlat double precision;
+  rlng double precision;
+  prev public.area_checkins;
 begin
+  if uid is null then raise exception 'not signed in' using errcode = '28000'; end if;
   if lat is null or lng is null or lat not between -90 and 90 or lng not between -180 and 180 then
-    raise exception 'invalid coordinates';
+    raise exception 'invalid coordinates' using errcode = '22023';
   end if;
+  if not exists (select 1 from public.profiles p where p.id = uid and p.share_mode = 'area' and p.discoverable) then return; end if;
+  rlat := round(lat::numeric, 2)::double precision;
+  rlng := round(lng::numeric, 2)::double precision;
+  perform pg_advisory_xact_lock(hashtextextended('area:' || uid::text, 0));
+  select * into prev from public.area_checkins c where c.user_id = uid;
+  if prev.user_id is null or (prev.lat, prev.lng) is distinct from (rlat, rlng) then
+    -- 25 miles in 10 minutes is 150 mph: faster than anyone moves across a city.
+    if prev.at > now() - interval '10 minutes' and extensions.st_distance(
+         extensions.st_setsrid(extensions.st_makepoint(prev.lng, prev.lat), 4326)::extensions.geography,
+         extensions.st_setsrid(extensions.st_makepoint(rlng, rlat), 4326)::extensions.geography) > 25 * 1609.344 then
+      raise exception 'implausible_move: that position is too far from your last one' using errcode = '22023';
+    end if;
+    perform public.rate_check('area_move', 30, 30, interval '1 hour');
+  end if;
+  insert into public.area_checkins as c (user_id, lat, lng, at) values (uid, rlat, rlng, now())
+  on conflict (user_id) do update set lat = excluded.lat, lng = excluded.lng, at = excluded.at;
   perform set_config('app.area_write', '1', true);
-  update public.profiles
-     set area_lat = lat, area_lng = lng, area_seen_at = now()
-   where id = auth.uid() and share_mode = 'area' and discoverable;
+  update public.profiles set area_lat = rlat, area_lng = rlng, area_seen_at = now() where id = uid;
+  perform set_config('app.area_write', '', true);
 end;
 $$;
 
--- Per-user call counter for alert_candidates (own row only, RLS).
+-- Per-user call counter for alert_candidates. Server-only: alert_candidates (security definer) is the only writer.
 create table if not exists public.alert_rate (
   user_id uuid primary key references auth.users (id) on delete cascade,
   window_start timestamptz not null default now(),
@@ -782,8 +851,7 @@ create table if not exists public.alert_rate (
 );
 alter table public.alert_rate enable row level security;
 drop policy if exists alert_rate_own on public.alert_rate;
-create policy alert_rate_own on public.alert_rate for all to authenticated
-  using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+revoke all on public.alert_rate from anon, authenticated;
 
 -- alert_candidates() (nearby recommendations) is defined at the end of this file, after the tables it reads.
 
@@ -818,29 +886,46 @@ alter table public.rate_log enable row level security;
 revoke all on public.rate_log from anon, authenticated;
 
 -- Brand-new (under 24 h) or unverified accounts (no email check and not a real member) get the stricter limit.
-create or replace function public.rate_check(p_kind text, p_limit_strict int, p_limit int, p_window interval)
-returns void
+create or replace function public.rate_check_uid(p_uid uuid, p_kind text, p_limit_strict int, p_limit int, p_window interval)
+returns boolean
 language plpgsql
+volatile
 security definer
 set search_path = ''
 as $$
 declare
-  uid uuid := auth.uid();
   is_strict boolean;
   n int;
 begin
-  if uid is null then return; end if; -- service role / SQL editor are not limited
-  is_strict := coalesce((select u.created_at > now() - interval '24 hours' from auth.users u where u.id = uid), true)
-            or not (coalesce((select p.verified from public.profiles p where p.id = uid), false) or public.is_real_member(uid));
-  select count(*) into n from public.rate_log where user_id = uid and kind = p_kind and at > now() - p_window;
-  if n >= (case when is_strict then p_limit_strict else p_limit end) then
-    raise exception 'rate_limited: slow down and try again later' using errcode = '54000';
-  end if;
-  insert into public.rate_log (user_id, kind) values (uid, p_kind);
-  delete from public.rate_log where user_id = uid and at < now() - interval '2 days';
+  if p_uid is null or p_kind is null then return false; end if;
+  perform pg_advisory_xact_lock(hashtextextended('rate:' || p_uid::text || ':' || p_kind, 0));
+  is_strict := coalesce((select u.created_at > now() - interval '24 hours' from auth.users u where u.id = p_uid), true)
+            or not (coalesce((select p.verified from public.profiles p where p.id = p_uid), false) or public.is_real_member(p_uid));
+  select count(*) into n from public.rate_log where user_id = p_uid and kind = p_kind and at > now() - p_window;
+  if n >= (case when is_strict then p_limit_strict else p_limit end) then return false; end if;
+  insert into public.rate_log (user_id, kind) values (p_uid, p_kind);
+  delete from public.rate_log where user_id = p_uid and at < now() - interval '2 days';
+  return true;
 end;
 $$;
+
+create or replace function public.rate_check(p_kind text, p_limit_strict int, p_limit int, p_window interval)
+returns void
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+begin
+  if auth.uid() is null then return; end if; -- service role / SQL editor are not limited here
+  if not public.rate_check_uid(auth.uid(), p_kind, p_limit_strict, p_limit, p_window) then
+    raise exception 'rate_limited: slow down and try again later' using errcode = '54000';
+  end if;
+end;
+$$;
+
 revoke all on function public.rate_check(text, int, int, interval) from public, anon, authenticated;
+revoke all on function public.rate_check_uid(uuid, text, int, int, interval) from public, anon, authenticated;
 
 -- Connection requests: 10 a day (strict, raised for the demo; use 3 in production) or 15 a day.
 create or replace function public.requests_rate_limit()
@@ -920,13 +1005,15 @@ $$;
 drop trigger if exists reports_before on public.reports;
 create trigger reports_before before insert on public.reports for each row execute function public.reports_before();
 
+-- Only real members' reports count toward the three-person auto-hide (every report is still stored for review).
 create or replace function public.reports_after()
 returns trigger language plpgsql security definer set search_path = '' as $$
 declare n int;
 begin
   insert into public.audit_log (actor, action, subject, detail)
     values (new.reporter, 'report', new.subject_kind || ':' || new.subject_id, jsonb_build_object('reason', new.reason));
-  select count(distinct reporter) into n from public.reports where subject_kind = new.subject_kind and subject_id = new.subject_id;
+  select count(distinct r.reporter) into n from public.reports r
+   where r.subject_kind = new.subject_kind and r.subject_id = new.subject_id and public.is_real_member(r.reporter);
   if n >= 3 and new.subject_kind = 'profile' then
     update public.profiles set hidden = true where id::text = new.subject_id and not hidden;
     if found then
@@ -936,13 +1023,15 @@ begin
   return new;
 end;
 $$;
+
 drop trigger if exists reports_after on public.reports;
 create trigger reports_after after insert on public.reports for each row execute function public.reports_after();
 
--- Events come from outside the database, so their auto-hide is a list the app filters by.
+-- Events come from outside the database, so their auto-hide is a list the app filters by (real members' reports only).
 create or replace function public.hidden_event_ids()
 returns setof text language sql stable security definer set search_path = '' as $$
-  select subject_id from public.reports where subject_kind = 'event' group by subject_id having count(distinct reporter) >= 3;
+  select r.subject_id from public.reports r where r.subject_kind = 'event'
+  group by r.subject_id having count(distinct r.reporter) filter (where public.is_real_member(r.reporter)) >= 3;
 $$;
 revoke all on function public.hidden_event_ids() from public, anon;
 grant execute on function public.hidden_event_ids() to authenticated;
@@ -1028,11 +1117,10 @@ alter table public.moderation_events enable row level security;
 revoke all on public.moderation_events from anon, authenticated;
 
 -- Profiles are written only by the profile-write edge function (service role), which applies the shared rules and the
--- contextual AI check first; the moderation trigger above still runs on its writes. The app keeps UPDATE on the area
--- columns only, for set_my_area(). Badges, hidden and timestamps stay server-only (the protect triggers also reset them).
+-- contextual AI check first; the moderation trigger above still runs on its writes. The position is written only by
+-- set_my_area() (security definer). Badges, hidden and timestamps stay server-only (the protect triggers also reset them).
 -- Here at the end because every column must exist first. Revoking the table privilege also revokes column privileges.
 revoke insert, update on public.profiles from anon, authenticated;
-grant update (area_lat, area_lng, area_seen_at) on public.profiles to authenticated;
 
 -- Nearby recommendations (phase 5; same as supabase/migrations/20261116200000_nearby_recommendations.sql).
 -- alert_candidates() takes no coordinates: the origin is the caller's own stored coarse area. See docs/nearby-alerts.md.
@@ -1199,3 +1287,130 @@ end;
 $$;
 revoke all on function public.alert_candidates() from public, anon;
 grant execute on function public.alert_candidates() to authenticated;
+
+-- Review fixes (phase 6; same as supabase/migrations/20261116220000_review_fixes.sql). The function changes above
+-- (is_blocked, has_connection, profiles_before_write, nearby_profiles, set_my_area, rate_check, reports_after,
+-- hidden_event_ids) are in place; these need every table and column first.
+-- Server-only tables: no client grants at all.
+revoke all on public.alert_rate, public.rate_log, public.audit_log, public.account_signals, public.moderation_events, public.app_config
+  from anon, authenticated;
+revoke update on public.mutes from anon, authenticated;
+revoke all on all sequences in schema public from anon, authenticated; -- only server-only tables use sequences
+
+-- The profile-write function's limits (it runs as the service role, so auth.uid() is null and rate_check skips).
+-- 'write' counts every request, first; 'ai' counts requests that need the AI review (lower for new/unverified accounts).
+create or replace function public.profile_write_rate(p_uid uuid, p_kind text)
+returns boolean
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+begin
+  if p_kind = 'write' then return public.rate_check_uid(p_uid, 'profile_write', 120, 120, interval '1 hour'); end if;
+  if p_kind = 'ai' then return public.rate_check_uid(p_uid, 'profile_ai', 10, 30, interval '1 hour'); end if;
+  raise exception 'unknown limit kind' using errcode = '22023';
+end;
+$$;
+revoke all on function public.rate_check_uid(uuid, text, int, int, interval), public.profile_write_rate(uuid, text) from public, anon, authenticated;
+grant execute on function public.profile_write_rate(uuid, text) to service_role;
+
+-- Decision log: at most 200 rows per user an hour (extra rows are dropped; the writes themselves are limited above).
+create or replace function public.moderation_events_cap()
+returns trigger
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+begin
+  perform pg_advisory_xact_lock(hashtextextended('modlog:' || new.user_id::text, 0));
+  if (select count(*) from public.moderation_events e where e.user_id = new.user_id and e.at > now() - interval '1 hour') >= 200 then
+    return null;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists moderation_events_cap on public.moderation_events;
+create trigger moderation_events_cap before insert on public.moderation_events for each row execute function public.moderation_events_cap();
+
+-- Option ids and chip size. Added NOT VALID, then validated when existing rows allow it; a legacy row that breaks
+-- one leaves that constraint NOT VALID (new writes are still checked) and a notice. See docs/moderation.md.
+alter table public.profiles drop constraint if exists profiles_status_ok;
+alter table public.profiles add constraint profiles_status_ok check (status is null or status in ('student', 'early', 'experienced', 'changing', 'between')) not valid;
+alter table public.profiles drop constraint if exists profiles_field_ok;
+alter table public.profiles add constraint profiles_field_ok check (field is null or field in ('finance', 'tech', 'health', 'energy', 'design', 'public', 'education')) not valid;
+alter table public.profiles drop constraint if exists profiles_from_field_ok;
+alter table public.profiles add constraint profiles_from_field_ok check (from_field is null or from_field in ('finance', 'tech', 'health', 'energy', 'design', 'public', 'education')) not valid;
+alter table public.profiles drop constraint if exists profiles_mode_ok;
+alter table public.profiles add constraint profiles_mode_ok check (mode in ('seeking', 'offering', 'both')) not valid;
+alter table public.profiles drop constraint if exists profiles_meet_mode_ok;
+alter table public.profiles add constraint profiles_meet_mode_ok check (meet_mode in ('inperson', 'video', 'either')) not valid;
+alter table public.profiles drop constraint if exists profiles_share_mode_ok;
+alter table public.profiles add constraint profiles_share_mode_ok check (share_mode in ('area', 'public')) not valid;
+alter table public.profiles drop constraint if exists profiles_goals_ok;
+alter table public.profiles add constraint profiles_goals_ok check (goals <@ array['mentorship', 'advice', 'peers', 'collab', 'recruiting', 'other']) not valid;
+alter table public.profiles drop constraint if exists profiles_challenges_ok;
+alter table public.profiles add constraint profiles_challenges_ok check (challenges <@ array['start', 'network', 'interviews', 'resume', 'credentials', 'switching', 'hiring', 'skills', 'team']) not valid;
+alter table public.profiles drop constraint if exists profiles_want_traits_ok;
+alter table public.profiles add constraint profiles_want_traits_ok check (want_traits <@ array['firstgen', 'immigrant', 'switcher', 'senior', 'near', 'hiring']) not valid;
+alter table public.profiles drop constraint if exists profiles_foods_ok;
+alter table public.profiles add constraint profiles_foods_ok check (foods <@ array['coffee', 'tea', 'bakery', 'mediterranean', 'mexican', 'indian', 'japanese', 'chinese', 'thai', 'italian', 'american', 'caribbean']) not valid;
+alter table public.profiles drop constraint if exists profiles_diet_ok;
+alter table public.profiles add constraint profiles_diet_ok check (diet <@ array['vegetarian', 'vegan', 'halal', 'kosher', 'gluten_free', 'no_alcohol']) not valid;
+alter table public.profiles drop constraint if exists profiles_availability_ok;
+alter table public.profiles add constraint profiles_availability_ok check (availability <@ array['today', 'week', 'evenings', 'weekends']) not valid;
+alter table public.profiles drop constraint if exists profiles_chips_len;
+alter table public.profiles add constraint profiles_chips_len check (
+  greatest(cardinality(interests), cardinality(skills), cardinality(languages), cardinality(goals), cardinality(challenges),
+           cardinality(want_traits), cardinality(foods), cardinality(diet), cardinality(availability)) <= 30
+  and char_length(array_to_string(interests || skills || languages || goals || challenges || want_traits || foods || diet || availability, '')) <= 3000
+) not valid;
+do $$
+declare c text;
+begin
+  foreach c in array array['profiles_status_ok', 'profiles_field_ok', 'profiles_from_field_ok', 'profiles_mode_ok', 'profiles_meet_mode_ok',
+    'profiles_share_mode_ok', 'profiles_goals_ok', 'profiles_challenges_ok', 'profiles_want_traits_ok', 'profiles_foods_ok', 'profiles_diet_ok',
+    'profiles_availability_ok', 'profiles_chips_len'] loop
+    begin
+      execute format('alter table public.profiles validate constraint %I', c);
+    exception when check_violation then
+      raise notice '% stays NOT VALID: existing rows break it (new writes are checked). See docs/moderation.md.', c;
+    end;
+  end loop;
+end $$;
+
+-- Your whole own row (including hidden, presence and badge details).
+create or replace function public.my_profile()
+returns setof public.profiles
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select p.* from public.profiles p where p.id = (select auth.uid());
+$$;
+revoke all on function public.my_profile() from public, anon;
+grant execute on function public.my_profile() to authenticated;
+
+-- Column-level grants (keep in sync with PUBLIC_PROFILE_COLUMNS in src/lib/backend.ts; show_experience is here only
+-- because the experiences read policy checks it as the caller). Not readable by the app: area_seen_at, hidden,
+-- created_at, updated_at, verified_at, verified_kind, id_verified_at, from_field, goals, challenges, want_traits,
+-- share_mode (your own: my_profile()). No direct client writes at all: profile-write (service role) writes text,
+-- set_my_area (definer) writes the position.
+revoke select, insert, update, delete on public.profiles from anon, authenticated;
+grant select (id, first_name, last_name, status, org, intro, offer, field, mode, interests, skills, languages, foods, diet,
+              availability, meet_mode, discoverable, show_experience, area_name, area_lat, area_lng, verified, id_verified)
+  on public.profiles to authenticated;
+
+-- No SECURITY DEFINER function in public is executable by PUBLIC or anon; trigger functions by no client role.
+-- Client-callable ones are granted to authenticated explicitly (above and in the earlier migrations).
+do $$
+declare f record;
+begin
+  for f in select p.oid::regprocedure as sig, p.prorettype = 'trigger'::regtype as trg
+           from pg_proc p where p.pronamespace = 'public'::regnamespace and p.prosecdef loop
+    execute format('revoke all on function %s from public, anon', f.sig);
+    if f.trg then execute format('revoke all on function %s from authenticated', f.sig); end if;
+  end loop;
+end $$;

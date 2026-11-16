@@ -200,7 +200,8 @@ export const PROFILE_TEXT: Record<string, { max: number; kind: FieldKind; nullab
   mode: { max: 20, kind: 'text' }, meet_mode: { max: 20, kind: 'text' }, share_mode: { max: 20, kind: 'text' },
 };
 export const PROFILE_LISTS = ['goals', 'challenges', 'want_traits', 'interests', 'skills', 'languages', 'foods', 'diet', 'availability'] as const;
-export const LIST_LIMITS = { items: 30, item: 60 } as const;
+/** Per list: items and characters per item. total = characters across all lists together (DB: profiles_chips_len). */
+export const LIST_LIMITS = { items: 30, item: 60, total: 3000 } as const;
 
 export type FieldError = Reason | 'too_long' | 'invalid' | 'ai';
 
@@ -218,9 +219,14 @@ export function profileRuleErrors(row: Record<string, unknown>): Record<string, 
       if (!r.ok) errors[col] = r.reason;
     }
   }
+  let total = 0;
+  let longest: [string, number] = ['', -1];
   for (const col of PROFILE_LISTS) {
     if (!(col in row)) continue;
     const v = row[col];
+    const size = Array.isArray(v) ? v.reduce<number>((n, x) => n + (typeof x === 'string' ? x.length : 0), 0) : 0;
+    total += size;
+    if (size > longest[1]) longest = [col, size];
     if (!Array.isArray(v) || v.some((x) => typeof x !== 'string')) errors[col] = 'invalid';
     else if (v.length > LIST_LIMITS.items || v.some((x: string) => x.length > LIST_LIMITS.item)) errors[col] = 'too_long';
     else {
@@ -233,5 +239,6 @@ export function profileRuleErrors(row: Record<string, unknown>): Record<string, 
       }
     }
   }
+  if (total > LIST_LIMITS.total && !errors[longest[0]]) errors[longest[0]] = 'too_long'; // all chips together
   return errors;
 }
