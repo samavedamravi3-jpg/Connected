@@ -87,8 +87,9 @@ Deno.serve(async (req) => {
     const { data: row } = await admin.from('id_verifications').select('session_id').eq('user_id', r.userId).maybeSingle();
     if (!row || row.session_id !== r.sessionId) return json(200, { ignored: true });
     const at = new Date().toISOString();
-    await admin.from('id_verifications').update({ status: r.status, updated_at: at }).eq('user_id', r.userId);
-    if (r.status === 'verified') await admin.from('profiles').update({ id_verified: true, id_verified_at: at }).eq('id', r.userId);
+    const u1 = await admin.from('id_verifications').update({ status: r.status, updated_at: at }).eq('user_id', r.userId);
+    const u2 = r.status === 'verified' ? await admin.from('profiles').update({ id_verified: true, id_verified_at: at }).eq('id', r.userId) : { error: null };
+    if (u1.error || u2.error) return json(500, { error: 'update failed' }); // non-200 so Stripe retries
     return json(200, { ok: true });
   }
 

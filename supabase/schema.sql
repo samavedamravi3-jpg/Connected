@@ -246,9 +246,8 @@ drop policy if exists "profiles: update own" on public.profiles;
 create policy "profiles: update own" on public.profiles
   for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
 
+-- No delete policy: a hidden user must not be able to delete and re-insert to clear the flag. Accounts are removed via auth.users (cascade).
 drop policy if exists "profiles: delete own" on public.profiles;
-create policy "profiles: delete own" on public.profiles
-  for delete to authenticated using (id = auth.uid());
 
 drop policy if exists "blocks: own" on public.blocks;
 create policy "blocks: own" on public.blocks
@@ -293,7 +292,8 @@ create policy "reports: file own" on public.reports
 -- ---------------------------------------------------------------------------
 
 revoke all on public.profiles, public.blocks, public.connection_requests, public.messages, public.reports from anon;
-grant select, insert, update, delete on public.profiles to authenticated;
+grant select, insert, update on public.profiles to authenticated;
+revoke delete on public.profiles from authenticated;
 grant select, insert, delete on public.blocks to authenticated;
 grant select, insert, update on public.connection_requests to authenticated;
 grant select, insert on public.messages to authenticated;
@@ -376,7 +376,8 @@ create table if not exists public.id_verifications (
 alter table public.id_verifications enable row level security;
 drop policy if exists "id_verifications: read own" on public.id_verifications;
 create policy "id_verifications: read own" on public.id_verifications for select to authenticated using (user_id = (select auth.uid()));
-revoke insert, update, delete on public.id_verifications from anon, authenticated;
+revoke all on public.id_verifications from anon, authenticated;
+grant select on public.id_verifications to authenticated;
 
 alter table public.profiles add column if not exists id_verified boolean not null default false;
 alter table public.profiles add column if not exists id_verified_at timestamptz;
@@ -409,6 +410,7 @@ create trigger profiles_protect_id_verified
 -- Turn on with:  update public.app_config set value = 'on' where key = 'id_gate';
 create table if not exists public.app_config (key text primary key, value text not null);
 alter table public.app_config enable row level security; -- no policies: service role / SQL editor only
+revoke all on public.app_config from anon, authenticated;
 insert into public.app_config (key, value) values ('id_gate', 'off') on conflict (key) do nothing;
 
 create or replace function public.id_gate_on()
@@ -429,6 +431,9 @@ security definer
 set search_path = ''
 as $$
 begin
+  if coalesce((select p.hidden from public.profiles p where p.id = new.from_user), false) then
+    raise exception 'account_restricted' using errcode = '42501';
+  end if;
   if public.id_gate_on() and not coalesce((select p.id_verified from public.profiles p where p.id = new.from_user), false) then
     raise exception 'id_required' using errcode = '42501';
   end if;
@@ -812,26 +817,26 @@ end;
 $$;
 revoke all on function public.rate_check(text, int, int, interval) from public, anon, authenticated;
 
--- Connection requests: 3 a day (strict) or 15 a day.
+-- Connection requests: 10 a day (strict, raised for the demo; use 3 in production) or 15 a day.
 create or replace function public.requests_rate_limit()
-returns trigger language plpgsql set search_path = '' as $$
+returns trigger language plpgsql security definer set search_path = '' as $$
 begin
-  perform public.rate_check('request', 3, 15, interval '1 day');
+  perform public.rate_check('request', 10, 15, interval '1 day');
   return new;
 end;
 $$;
 drop trigger if exists requests_rate_limit on public.connection_requests;
 create trigger requests_rate_limit before insert on public.connection_requests for each row execute function public.requests_rate_limit();
 
--- Profile edits: only edits to text fields count (position updates and syncs do not). 30 an hour (strict) or 120.
+-- Profile edits: only edits to text fields count (position updates and syncs do not). 120 an hour (strict limit raised for the demo; use 30 in production).
 create or replace function public.profiles_rate_limit()
-returns trigger language plpgsql set search_path = '' as $$
+returns trigger language plpgsql security definer set search_path = '' as $$
 begin
   if tg_op = 'UPDATE' and (
        new.first_name is distinct from old.first_name or new.last_name is distinct from old.last_name or new.org is distinct from old.org
        or new.intro is distinct from old.intro or new.offer is distinct from old.offer
        or new.interests is distinct from old.interests or new.skills is distinct from old.skills or new.languages is distinct from old.languages) then
-    perform public.rate_check('profile_edit', 30, 120, interval '1 hour');
+    perform public.rate_check('profile_edit', 120, 120, interval '1 hour');
   end if;
   return new;
 end;
@@ -878,7 +883,7 @@ drop trigger if exists profiles_protect_hidden on public.profiles;
 create trigger profiles_protect_hidden before insert or update on public.profiles for each row execute function public.profiles_protect_hidden();
 
 create or replace function public.reports_before()
-returns trigger language plpgsql set search_path = '' as $$
+returns trigger language plpgsql security definer set search_path = '' as $$
 begin
   if new.subject_id is null then new.subject_id := new.reported::text; end if;
   if new.subject_id is null or new.subject_id = '' or char_length(new.subject_id) > 200 then raise exception 'invalid report'; end if;

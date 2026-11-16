@@ -285,7 +285,7 @@ export async function sendRemoteMessage(requestId: string, body: string): Promis
 }
 
 export async function blockRemote(personId: string): Promise<void> {
-  const { error } = await db().from('blocks').upsert({ blocked: personId });
+  const { error } = await db().from('blocks').upsert({ blocked: personId }, { ignoreDuplicates: true });
   if (error) throw error;
 }
 
@@ -306,7 +306,7 @@ export async function reportEventRemote(eventId: string, reason: string): Promis
 }
 
 export async function muteRemote(personId: string): Promise<void> {
-  const { error } = await db().from('mutes').upsert({ muted: personId });
+  const { error } = await db().from('mutes').upsert({ muted: personId }, { ignoreDuplicates: true });
   if (error) throw error;
 }
 
