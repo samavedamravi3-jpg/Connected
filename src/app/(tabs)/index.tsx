@@ -14,6 +14,7 @@ import { LayersSheet, type AlertsPanel } from '@/components/LayersSheet';
 import { ClusterPin, EventPin, NodePin, YouNode, nodeAnchor } from '@/components/MapPins';
 import { MemberLock } from '@/components/MemberLock';
 import { PersonCard } from '@/components/PersonCard';
+import { TextTabs } from '@/components/TextTabs';
 import { Avatar, Button, Chip } from '@/components/ui';
 import { HOTSPOTS, HOTSPOT_LEVELS, type Hotspot } from '@/data/hotspots';
 import { AREAS, CHARLOTTE_CENTER, GOALS, fieldLabel } from '@/data/options';
@@ -777,23 +778,11 @@ export default function MapScreen() {
               {sheetIndex === 0 ? null : <Text style={styles.sheetCounts} numberOfLines={1}>
                 {loading ? 'Loading your network…' : `${strongCount} strong · ${realCount} real member${realCount === 1 ? '' : 's'}${people.length > realCount ? ` · ${people.length - realCount} demo` : ''}`}
               </Text>}
-              <View style={styles.tabs} accessibilityRole="tablist">
-                {([['best', 'Best matches', best.length], ['doors', 'Open Doors', doors.length], ['all', 'Everyone', people.length]] as const).map(([id, label, n]) => {
-                  const on = tab === id;
-                  return (
-                    <Pressable
-                      key={id}
-                      onPress={() => { setTab(id); if (sheetIndex === 0) snap(1); }}
-                      accessibilityRole="tab"
-                      accessibilityState={{ selected: on }}
-                      style={[styles.tab, on && styles.tabOn]}
-                    >
-                      <Text style={[styles.tabText, on && styles.tabTextOn]}>{label}</Text>
-                      <Text style={[styles.tabCount, on && { color: C.accent }]}>{n}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <TextTabs
+                tabs={[{ id: 'best', label: 'Best matches', count: best.length }, { id: 'doors', label: 'Open Doors', count: doors.length }, { id: 'all', label: 'Everyone', count: people.length }]}
+                value={tab}
+                onChange={(id) => { setTab(id); if (sheetIndex === 0) snap(1); }}
+              />
             </View>
           )}
           {/* The sheet already ends at the tab bar's top edge (the JS tab bar is laid out below the scene, not over it, and
@@ -1067,12 +1056,6 @@ const styles = StyleSheet.create({
   sheetTitle: { fontFamily: F.display, fontSize: 20, lineHeight: 26, color: C.ink, letterSpacing: -0.2, flexShrink: 1 },
   sheetMeta: { fontSize: 13, lineHeight: 18, color: C.ink3 },
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 44 },
-  tabs: { flexDirection: 'row', backgroundColor: C.bg2, borderRadius: R.md, padding: 3 },
-  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, minHeight: 44, paddingHorizontal: 4, borderRadius: R.md - 3, borderWidth: 1, borderColor: 'transparent' },
-  tabOn: { backgroundColor: C.surface, borderColor: C.line },
-  tabText: { fontSize: 14, fontWeight: '500', color: C.ink2 },
-  tabTextOn: { color: C.accent, fontWeight: '600' },
-  tabCount: { fontSize: 13, fontWeight: '600', color: C.ink3, fontVariant: ['tabular-nums'] },
   permRow: { flexDirection: 'row', alignItems: 'center', gap: S.sm, backgroundColor: C.accentSoft, borderRadius: R.md, padding: S.sm, paddingLeft: S.md },
   listHead: { paddingHorizontal: S.lg, paddingTop: S.xs, gap: S.sm },
   contact: { flexDirection: 'row', alignItems: 'center', gap: S.md, paddingVertical: S.md, paddingHorizontal: 4, marginHorizontal: S.lg, borderBottomWidth: 1, borderBottomColor: C.line },
