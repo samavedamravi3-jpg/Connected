@@ -1,5 +1,6 @@
 /** Pure helpers for the Experience section: limits, validation, dates and skill merging. */
 import type { Experience } from '@/data/types';
+import { uniqueLabels } from './lists';
 
 export const EXP_LIMITS = { title: 120, org: 120, description: 1000, skills: 15, skill: 40, entries: 30 } as const;
 
@@ -52,11 +53,7 @@ export function validateExperience(e: Experience): string | null {
 
 /** Trims, clamps and dedupes anything that came from outside (resume import, backend). */
 export function cleanExperience(raw: Partial<Experience> & { id?: string }): Experience {
-  const skills: string[] = [];
-  for (const s of raw.skills ?? []) {
-    const t = String(s).trim().slice(0, EXP_LIMITS.skill);
-    if (t && !skills.some((x) => x.toLowerCase() === t.toLowerCase())) skills.push(t);
-  }
+  const skills = uniqueLabels((raw.skills ?? []).map((s) => String(s).trim().slice(0, EXP_LIMITS.skill)));
   return {
     id: raw.id || newExperienceId(),
     title: String(raw.title ?? '').trim().slice(0, EXP_LIMITS.title),
@@ -72,18 +69,7 @@ export function cleanExperience(raw: Partial<Experience> & { id?: string }): Exp
 export const experienceTexts = (e: Experience) => [e.title, e.org, e.description, ...e.skills];
 
 /** Declared skills plus the skills named in experience, deduped case-insensitively. */
-export function effectiveSkills(skills: string[], experience: Experience[] = []): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const s of [...skills, ...experience.flatMap((e) => e.skills)]) {
-    const k = s.trim().toLowerCase();
-    if (k && !seen.has(k)) {
-      seen.add(k);
-      out.push(s.trim());
-    }
-  }
-  return out;
-}
+export const effectiveSkills = (skills: string[], experience: Experience[] = []): string[] => uniqueLabels([...skills, ...experience.flatMap((e) => e.skills)]);
 
 const STOP = new Set(['senior', 'junior', 'lead', 'intern', 'assistant', 'associate', 'the', 'and', 'of', 'at', 'for', 'a', 'an', 'to', 'in']);
 /** Meaningful lowercase words in a job title ("Software Engineering Intern" -> software, engineering). */

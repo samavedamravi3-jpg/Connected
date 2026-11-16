@@ -7,6 +7,7 @@ import type {
   AvailabilityId, ChallengeId, DietId, Experience, FieldId, FoodId, GoalId, LatLng, MeetMode, Mode, Person, Prefs, Profile, RequestStatus, ShareMode, StatusId, TraitId,
 } from '@/data/types';
 import { cleanExperience, experienceTexts } from './experience';
+import { cleanPrefLists } from './lists';
 import { fieldLabelShort } from './match';
 import { assertClean, dbError } from './moderation';
 import { supabase } from './supabase';
@@ -114,6 +115,7 @@ type AreaCols = 'area_name' | 'area_lat' | 'area_lng';
 export type MyRow = Omit<ProfileRow, AreaCols | 'verified' | 'verified_at' | 'verified_kind' | 'id_verified' | 'id_verified_at'> & Partial<Pick<ProfileRow, AreaCols>>;
 
 export function myRow(userId: string, profile: Profile, prefs: Prefs, here: { coord: LatLng; label: string } | null): MyRow {
+  prefs = cleanPrefLists(prefs);
   const keepArea = prefs.shareMode === 'area' && !here;
   const row: MyRow = {
     id: userId,
@@ -156,11 +158,11 @@ export function myRow(userId: string, profile: Profile, prefs: Prefs, here: { co
 export function rowToMine(r: ProfileRow): { profile: Partial<Profile>; prefs: Partial<Prefs> } {
   return {
     profile: { name: r.first_name, lastName: r.last_name, status: r.status, org: r.org, intro: r.intro, offer: r.offer },
-    prefs: {
+    prefs: cleanPrefLists({
       field: r.field, fromField: r.from_field, mode: r.mode, goals: r.goals, challenges: r.challenges, wantTraits: r.want_traits,
       interests: r.interests, skills: r.skills, languages: r.languages, foods: r.foods, diet: r.diet, availability: r.availability,
       meetMode: r.meet_mode, shareMode: r.share_mode, discoverable: r.discoverable, showExperience: r.show_experience ?? false,
-    },
+    }),
   };
 }
 

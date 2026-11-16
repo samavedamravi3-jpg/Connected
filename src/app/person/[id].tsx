@@ -11,6 +11,7 @@ import { dataSource } from '@/data/source';
 import type { Person } from '@/data/types';
 import { approxDistance } from '@/lib/geo';
 import { effectiveSkills, fmtRange, sortExperiences } from '@/lib/experience';
+import { labelKey, uniqueLabels } from '@/lib/lists';
 import { allowed } from '@/lib/guard';
 import {
   canSeeDoor, conversationStarter, doorActive, doorState, firstName, matchPoints, matchStrength, sharedInterests, sharedLanguages, sharedSkills, type Tone,
@@ -67,7 +68,7 @@ export default function PersonScreen() {
   const strength = matchStrength(p, app.prefs);
   const req = latestRequest(app.requests, p.id);
   const isBlocked = app.blocked.includes(p.id);
-  const shared = new Set([...sharedInterests(p, app.prefs), ...sharedSkills(p, app.prefs), ...sharedLanguages(p, app.prefs)]);
+  const shared = new Set([...sharedInterests(p, app.prefs), ...sharedSkills(p, app.prefs), ...sharedLanguages(p, app.prefs)].map(labelKey));
   const experience = sortExperiences(p.experience ?? []);
   const venue = door ? venueById(door.venueId) : undefined;
 
@@ -233,8 +234,8 @@ export default function PersonScreen() {
 
           <Block title="Skills, interests & languages" hint={shared.size ? 'Highlighted = you share it' : undefined}>
             <View style={styles.chips}>
-              {[...effectiveSkills(p.skills, p.experience), ...p.interests, ...p.languages.filter((l) => l !== 'English')].map((x) => (
-                <Text key={x} style={[styles.chip, shared.has(x) && styles.chipOn]}>{x}</Text>
+              {uniqueLabels([...effectiveSkills(p.skills, p.experience), ...p.interests, ...p.languages.filter((l) => l !== 'English')]).map((x) => (
+                <Text key={x} style={[styles.chip, shared.has(labelKey(x)) && styles.chipOn]}>{x}</Text>
               ))}
             </View>
             <Text style={T.small}>{fieldLabel(p.field)}</Text>

@@ -8,6 +8,7 @@ import {
   sendRemoteMessage, sendRemoteRequest, setRemoteRequestStatus, subscribeToMine, unblockRemote, type RemoteMessage, type RemoteRequest,
 } from '@/lib/backend';
 import { EXP_LIMITS, sortExperiences } from '@/lib/experience';
+import { cleanPrefLists, uniqueLabels } from '@/lib/lists';
 import { assertClean } from '@/lib/moderation';
 import { fetchIdStatus, type IdStatus } from '@/lib/idVerification';
 import { authMessage } from '@/lib/authErrors';
@@ -202,7 +203,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           profile.name = first;
           profile.lastName = rest.join(' ');
         }
-        setData((d) => ({ ...d, ...saved, prefs: { ...emptyPrefs, ...saved.prefs }, profile }));
+        setData((d) => ({ ...d, ...saved, prefs: cleanPrefLists({ ...emptyPrefs, ...saved.prefs }), profile }));
       })
       .catch(() => {})
       .finally(() => setHydrated(true));
@@ -339,7 +340,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(t);
   }, [resolve]);
 
-  const setPrefs = useCallback((p: Partial<Prefs>) => setData((d) => ({ ...d, prefs: { ...d.prefs, ...p } })), []);
+  const setPrefs = useCallback((p: Partial<Prefs>) => setData((d) => ({ ...d, prefs: { ...d.prefs, ...cleanPrefLists(p) } })), []);
   const setProfile = useCallback((p: Partial<Profile>) => setData((d) => ({ ...d, profile: { ...d.profile, ...p } })), []);
   const markRead = useCallback((id: string, at: number) => setData((d) => ((d.lastRead[id] ?? 0) >= at ? d : { ...d, lastRead: { ...d.lastRead, [id]: at } })), []);
 
@@ -428,7 +429,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       saveExperiences: (xs) =>
         setData((d) => {
           const byId = new Map(d.prefs.experience.map((e) => [e.id, e]));
-          xs.forEach((e) => byId.set(e.id, e));
+          xs.forEach((e) => byId.set(e.id, { ...e, skills: uniqueLabels(e.skills) }));
           return { ...d, prefs: { ...d.prefs, experience: sortExperiences([...byId.values()]).slice(0, EXP_LIMITS.entries) } };
         }),
       removeExperience: (id) => setData((d) => ({ ...d, prefs: { ...d.prefs, experience: d.prefs.experience.filter((e) => e.id !== id) } })),
