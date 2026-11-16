@@ -343,6 +343,7 @@ export default function MapScreen() {
   const best = people.filter((p) => p.strength !== 'some');
   const doors = people.filter(doorVisible);
   const listed = tab === 'best' ? best : tab === 'doors' ? doors : people;
+  // Best matches = strong + good, so the summary names both parts (e.g. "13 strong · 6 good" beside Best matches 19).
   const strongCount = people.filter((p) => p.strength === 'strong').length;
 
   // Nearby pins merge into numbered clusters (supercluster); the selected person always stays visible.
@@ -781,7 +782,7 @@ export default function MapScreen() {
                 <Text style={styles.sheetMeta} numberOfLines={1}>Within {filters.distanceMi} mi of {me ? 'you' : areaName}</Text>
               </View>
               {sheetIndex === 0 ? null : <Text style={styles.sheetCounts} numberOfLines={1}>
-                {loading ? 'Loading your network…' : `${strongCount} strong · ${realCount} real member${realCount === 1 ? '' : 's'}${people.length > realCount ? ` · ${people.length - realCount} demo` : ''}`}
+                {loading ? 'Loading your network…' : `${strongCount} strong · ${best.length - strongCount} good · ${realCount} real member${realCount === 1 ? '' : 's'}${people.length > realCount ? ` · ${people.length - realCount} demo` : ''}`}
               </Text>}
               <TextTabs
                 tabs={[{ id: 'best', label: 'Best matches', count: best.length }, { id: 'doors', label: 'Open Doors', count: doors.length }, { id: 'all', label: 'Everyone', count: people.length }]}
