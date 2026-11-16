@@ -10,6 +10,7 @@ import {
 import { EXP_LIMITS, sortExperiences } from '@/lib/experience';
 import { assertClean } from '@/lib/moderation';
 import { fetchIdStatus, type IdStatus } from '@/lib/idVerification';
+import { authMessage } from '@/lib/authErrors';
 import { createProfileSync, type SaveIssue, type SyncState } from '@/lib/profileSync';
 import { NOT_VERIFIED, toVerification, type Verification } from '@/lib/verification';
 import { backendEnabled, supabase } from '@/lib/supabase';
@@ -99,6 +100,7 @@ type Ctx = Omit<AppData, 'requests' | 'messages'> & {
   ensureProfileSaved: () => Promise<boolean>;
   signUp: (email: string, password: string) => Promise<{ needsConfirmation: boolean }>;
   signIn: (email: string, password: string) => Promise<{ hasProfile: boolean }>;
+  resendConfirmation: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshRemote: () => void;
   setPrefs: (p: Partial<Prefs>) => void;
@@ -398,13 +400,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       signUp: async (email, password) => {
         if (!supabase) throw new Error('Accounts aren’t set up in this build.');
         const { data: d, error } = await supabase.auth.signUp({ email: email.trim(), password });
-        if (error) throw new Error(error.message);
+        if (error) throw authMessage(error);
         return { needsConfirmation: !d.session };
+      },
+      resendConfirmation: async (email) => {
+        if (!supabase) throw new Error('Accounts aren’t set up in this build.');
+        const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim() });
+        if (error) throw authMessage(error);
       },
       signIn: async (email, password) => {
         if (!supabase) throw new Error('Accounts aren’t set up in this build.');
         const { data: d, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-        if (error) throw new Error(error.message);
+        if (error) throw authMessage(error);
         const row = await loadMyRow(d.user.id).catch(() => null);
         if (row) {
           const mine = rowToMine(row);

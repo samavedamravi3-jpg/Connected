@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AuthFailure, RESEND_COOLDOWN_S } from '@/lib/authErrors';
 import { useApp } from '@/state/AppState';
 import { C, R, S, T } from '@/theme';
 import { Button } from './ui';
@@ -20,11 +21,40 @@ export function AuthForm({ mode, onDone, onSwitchMode }: Props) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
+  const inFlight = useRef(false); // state is async, so a tap plus the keyboard's Return could both get through `busy`
+  const [unconfirmed, setUnconfirmed] = useState(false);
+  const [wait, setWait] = useState(0);
+  useEffect(() => {
+    if (wait <= 0) return;
+    const t = setTimeout(() => setWait((w) => w - 1), 1000);
+    return () => clearTimeout(t);
+  }, [wait]);
+
+  const resend = async () => {
+    if (inFlight.current || wait > 0) return;
+    inFlight.current = true;
+    setBusy(true);
+    try {
+      await app.resendConfirmation(email);
+      setErr('');
+      setWait(RESEND_COOLDOWN_S);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Something went wrong. Try again.');
+      setWait(RESEND_COOLDOWN_S);
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  };
+
   const submit = async () => {
+    if (inFlight.current) return;
     setErr('');
+    setUnconfirmed(false);
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setErr('Enter a valid email address.');
     if (mode === 'signup' && password.length < 8) return setErr('Use at least 8 characters for your password.');
     if (!password) return setErr('Enter your password.');
+    inFlight.current = true;
     setBusy(true);
     try {
       if (mode === 'signup') {
@@ -36,7 +66,9 @@ export function AuthForm({ mode, onDone, onSwitchMode }: Props) {
       }
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Something went wrong. Try again.');
+      setUnconfirmed(e instanceof AuthFailure && e.code === 'email_not_confirmed');
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
@@ -81,6 +113,9 @@ export function AuthForm({ mode, onDone, onSwitchMode }: Props) {
         </View>
       </View>
       {err ? <Text style={styles.err} accessibilityRole="alert">{err}</Text> : null}
+      {unconfirmed ? (
+        <Button label={wait > 0 ? `Resend email in ${wait}s` : 'Resend confirmation email'} variant="secondary" onPress={resend} disabled={busy || wait > 0} />
+      ) : null}
       <Button label={busy ? 'One moment…' : mode === 'signup' ? 'Create account' : 'Sign in'} onPress={submit} disabled={busy} />
       {onSwitchMode ? (
         <Pressable onPress={onSwitchMode} accessibilityRole="button" style={{ alignSelf: 'center', minHeight: 40, justifyContent: 'center' }}>
