@@ -7,3 +7,8 @@
 - Done: distance filtering fix (withinRange), person cards, events counts/scrim/expiry, inbox badges, guest note.
 - In progress this pass: map clarity (hub legend into Layers sheet), Profile section order, profiles.show_experience default -> false (migration authorized).
 - Remaining: add GROQ/ANTHROPIC key to server/.env, deploy identity fn + Stripe test secrets, phone checklist, screenshots.
+
+## Update: after redesign push (fa91334 pushed to personal/hackathon-features)
+- Impeccable v4.9.x installed at project scope: .claude/skills/impeccable, .claude/agents/impeccable-*, hooks in .claude/settings.local.json (gitignored), engine in ~/.impeccable. Not yet loadable as /impeccable in a session started before install: reload Claude Code (exit, then `claude --continue` in this folder) and run `/impeccable critique` or `/impeccable polish`.
+- Metro on :8081 (exp://192.168.86.34:8081) and API server on :8787 keep running.
+- Not verified on device: all redesign visuals. app.json splash/android icon backgrounds still purple.
