@@ -29,10 +29,12 @@ type Props = {
   onLook: (id: string) => void;
   toggles: LayerToggle[];
   alerts?: AlertsPanel;
+  /** Neighborhood-hub colour key, shown under the toggles while hubs are on. */
+  legend?: { id: string; label: string; fill: string; color: string }[];
 };
 
 /** One place for everything that changes what the map shows: map style plus on/off layers. */
-export function LayersSheet({ visible, onClose, looks, look, onLook, toggles, alerts }: Props) {
+export function LayersSheet({ visible, onClose, looks, look, onLook, toggles, alerts, legend }: Props) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   return (
@@ -75,6 +77,17 @@ export function LayersSheet({ visible, onClose, looks, look, onLook, toggles, al
             ))}
           </View>
 
+          {legend ? (
+            <View style={styles.legend} accessibilityLabel="Neighborhood hub key">
+              {legend.map((l) => (
+                <View key={l.id} style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: l.fill, borderColor: l.color }]} />
+                  <Text style={styles.rowHint}>{l.label}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
           {alerts ? (
             <View style={styles.status} accessibilityLabel="Alerts status">
               <Text style={styles.statusTitle} accessibilityRole="header">Alerts status</Text>
@@ -116,6 +129,9 @@ export function LayersSheet({ visible, onClose, looks, look, onLook, toggles, al
 }
 
 const styles = StyleSheet.create({
+  legend: { flexDirection: 'row', gap: S.lg, paddingHorizontal: S.xs },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legendDot: { width: 14, height: 14, borderRadius: 7, borderWidth: 1.5 },
   scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(27,23,38,0.35)' },
   anchor: { flex: 1, justifyContent: 'flex-end' },
   sheet: { backgroundColor: C.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: S.lg, paddingTop: S.md, gap: S.md },

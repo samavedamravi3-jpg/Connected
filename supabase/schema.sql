@@ -590,7 +590,9 @@ create trigger messages_moderation
 -- when the owner left "Show my experience" on. Only the owner can write.
 -- ---------------------------------------------------------------------------
 
-alter table public.profiles add column if not exists show_experience boolean not null default true;
+alter table public.profiles add column if not exists show_experience boolean not null default false;
+-- Default only; existing rows keep their saved choice. Sharing is never switched on silently.
+alter table public.profiles alter column show_experience set default false;
 
 create table if not exists public.experiences (
   id uuid primary key default gen_random_uuid(),

@@ -55,7 +55,7 @@ const ANDROID_MAP_STYLE: MapStyleElement[] = [
 const WASH = Platform.OS === 'ios' ? 'rgba(246,243,253,0.42)' : 'rgba(246,243,253,0.12)';
 const POOL_RADIUS_MI = 25;
 const MAX_LINES = 6;
-const PEEK_MIN = 96;
+const PEEK_MIN = 136;
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 type MapLook = 'network' | 'city3d' | 'satellite';
@@ -335,7 +335,7 @@ export default function MapScreen() {
     return () => clearTimeout(t);
   }, [pinsKey]);
 
-  const peek = Math.max(PEEK_MIN, Math.round(height * 0.15));
+  const peek = Math.max(PEEK_MIN, Math.round(height * 0.17));
   const snaps = useMemo(() => [peek, Math.round(height * 0.5), Math.round(Math.min(height * 0.9, height - insets.top - 8))], [peek, height, insets.top]);
   const snap = useCallback((i: number) => sheetRef.current?.snapToIndex(i), []);
   // The map buttons and hotspot key sit 12px above the sheet and fade out as it opens past half way.
@@ -487,7 +487,7 @@ export default function MapScreen() {
             })
           : null}
         {showHotspots
-          ? HOTSPOTS.map((h) => {
+          ? HOTSPOTS.filter((h) => h.id === hotspotId || (region?.latitudeDelta ?? 1) < 0.12).map((h) => {
               const lv = HOTSPOT_LEVELS[h.level];
               const on = h.id === hotspotId;
               return (
@@ -674,18 +674,6 @@ export default function MapScreen() {
         </View>
       </Animated.View>
 
-      {/* Hotspot key: only while hotspots are on; compact, bottom-left above the sheet. */}
-      {showHotspots ? (
-        <Animated.View style={[styles.key, shadow, railStyle]} pointerEvents="none">
-          {(['high', 'medium', 'emerging'] as const).map((lvl) => (
-            <View key={lvl} style={styles.keyRow}>
-              <View style={[styles.keySwatch, { backgroundColor: HOTSPOT_LEVELS[lvl].fill, borderColor: HOTSPOT_LEVELS[lvl].color }]} />
-              <Text style={styles.keyText}>{HOTSPOT_LEVELS[lvl].label}</Text>
-            </View>
-          ))}
-        </Animated.View>
-      ) : null}
-
       {height ? (
         <GorhomSheet
           ref={sheetRef}
@@ -712,9 +700,9 @@ export default function MapScreen() {
                   <Text style={styles.sheetTitle}>Your network nearby</Text>
                   <Text style={styles.sheetMeta} numberOfLines={1}>Within {filters.distanceMi} mi of {me ? 'you' : areaName}</Text>
                 </View>
-                <Text style={styles.sheetCounts} numberOfLines={1}>
+                {sheetIndex === 0 ? null : <Text style={styles.sheetCounts} numberOfLines={1}>
                   {loading ? 'Loading your network…' : `${strongCount} strong · ${realCount} real member${realCount === 1 ? '' : 's'}${people.length > realCount ? ` · ${people.length - realCount} demo` : ''}`}
-                </Text>
+                </Text>}
                 <View style={styles.tabs} accessibilityRole="tablist">
                   {([['best', 'Best matches', best.length], ['doors', 'Open Doors', doors.length], ['all', 'Everyone', people.length]] as const).map(([id, label, n]) => {
                     const on = tab === id;
@@ -732,7 +720,7 @@ export default function MapScreen() {
                     );
                   })}
                 </View>
-                {loc.perm === 'undetermined' || loc.perm === 'denied' ? (
+                {sheetIndex !== 0 && (loc.perm === 'undetermined' || loc.perm === 'denied') ? (
                   <View style={styles.permRow}>
                     <Ionicons name="locate-outline" size={18} color={C.accent} />
                     <Text style={[T.small, { flex: 1, color: C.ink2 }]}>
@@ -867,8 +855,9 @@ export default function MapScreen() {
         look={look}
         onLook={(id) => changeLook(id as MapLook)}
         alerts={alertsPanel}
+        legend={showHotspots ? (['high', 'medium', 'emerging'] as const).map((l) => ({ id: l, label: HOTSPOT_LEVELS[l].label, fill: HOTSPOT_LEVELS[l].fill, color: HOTSPOT_LEVELS[l].color })) : undefined}
         toggles={[
-          { id: 'hot', label: 'Hotspots', hint: 'Where your field gathers', icon: 'flame-outline', value: showHotspots, onChange: (v) => { setShowHotspots(v); setHotspotId(null); } },
+          { id: 'hot', label: 'Hotspots', hint: 'Neighborhood hubs, shown as soft areas. Not people.', icon: 'flame-outline', value: showHotspots, onChange: (v) => { setShowHotspots(v); setHotspotId(null); } },
           { id: 'lines', label: 'Connection lines', hint: 'Lines to your best matches', icon: 'git-network-outline', value: showLines, onChange: setShowLines },
           { id: 'events', label: 'Events', hint: 'In-person events nearby', icon: 'calendar-outline', value: showEvents, onChange: setShowEvents },
           { id: 'alerts', label: 'Nearby alerts', hint: 'Same-field people within 1 mile', icon: 'notifications-outline', value: app.nearbyAlerts, onChange: () => { setShowLayers(false); void toggleAlerts(); } },
@@ -949,10 +938,6 @@ const styles = StyleSheet.create({
   handleHit: { paddingTop: 10, paddingBottom: 6 },
   sheetCounts: { fontSize: 13, color: C.ink3, fontWeight: '500', marginTop: -S.sm },
   emptyTitle: { fontSize: 15, fontWeight: '700', color: C.ink },
-  key: { position: 'absolute', left: S.md, bottom: 0, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: R.pill, borderWidth: 1, borderColor: C.line, paddingHorizontal: 12, minHeight: 32 },
-  keyRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  keySwatch: { width: 14, height: 14, borderRadius: 7, borderWidth: 1.5 },
-  keyText: { fontSize: 12, color: C.ink2, fontWeight: '600' },
   hotLabel: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 8, borderWidth: 1.5, borderColor: 'transparent', paddingHorizontal: 7, paddingVertical: 3, shadowColor: '#2A1E5C', shadowOpacity: 0.12, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
   hotDot: { width: 7, height: 7, borderRadius: 4 },
   hotText: { fontSize: 11, fontWeight: '700', color: C.ink },
