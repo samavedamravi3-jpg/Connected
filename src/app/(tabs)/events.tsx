@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState, type ComponentProps } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { MemberLock } from '@/components/MemberLock';
 import { Button, Tag } from '@/components/ui';
@@ -8,6 +8,7 @@ import { EVENT_STYLE } from '@/data/eventVisuals';
 import { CHARLOTTE_CENTER } from '@/data/options';
 import { dataSource, type EventsResult } from '@/data/source';
 import type { CommunityEvent, EventCategory } from '@/data/types';
+import { eventsView } from '@/lib/eventsView';
 import { distanceMi } from '@/lib/geo';
 import { dayLabel, fmtTime } from '@/lib/time';
 import { useApp } from '@/state/AppState';
@@ -39,20 +40,58 @@ const miLabel = (mi: number) => (mi < 10 ? `${mi.toFixed(1)} mi` : `${Math.round
 export default function Events() {
   const app = useApp();
   const { eventHidden } = app;
-  const [res, setRes] = useState<EventsResult | null>(null);
+  const [loaded, setLoaded] = useState<{ res: EventsResult; withDemo: boolean } | null>(null);
+  /** The demo setting whose newest request failed (cleared by a success, Retry, pull-to-refresh or a demo toggle here). */
+  const [failedFor, setFailedFor] = useState<boolean | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const all = res?.events ?? null;
   const withDemo = app.showDemoEvents;
+  // A result for the other demo setting is never shown as current while the new one loads.
+  const res = loaded?.withDemo === withDemo ? loaded.res : null;
+  const all = res?.events ?? null;
+  const failed = failedFor === withDemo;
   const [cat, setCat] = useState<Cat>('all');
   const [when, setWhen] = useState<When>('any');
   const [maxMi, setMaxMi] = useState(25);
 
-  const load = useCallback((force: boolean) => dataSource.listEvents({ withDemo, force }).then(setRes), [withDemo]);
+  // Only the newest request may land: a superseded one (demo toggled, pulled again) or one finishing after unmount is
+  // ignored. The returned promise always settles, so refreshing always stops.
+  const seq = useRef(0);
+  const load = useCallback(
+    (force: boolean) => {
+      const id = ++seq.current;
+      return dataSource.listEvents({ withDemo, force }).then(
+        (r) => {
+          if (id !== seq.current) return;
+          setLoaded({ res: r, withDemo });
+          setFailedFor(null);
+        },
+        (e) => {
+          if (id !== seq.current) return;
+          console.warn('Could not load events', e);
+          setFailedFor(withDemo);
+        },
+      );
+    },
+    [withDemo],
+  );
   useEffect(() => {
     load(false);
+    const s = seq;
+    return () => {
+      s.current += 1;
+    };
   }, [load]);
+  const setDemo = (v: boolean) => {
+    setFailedFor(null);
+    app.setShowDemoEvents(v);
+  };
+  const retry = () => {
+    setFailedFor(null);
+    return load(true);
+  };
   const refresh = () => {
     setRefreshing(true);
+    setFailedFor(null);
     load(true).finally(() => setRefreshing(false));
   };
 
@@ -76,8 +115,12 @@ export default function Events() {
   const upcoming = (all ?? []).filter((e) => e.end > app.now && !eventHidden(e) && (e.isDemo || !locked)).length;
   const online = list.filter((e) => e.online).length;
   const inPerson = list.length - online;
-  const noLive = !!res && !res.liveCount && !withDemo;
-  // The ID gate hides live events and demo events are off, so the empty list is the lock, not the filters.
+  const savedHidden = locked ? (all ?? []).filter((e) => !e.isDemo && e.end > app.now && !eventHidden(e) && app.savedEvents.includes(e.id)).length : 0;
+  const view = eventsView({
+    locked, withDemo, saved: cat === 'saved', savedCount: app.savedEvents.length, savedHidden,
+    loaded: !!all, failed, shown: list.length, liveCount: res?.liveCount ?? 0,
+  });
+  // The ID gate hides live events and demo events are off: nothing can show until verification.
   const lockedOut = locked && !withDemo;
   const thisWeek = list.filter((e) => e.start <= app.now + 7 * 864e5);
   const later = list.filter((e) => !thisWeek.includes(e));
@@ -90,20 +133,27 @@ export default function Events() {
     >
       <View style={styles.intro}>
         <View style={{ flex: 1, gap: 2 }}>
-          <Text style={styles.count}>{all ? `${list.length} event${list.length === 1 ? '' : 's'} shown${list.length !== upcoming ? ` of ${upcoming}` : ''}` : 'Finding live events…'}</Text>
-          {all ? <Text style={styles.liveText}>{inPerson} in person within {maxMi} mi {fromLabel} · {online} online</Text> : null}
+          <Text style={styles.count}>
+            {lockedOut ? 'No events shown' : all ? `${list.length} event${list.length === 1 ? '' : 's'} shown${list.length !== upcoming ? ` of ${upcoming}` : ''}` : failed ? 'Couldn’t load events' : 'Finding live events…'}
+          </Text>
+          {all && !lockedOut ? <Text style={styles.liveText}>{inPerson} in person within {maxMi} mi {fromLabel} · {online} online</Text> : null}
           {res ? (
             <View style={styles.liveRow}>
-              <View style={[styles.liveDot, !res.liveCount && { backgroundColor: C.ink3 }]} />
+              <View style={[styles.liveDot, (!res.liveCount || locked) && { backgroundColor: C.ink3 }]} />
               <Text style={styles.liveText}>
-                {res.liveCount ? `${res.liveCount} live from Meetup & Devpost · ${fmtTime(res.fetchedAt)}` : 'Live listings unavailable right now'}
+                {!res.liveCount
+                  ? 'Live listings unavailable right now'
+                  : locked
+                    ? `${res.liveCount} live event${res.liveCount === 1 ? '' : 's'} found, locked until you’re verified`
+                    : `${res.liveCount} live from Meetup & Devpost · ${fmtTime(res.fetchedAt)}`}
               </Text>
             </View>
           ) : null}
+          {failed && all ? <Text style={styles.liveText}>Couldn’t refresh. Pull down to try again.</Text> : null}
         </View>
         <View style={styles.demoToggle}>
           <Text style={styles.demoText}>Demo events</Text>
-          <Switch value={withDemo} onValueChange={app.setShowDemoEvents} trackColor={{ true: C.accent, false: C.line2 }} accessibilityLabel="Show demo events" />
+          <Switch value={withDemo} onValueChange={setDemo} trackColor={{ true: C.accent, false: C.line2 }} accessibilityLabel="Show demo events" />
         </View>
       </View>
 
@@ -127,23 +177,34 @@ export default function Events() {
         ))}
       </ScrollView>
 
-      {!all ? (
-        <ActivityIndicator color={C.accent} style={{ marginTop: S.xl }} />
-      ) : !list.length ? (
+      {view === 'loading' ? (
+        <ActivityIndicator color={C.accent} style={{ marginTop: S.xl }} accessibilityLabel="Loading events" />
+      ) : view === 'error' ? (
+        <View style={styles.empty} accessibilityLiveRegion="polite">
+          <Ionicons name="cloud-offline-outline" size={28} color={C.ink3} />
+          <Text style={T.h3}>Couldn’t load events</Text>
+          <Text style={[T.small, { textAlign: 'center' }]}>Check your connection, then try again.</Text>
+          <Button label="Retry" small onPress={() => void retry()} style={{ marginTop: S.sm }} />
+        </View>
+      ) : view !== 'list' ? (
         <View style={styles.empty}>
-          <Ionicons name={cat === 'saved' ? 'bookmark-outline' : 'calendar-clear-outline'} size={28} color={C.ink3} />
-          <Text style={T.h3}>{cat === 'saved' ? 'Nothing saved yet' : lockedOut ? 'Live events are locked' : noLive ? 'No live events loaded' : 'Nothing matches'}</Text>
-          <Text style={[T.small, { textAlign: 'center' }]}>
-            {cat === 'saved'
-              ? 'Tap the bookmark on any event to keep it here.'
-              : lockedOut
-                ? 'Unlock them with the step above, or turn on demo events to look around.'
-                : noLive
-                ? 'Meetup and Devpost could not be reached. Pull down to retry, or turn on demo events.'
-                : 'Try a wider distance or another date.'}
+          <Ionicons name={view === 'locked' || view === 'savedLocked' ? 'lock-closed-outline' : cat === 'saved' ? 'bookmark-outline' : 'calendar-clear-outline'} size={28} color={C.ink3} />
+          <Text style={T.h3}>
+            {view === 'locked' ? 'Live events are locked' : view === 'savedLocked' ? 'Your saved events are locked' : view === 'savedEmpty' ? 'Nothing saved yet' : view === 'noLive' ? 'No live events loaded' : 'Nothing matches'}
           </Text>
-          {(noLive || lockedOut) && cat !== 'saved' ? (
-            <Button label="Show demo events" small onPress={() => app.setShowDemoEvents(true)} style={{ marginTop: S.sm }} />
+          <Text style={[T.small, { textAlign: 'center' }]}>
+            {view === 'locked'
+              ? 'Unlock them with the step above, or turn on demo events to look around.'
+              : view === 'savedLocked'
+                ? 'They’re still saved. They show here again once you finish the step above.'
+                : view === 'savedEmpty'
+                  ? 'Tap the bookmark on any event to keep it here.'
+                  : view === 'noLive'
+                    ? 'Meetup and Devpost could not be reached. Pull down to retry, or turn on demo events.'
+                    : 'Try a wider distance or another date.'}
+          </Text>
+          {(view === 'noLive' || view === 'locked') && !withDemo ? (
+            <Button label="Show demo events" small onPress={() => setDemo(true)} style={{ marginTop: S.sm }} />
           ) : null}
         </View>
       ) : (
