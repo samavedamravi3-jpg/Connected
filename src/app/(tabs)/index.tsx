@@ -27,6 +27,7 @@ import { approxDistance, deltaForMiles, distanceMi, travelTime } from '@/lib/geo
 import { canSeeDoor, doorActive, matchPoints, matchScore, matchStrength } from '@/lib/match';
 import { notificationState, notifyRec, turnOnNearbyAlerts, useEventAlerts, useNearbyRecommendations, type NotifState } from '@/lib/nearbyAlerts';
 import { muteAlertsFor, pausedReason, sharedLabels, type NearbyRec } from '@/lib/nearbyPolicy';
+import { ASK_H, CONTROLS_H, railFit } from '@/lib/mapRail';
 import { useLiveLocation, type Fix } from '@/lib/useLiveLocation';
 import { useApp } from '@/state/AppState';
 import { C, F, R, S, T, alpha, shadow } from '@/theme';
@@ -65,8 +66,6 @@ const ACCENT = (a: number) => alpha(C.accent, a); // map overlays
 const POOL_RADIUS_MI = 25;
 const MAX_LINES = 6;
 const PEEK_MIN = 144;
-/** Assistant button + gap + two map controls + the 12px lift above the sheet. */
-const RAIL_H = 44 + 8 + 95 + 12;
 /** Gap between the sheet's top edge and the floating rail / hub key. */
 const LIFT = 12;
 
@@ -375,13 +374,19 @@ export default function MapScreen() {
   const snap = useCallback((i: number) => sheetRef.current?.snapToIndex(i), []);
   // The map buttons and hotspot key sit 12px above the sheet and fade out as it opens past half way.
   // They also fade when the sheet would push them up into the header/chips (short phones, status pill showing).
-  // The hub key gets its own full-width row on the sheet; the rail sits on top of it (keyRoom), measured, not guessed.
-  const keyRoom = showHotspots && keyH ? keyH + S.sm : 0;
-  const railHidden = sheetIndex === 2 || (sheetIndex === 1 && snaps[1] < topH + RAIL_H + keyRoom);
+  // The hub key gets its own full-width row on the sheet; the rail sits on top of it. Heights are measured, not guessed.
+  // At each resting position only what fits under the header shows (railFit: controls, then key, then assistant).
+  const keySlot = showHotspots && keyH ? keyH + S.sm : 0;
+  const fit = railFit(height - snaps[Math.min(sheetIndex, 1)] - LIFT - topH, keySlot);
+  const showKey = showHotspots && (!keyH || fit.key); // mounted once to measure it
+  const keyRoom = showKey ? keySlot : 0;
+  const railHidden = sheetIndex === 2 || !fit.controls;
+  const railTop = (fit.ask ? ASK_H : 0) + CONTROLS_H + LIFT + keyRoom;
   const railStyle = useAnimatedStyle(() => ({
     opacity: Math.min(
       interpolate(sheetY.value, [height * 0.12, height * 0.34], [0, 1], Extrapolation.CLAMP),
-      interpolate(sheetY.value, [topH + RAIL_H + keyRoom - 8, topH + RAIL_H + keyRoom + 8], [0, 1], Extrapolation.CLAMP),
+      // While dragging: fade out before the rail would reach the header.
+      interpolate(sheetY.value, [topH + railTop - 16, topH + railTop], [0, 1], Extrapolation.CLAMP),
     ),
     transform: [{ translateY: sheetY.value - height - LIFT - keyRoom }],
   }));
@@ -485,7 +490,7 @@ export default function MapScreen() {
         pitchEnabled={look !== 'network'}
         toolbarEnabled={false}
         showsCompass={look !== 'network'}
-        mapPadding={{ top: insets.top + 110, right: 0, bottom: peek + LIFT + keyRoom, left: 0 }}
+        mapPadding={{ top: insets.top + 110, right: 0, bottom: peek + LIFT + keySlot, left: 0 }}
         onPanDrag={() => { if (following) setFollowing(false); }}
         onRegionChangeComplete={(r) => {
           regionRef.current = r;
@@ -728,9 +733,11 @@ export default function MapScreen() {
 
       {/* Two map buttons, plus the assistant. They ride just above the sheet and fade out when it opens. */}
       <Animated.View style={[styles.rail, railStyle]} pointerEvents={railHidden ? 'none' : 'box-none'}>
-        <Pressable onPress={() => router.push('/assistant')} accessibilityRole="button" accessibilityLabel="Ask the Connected assistant" style={({ pressed }) => [styles.askBtn, shadow, pressed && { backgroundColor: C.accentPressed }]}>
-          <Ionicons name="chatbubble-ellipses-outline" size={20} color={C.white} />
-        </Pressable>
+        {fit.ask ? (
+          <Pressable onPress={() => router.push('/assistant')} accessibilityRole="button" accessibilityLabel="Ask the Connected assistant" style={({ pressed }) => [styles.askBtn, shadow, pressed && { backgroundColor: C.accentPressed }]}>
+            <Ionicons name="chatbubble-ellipses-outline" size={20} color={C.white} />
+          </Pressable>
+        ) : null}
         <View style={[styles.controls, shadow]}>
           <ControlButton icon={following ? 'locate' : 'locate-outline'} active={following} label={following ? 'Following your location' : 'Center on my location'} onPress={recenter} />
           <View style={styles.controlDivider} />
@@ -741,7 +748,7 @@ export default function MapScreen() {
       {/* Hotspot key: visible whenever Hotspots is on (not tied to the viewport); its own row just above the sheet, under the rail.
           All three labels on one line when they fit, otherwise whole items wrap (large text). It has no controls, so it
           only takes touches on its own box, and none once it has faded out with the sheet expanded. */}
-      {showHotspots ? (
+      {showKey ? (
         <Animated.View style={[styles.keyRow, keyStyle]} pointerEvents={sheetIndex === 2 ? 'none' : 'box-none'} onLayout={(e) => setKeyH(Math.round(e.nativeEvent.layout.height))}>
           <View style={[styles.key, shadow]} accessible accessibilityLabel="Map key: Major hub, Active hub, Emerging spot">
             {(['high', 'medium', 'emerging'] as const).map((lvl) => (
