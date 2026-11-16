@@ -19,12 +19,12 @@
 
 ## Phase 6: security review fixes (not applied, not pushed)
 - DB: `supabase/migrations/20261116220000_review_fixes.sql` (mirrored in `schema.sql`; tests `supabase/tests/review_fixes.sql`). Server-only rate/log tables, definer `set_my_area` with move limits, column-level profile SELECT + `my_profile()`, clamped/rate-limited `nearby_profiles`, real-member-only auto-hide, option-id check constraints, `profile_write_rate`, caller-only `is_blocked`/`has_connection`, no anon execute on definer functions. Older migrations now skip sections a later one supersedes, so re-running them is safe.
-- Functions/server: profile-write (limit first, option allowlist, AI review of area name + custom chips, https-only `MODERATION_URL`, no redirects); assistant server (`APP_TOKEN` required, `TRUST_PROXY_HOPS`).
+- Functions/server: profile-write (limit first, option allowlist, AI review of area name + custom chips by Groq called directly from the function with the `GROQ_API_KEY` secret, no redirects); assistant server (`APP_TOKEN` required, `TRUST_PROXY_HOPS`).
 - Client: own row via `my_profile()`, explicit public column list for other people (an old build's `select *` fails closed after the migration).
 
 ### Apply order (all four migrations; owner, nothing applied yet)
-1. Assistant server: deploy `server/` (this commit) with `APP_TOKEN`, `MODERATION_SERVER_TOKEN`, `GROQ_API_KEY` or `ANTHROPIC_API_KEY`, and `TRUST_PROXY_HOPS` (1 behind a platform proxy).
-2. Function secrets: `MODERATION_URL` (https) and `MODERATION_TOKEN` (= `MODERATION_SERVER_TOKEN`).
+1. Assistant server (assistant, resume import, chat `/moderate` only): deploy `server/` with `APP_TOKEN`, `GROQ_API_KEY` or `ANTHROPIC_API_KEY`, and `TRUST_PROXY_HOPS` (1 behind a platform proxy). profile-write does not use it or `MODERATION_SERVER_TOKEN`.
+2. Function secrets (Supabase Edge Function Secrets): `GROQ_API_KEY`, optional `GROQ_MODERATION_MODEL`. `MODERATION_URL` / `MODERATION_TOKEN` are no longer used.
 3. `supabase/migrations/20261116120000_mandatory_id_gate.sql`
 4. `supabase/migrations/20261116180000_moderation_write_path.sql`
 5. `supabase/migrations/20261116200000_nearby_recommendations.sql`

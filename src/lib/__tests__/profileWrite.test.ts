@@ -1,7 +1,7 @@
 // The profile-write function's pure rules (supabase/functions/_shared/profileWriteCore.ts).
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { aiFieldsToCheck, handleProfileWrite, moderationEndpoint, pickRow, reviewFields, withHeld, type LogRow, type WriteDeps } from '../../../supabase/functions/_shared/profileWriteCore';
+import { aiFieldsToCheck, handleProfileWrite, pickRow, reviewFields, withHeld, type LogRow, type WriteDeps } from '../../../supabase/functions/_shared/profileWriteCore';
 
 test('only allowlisted columns survive: id, badges, hidden and unknown keys are dropped', () => {
   const { row, errors } = pickRow({ id: 'someone-else', first_name: 'Ana', hidden: false, verified: true, id_verified: true, updated_at: 'x', evil: 1, discoverable: true, area_lat: 35.2 });
@@ -52,14 +52,6 @@ test('AI review: area_name and new custom chips are reviewed; catalog and alread
   // Held: text keeps the public value, lists drop only the new custom chips.
   assert.deepEqual(withHeld({ ...row, area_name: 'Somewhere' }, current, ['interests', 'skills', 'area_name']), { ...row, interests: ['Fintech'], skills: ['Excel'], area_name: 'NoDa' });
   assert.deepEqual(withHeld({ area_name: 'Somewhere' }, null, ['area_name']), { area_name: null });
-});
-
-test('MODERATION_URL must be https without credentials', () => {
-  assert.equal(moderationEndpoint('https://mod.example.com/'), 'https://mod.example.com/moderate');
-  assert.equal(moderationEndpoint('https://mod.example.com/api'), 'https://mod.example.com/api/moderate');
-  for (const bad of [undefined, '', 'http://mod.example.com', 'ftp://mod.example.com', 'https://user:pw@mod.example.com', 'not a url', 'javascript:alert(1)']) {
-    assert.equal(moderationEndpoint(bad), null, String(bad));
-  }
 });
 
 // The request flow with fakes: what runs, and in which order.

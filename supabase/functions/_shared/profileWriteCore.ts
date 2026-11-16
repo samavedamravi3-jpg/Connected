@@ -69,17 +69,6 @@ export const reviewFields = (row: Record<string, unknown>, current: Published, c
   Object.fromEntries(cols.map((c) => [c, reviewText(row, current, c)])) as Partial<Record<AiField, string>>;
 const pickRaw = (row: Record<string, unknown>, cols: string[]) => Object.fromEntries(cols.map((c) => [c, row[c]]));
 
-/** The review endpoint from MODERATION_URL: https only, no credentials in the URL; null = don't call it (fail closed). */
-export function moderationEndpoint(base: string | undefined): string | null {
-  if (!base) return null;
-  try {
-    const u = new URL(`${base.replace(/\/+$/, '')}/moderate`);
-    return u.protocol === 'https:' && !u.username && !u.password ? u.href : null;
-  } catch {
-    return null;
-  }
-}
-
 // ---------------------------------------------------------------------------------------------------------------
 // The request flow (index.ts wires the real database, review and log into it)
 // ---------------------------------------------------------------------------------------------------------------
@@ -87,8 +76,8 @@ export function moderationEndpoint(base: string | undefined): string | null {
 export type LogRow = { field: string; decision: 'published' | 'rejected' | 'held'; reason: string };
 /**
  * Why text was held as a draft, sent to the app in the 202 body so it can say whether retrying soon helps.
- * not_configured: MODERATION_URL / MODERATION_TOKEN missing or not https; provider_error: the review ran but failed
- * (network, timeout, non-200, malformed); rate_limited: over the hourly AI review limit.
+ * not_configured: no GROQ_API_KEY secret; provider_error: the review ran but failed (network, timeout, redirect,
+ * non-200 incl. 429/5xx, malformed answer); rate_limited: over the hourly AI review limit.
  */
 export type DraftReason = 'not_configured' | 'provider_error' | 'rate_limited';
 /** Decision-log reasons (moderation_events.reason); the first two are the values logged before DraftReason existed. */

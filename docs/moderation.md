@@ -55,7 +55,7 @@ app (shared rules, field messages) --invoke--> profile-write (edge fn, verify_jw
    -> something new to review (org/intro/offer/area_name/custom chips)?
         profile_write_rate 'ai' (10/hour new or unverified accounts, 30/hour otherwise) -> over it: no review,
                        the new text is held as a private draft (202), the rest still saves
-        -> assistant server /moderate {fields} (https only, redirects refused; Groq or Claude; keys only there)
+        -> Groq, called directly from the edge function (_shared/groqReview.ts: GROQ_API_KEY secret, redirects refused, 8 s timeout)
         allow       -> upsert public row (service role; DB trigger runs again) -> 200 published
         block       -> nothing saved -> 422 {fields: {intro: 'ai'}}
         unavailable / malformed / not configured -> public row saved WITHOUT that text,
@@ -103,12 +103,12 @@ Remediation (no silent deletion):
 
 ## Apply (owner, in this order; never paste keys into chat)
 1. Phase 3 first, if it isn't applied yet: `supabase/migrations/20261116120000_mandatory_id_gate.sql`.
-2. **Assistant server.** Deploy `server/` somewhere Supabase can reach over https, with the current code. It needs:
-   - `MODERATION_SERVER_TOKEN`: a random string of 32+ characters.
+2. **Assistant server** (for the assistant, resume import and the app's borderline-chat `/moderate` check only; profile-write no longer calls it). Deploy `server/` with the current code. It needs:
    - `GROQ_API_KEY` or `ANTHROPIC_API_KEY`.
-   - `APP_TOKEN`: now **required**. Without it `/assistant`, `/resume` and the app's `/moderate` check answer 503 (the profile review from the function still works). It ships in the app, so it is a speed bump, not a secret.
+   - `APP_TOKEN`: now **required**. Without it `/assistant`, `/resume` and the app's `/moderate` check answer 503. It ships in the app, so it is a speed bump, not a secret.
+   - `MODERATION_SERVER_TOKEN` is no longer needed: only profile-write used it, for the server's `/moderate {fields}` route.
    - `TRUST_PROXY_HOPS`: the number of proxies in front of the server that append to `x-forwarded-for` (usually `1` on a hosting platform, `0` when the server is reached directly). With `0` the per-IP limit uses the socket address and ignores the header.
-3. **Function secrets.** Run `supabase secrets set MODERATION_URL=https://<server> MODERATION_TOKEN=<same value as MODERATION_SERVER_TOKEN> --project-ref avfahjcgczcfyvcnhzyy`. Without these, every reviewed change becomes a private draft. That is fail closed by design. `MODERATION_URL` must be `https://` (no credentials in it); anything else counts as "not configured", and a redirect from the server is refused.
+3. **Function secrets.** In Supabase Edge Function Secrets set `GROQ_API_KEY` (and optionally `GROQ_MODERATION_MODEL`, default `llama-3.3-70b-versatile`), e.g. `supabase secrets set GROQ_API_KEY=<key> --project-ref avfahjcgczcfyvcnhzyy` typed in your own terminal. profile-write calls Groq directly; the key never reaches the app. Without it every reviewed change becomes a private draft (`reason: 'not_configured'`); a failing or malformed Groq answer does the same (`'provider_error'`). That is fail closed by design. The old `MODERATION_URL` / `MODERATION_TOKEN` secrets are unused and can be deleted.
 4. **Function.** From the repo root, so `config.toml` keeps `verify_jwt = true`, run `supabase functions deploy profile-write --project-ref avfahjcgczcfyvcnhzyy`. Then `list_edge_functions` must show `verify_jwt: true`.
 5. **App.** Ship or reload the app build that calls profile-write. It works before step 6 too, because it writes with the service role.
 6. **Database.** Apply `supabase/migrations/20261116180000_moderation_write_path.sql`, then `20261116200000_nearby_recommendations.sql` and `20261116220000_review_fixes.sql` (full order in docs/handoff.md). All are idempotent, and re-running an older one no longer undoes a newer one. From then on, older app builds can't save profiles: they fail closed and publish nothing. Deploy profile-write from this commit **before** applying `20261116220000`: the function calls `profile_write_rate`, and until the migration exists the function answers 503 (fails closed) — so apply the migration right after the deploy.

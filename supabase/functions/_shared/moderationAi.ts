@@ -1,6 +1,6 @@
-// Contextual AI review of profile text: the prompt and the strict response check, shared by the assistant server
-// (server/src/index.ts, which holds the provider keys) and the profile-write edge function (which re-checks the
-// server's answer). No imports and no runtime APIs, so node:test covers it (src/lib/__tests__/moderationAi.test.ts).
+// Contextual AI review of profile text: the prompt and the strict response check, shared by the profile-write edge
+// function (which calls Groq directly, _shared/groqReview.ts) and the assistant server (server/src/index.ts, whose
+// /moderate {fields} route profile-write no longer uses). No imports and no runtime APIs, so node:test covers it (src/lib/__tests__/moderationAi.test.ts).
 
 /**
  * Profile columns that get the AI review, with how they appear in the app. Names get rules only (see moderationRules).
