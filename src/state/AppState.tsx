@@ -42,11 +42,12 @@ export type AppData = {
   nearbyAlerts: boolean;
   /** When you last opened each chat (by request id), for unread dots. Kept on this phone only. */
   lastRead: Record<string, number>;
-  /** Onboarding step to reopen after the account exists (ID check, then resume and experience). Null when finished. */
+  /** Onboarding step to reopen after the account exists: 'idverify', or a later step id. Null when finished. */
   resumeAt?: OnboardingResume | null;
 };
 
-export type OnboardingResume = 'idverify' | 'resume' | 'experience';
+/** 'idverify' (the mandatory ID check) or the id of an onboarding step after it. */
+export type OnboardingResume = string;
 
 export const emptyPrefs: Prefs = {
   field: null, fromField: null, challenges: [], wantTraits: [], languages: ['English'], meetMode: 'either', foods: [], diet: [],
@@ -90,9 +91,12 @@ type Ctx = Omit<AppData, 'requests' | 'messages'> & {
   /** Your verified status, from the server. Cannot be changed from the app. */
   verification: Verification;
   refreshVerification: () => Promise<void>;
-  /** Your ID-check status: unverified, pending, verified or rejected. Set only by the server. */
+  /** Your ID-check status from the server. `verified` = real member (live check); nothing else unlocks real people. */
   idStatus: IdStatus;
-  refreshId: () => Promise<void>;
+  /** Re-reads your ID status. Resolves false when the server couldn't be reached (the last status is kept). */
+  refreshId: () => Promise<boolean>;
+  /** Real-member areas (real people, search, requests, chats, events) are locked: backend on and no live ID check. */
+  memberLocked: boolean;
   /** True once the server has confirmed your profile row exists (loaded, or a save succeeded). */
   profileReady: boolean;
   /** Why the last profile save failed, or null. `rejected`: moderation or validation said no. */
@@ -159,12 +163,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     createProfileSync<MyRow>((row) => saveMyRow(row).catch((e) => { console.warn('Could not save profile', e); throw e; }), 1200, setProfileSync),
   );
   const refreshId = useCallback(async () => {
-    if (!sessionUserId) return setIdStatus('unverified');
+    if (!sessionUserId) {
+      setIdStatus('unverified');
+      return true;
+    }
     try {
       const row = await loadMyRow(sessionUserId);
-      setIdStatus(await fetchIdStatus(sessionUserId, !!row?.id_verified));
+      setIdStatus(await fetchIdStatus(sessionUserId, row?.id_verified === true));
+      return true;
     } catch {
       // Offline or server error: keep the last status the server gave us rather than guessing.
+      return false;
     }
   }, [sessionUserId]);
   useEffect(() => {
@@ -390,6 +399,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshVerification,
       idStatus,
       refreshId,
+      memberLocked: backendEnabled && idStatus !== 'verified',
       profileReady: profileSync.ready,
       profileSaveIssue: profileSync.issue,
       // Same row and save path as the debounced sync above, just without the wait.

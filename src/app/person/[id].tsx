@@ -17,6 +17,7 @@ import {
   canSeeDoor, conversationStarter, doorActive, doorState, firstName, matchPoints, matchStrength, sharedInterests, sharedLanguages, sharedSkills, type Tone,
 } from '@/lib/match';
 import type { MeetSpot } from '@/lib/places';
+import { isRemoteId } from '@/lib/backend';
 import { idBlocks, isIdRequiredError } from '@/lib/idVerification';
 import { fmtTime, fmtWindow } from '@/lib/time';
 import { latestRequest, useApp } from '@/state/AppState';
@@ -96,7 +97,8 @@ export default function PersonScreen() {
       return;
     }
     if (!(await allowed(msg))) return;
-    if (await idBlocks(app.idStatus, 'send connection requests')) return;
+    // Real people need real membership (enforced by the database too); demo people stay a simulation for everyone.
+    if (app.backendEnabled && isRemoteId(p.id) && idBlocks(app.idStatus, 'send connection requests')) return;
     try {
       await app.sendRequest(p.id, msg.trim());
     } catch (e) {

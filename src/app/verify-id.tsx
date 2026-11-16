@@ -11,9 +11,9 @@ export default function VerifyIdScreen() {
       <View style={{ alignItems: 'center', gap: S.sm }}>
         <Ionicons name="shield-checkmark" size={44} color={C.accent} />
         <Text style={T.h2} accessibilityRole="header">Verify your identity</Text>
-        <Text style={[T.muted, { textAlign: 'center' }]}>Stripe checks that your government ID matches a live selfie of you. It confirms you are who you say you are, not that anyone is safe to meet. A passed check adds an ID badge to your profile.</Text>
+        <Text style={[T.muted, { textAlign: 'center' }]}>Required to meet real people on Connected. Stripe checks that your government photo ID matches a live selfie of you. A passed check unlocks real people, requests, chats and events, and adds an ID badge (separate from the email badge).</Text>
       </View>
-      <IdVerifyPanel onSignIn={() => router.replace('/auth')} />
+      <IdVerifyPanel onDone={() => router.back()} onSignIn={() => router.replace('/auth')} />
       <Button label="Close" variant="quiet" onPress={() => router.back()} />
     </ScrollView>
   );

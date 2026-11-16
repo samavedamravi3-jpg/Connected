@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react';
 import { Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MeetSpots } from '@/components/MeetSpots';
+import { MemberLock } from '@/components/MemberLock';
 import { Button, IconButton, Note } from '@/components/ui';
 import { dataSource } from '@/data/source';
+import { isRemoteId } from '@/lib/backend';
 import { allowed } from '@/lib/guard';
 import { firstName } from '@/lib/match';
 import { fmtTime } from '@/lib/time';
@@ -32,6 +34,8 @@ export default function Chat() {
   }, [id, lastAt, markRead]);
 
   const name = p?.name ?? demoIn?.name;
+  // Real chats need real membership (the database hides them otherwise); demo chats stay on this phone.
+  if (app.memberLocked && isRemoteId(id)) return <MemberLock what="chats" style={{ padding: S.lg }} />;
   if (!name || (req && !p)) return <Text style={[T.body, { padding: S.lg }]}>{app.session ? 'Loading conversation…' : 'Conversation not found.'}</Text>;
   const isBlocked = !!req && app.blocked.includes(req.personId);
   const canWrite = (req ? req.status === 'accepted' : !!demoIn) && !isBlocked;

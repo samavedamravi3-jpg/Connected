@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FilterSheet } from '@/components/FilterSheet';
 import { LayersSheet, type AlertsPanel } from '@/components/LayersSheet';
 import { ClusterPin, EventPin, NodePin, YouNode, nodeAnchor } from '@/components/MapPins';
+import { MemberLock } from '@/components/MemberLock';
 import { PersonCard } from '@/components/PersonCard';
 import { Avatar, Button, Chip } from '@/components/ui';
 import { HOTSPOTS, HOTSPOT_LEVELS, type Hotspot } from '@/data/hotspots';
@@ -220,7 +221,9 @@ export default function MapScreen() {
     return () => { alive = false; };
   }, [showEvents, app.nearbyAlerts]);
   const { eventHidden } = app;
-  const visibleEvents = useMemo(() => allEvents.filter((e) => !eventHidden(e)), [allEvents, eventHidden]);
+  const locked = app.memberLocked;
+  // Live events are a real-member area; demo events stay available to everyone.
+  const visibleEvents = useMemo(() => allEvents.filter((e) => !eventHidden(e) && (e.isDemo || !locked)), [allEvents, eventHidden, locked]);
   const mapEvents = useMemo(
     () => sortMyFieldFirst(showEvents ? visibleEvents.filter((e) => !e.online && distanceMi(origin, e.coord) <= filters.distanceMi) : [], prefs.field),
     [showEvents, visibleEvents, origin, filters.distanceMi, prefs.field],
@@ -782,6 +785,7 @@ export default function MapScreen() {
               </View>
             )}
             <BottomSheetScrollView key={selectedId ?? hotspotId ?? tab} contentContainerStyle={{ paddingBottom: 48 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          {selected || hotspot ? null : <MemberLock what="people nearby" style={{ paddingHorizontal: S.lg, paddingTop: S.sm }} />}
           {selected ? (
             <View style={{ paddingHorizontal: S.lg, paddingTop: S.sm }}>
               <PersonCard

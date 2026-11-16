@@ -68,12 +68,11 @@ export default function OpenDoorScreen() {
   };
 
   const publish = async () => {
-    if (!existing && (await idBlocks(app.idStatus, 'host an Open Door'))) return;
+    // Open Doors live on the phone (no server table), so this gate and the daily limit are client-side only.
+    if (!existing && app.backendEnabled && idBlocks(app.idStatus, 'host an Open Door')) return;
     if (!existing) {
-      // Open Doors live on the phone, so this limit is client-side only: 2 a day for new or unverified accounts, else 6.
-      const trusted = app.verification.verified || app.idStatus === 'verified';
       const today = app.doors.filter((d) => Date.now() - Number(d.id.replace('door-', '')) < 864e5).length;
-      if (today >= (trusted ? 6 : 2)) return Alert.alert('That’s plenty for today', trusted ? 'You can host up to 6 Open Doors a day.' : 'Unverified accounts can host 2 Open Doors a day. Verify your email or ID to host more.');
+      if (today >= 6) return Alert.alert('That’s plenty for today', 'You can host up to 6 Open Doors a day.');
     }
     const door: OpenDoor = { id: existing?.id ?? `door-${Date.now()}`, venueId, start: effectiveStart, end, lengthMin, topics, audience };
     app.saveDoor(door);

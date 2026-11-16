@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState, type ComponentProps } from 'react';
 import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { MemberLock } from '@/components/MemberLock';
 import { Button, Tag } from '@/components/ui';
 import { EVENT_STYLE } from '@/data/eventVisuals';
 import { CHARLOTTE_CENTER } from '@/data/options';
@@ -58,19 +59,21 @@ export default function Events() {
   const origin = app.here?.coord ?? CHARLOTTE_CENTER;
   const fromLabel = app.here?.isGps ? 'from you' : `from ${app.here?.label ?? 'Uptown'}`;
 
+  // Live events are a real-member area; demo events stay available to everyone.
+  const locked = app.memberLocked;
   const list: Ev[] = useMemo(() => {
     if (!all) return [];
     const now = app.now;
     const limit = when === 'week' ? now + 7 * 864e5 : when === 'month' ? now + 31 * 864e5 : Infinity;
     return all
-      .filter((e) => e.end > now && !eventHidden(e))
+      .filter((e) => e.end > now && !eventHidden(e) && (e.isDemo || !locked))
       .map((e) => ({ ...e, mi: e.online ? 0 : distanceMi(origin, e.coord) }))
       .filter((e) => (cat === 'all' || cat === 'saved' || e.category === cat) && (cat !== 'saved' || app.savedEvents.includes(e.id)))
       .filter((e) => e.start <= limit && e.mi <= maxMi)
       .sort((a, b) => Number(b.field === app.prefs.field && !!app.prefs.field) - Number(a.field === app.prefs.field && !!app.prefs.field) || a.start - b.start);
-  }, [all, cat, when, maxMi, app.savedEvents, eventHidden, app.now, origin, app.prefs.field]);
+  }, [all, cat, when, maxMi, app.savedEvents, eventHidden, app.now, origin, app.prefs.field, locked]);
 
-  const upcoming = (all ?? []).filter((e) => e.end > app.now && !eventHidden(e)).length;
+  const upcoming = (all ?? []).filter((e) => e.end > app.now && !eventHidden(e) && (e.isDemo || !locked)).length;
   const online = list.filter((e) => e.online).length;
   const inPerson = list.length - online;
   const noLive = !!res && !res.liveCount && !withDemo;
@@ -101,6 +104,8 @@ export default function Events() {
           <Switch value={withDemo} onValueChange={app.setShowDemoEvents} trackColor={{ true: C.accent, false: C.line2 }} accessibilityLabel="Show demo events" />
         </View>
       </View>
+
+      <MemberLock what="events" style={{ paddingHorizontal: S.lg }} />
 
       {/* Category */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: S.sm, paddingHorizontal: S.lg }}>

@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MemberLock } from '@/components/MemberLock';
 import { Avatar } from '@/components/ui';
 import { CHARLOTTE_CENTER, FIELDS } from '@/data/options';
 import { dataSource, type SearchHit } from '@/data/source';
@@ -63,6 +64,7 @@ export default function SearchScreen() {
           ) : null}
         </View>
       </View>
+      <MemberLock what="people in search" style={{ paddingHorizontal: S.lg, paddingTop: S.md }} />
 
       {!query ? (
         <FlatList

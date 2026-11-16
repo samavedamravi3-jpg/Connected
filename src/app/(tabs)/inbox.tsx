@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { MemberLock } from '@/components/MemberLock';
 import { Avatar, Button, Card, Note, Row, Segmented, Tag } from '@/components/ui';
 import { fieldLabel, statusLabel } from '@/data/options';
 import { dataSource } from '@/data/source';
@@ -59,6 +60,7 @@ export default function Inbox() {
         value={tab}
         onChange={setTab}
       />
+      <MemberLock what="requests and chats" />
 
       {tab === 'chats' ? (
         chats.length ? (
@@ -94,9 +96,6 @@ export default function Inbox() {
               </Text>
               <Button label={app.session ? 'Review my profile' : 'Go to Profile'} onPress={() => router.navigate('/profile')} />
             </View>
-          ) : null}
-          {!app.session && app.backendEnabled ? (
-            <Note icon="person-add-outline">Create an account (Profile tab) to receive requests from real people.</Note>
           ) : null}
           {app.showDemo ? (
             <>

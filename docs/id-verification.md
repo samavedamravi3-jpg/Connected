@@ -1,53 +1,88 @@
-# ID verification
+# ID verification (mandatory for real members)
 
-Stripe Identity, hosted page, **test mode only** until someone deliberately turns live mode on.
+Stripe Identity, hosted page. A government photo ID plus a matching selfie is **required** to see or interact with real
+people on Connected. Test mode works now; live mode stays off until the owner turns it on (see "Live activation").
 
 ## What the check means
-- Stripe confirms a government ID is genuine and matches a live selfie. It does **not** prove anyone is safe, and we do not use it as an age check.
-- Stripe processes the ID photos and selfie. We never receive or store images, selfies, document numbers, names or dates of birth.
-- Email verification (blue check, `profiles.verified`, `/verify`) is a separate thing. ID verification is the green shield (`profiles.id_verified`, `/verify-id`).
+- Stripe confirms a government photo ID is genuine and matches a live selfie. It does **not** prove anyone is safe to meet, and we don't use it as an age check (Stripe itself won't verify people under the age of majority).
+- Stripe collects and processes the ID images and selfie. Connected never stores images, selfies, face data, document numbers, names, dates of birth or Stripe payloads. Stripe keeps verification data under its own policy (see "Data retention").
+- Email verification (blue check, "Email verified", `profiles.verified`, `/verify`) is separate and never unlocks anything. ID verification is the purple shield ("ID verified", `/verify-id`).
+
+## Real membership: one predicate, always on
+`public.is_real_member(uid)` = `profiles.id_verified` (set only by `identity-webhook`, only for a live-mode verified event)
+**and** an `id_verifications` row for that user with `status='verified'` and `livemode=true`.
+
+- A Stripe test pass (`livemode=false`), a bare/stale `id_verified` flag without a live row, and the email badge never count. Existing rows aren't changed; a stale flag simply stops counting.
+- No switch: `id_gate_on()` is a constant `true` (kept for older app builds) and the `app_config` `id_gate` row is deleted.
+- Enforced in the database (`supabase/migrations/20261116120000_mandatory_id_gate.sql`, mirrored in `schema.sql`):
+  - `profiles` select: other people's rows only when both viewer and subject are real members (this also covers `nearby_profiles`, people search and `fetchPeopleByIds`, which read through RLS).
+  - `experiences` of others: both sides real members.
+  - `alert_candidates`: empty for non-members; candidates must be real members (was: email-verified).
+  - `connection_requests`: read needs membership; insert needs sender **and** recipient to be members (`id_required` / `recipient_unavailable`); accepting needs both.
+  - `messages`: read needs membership; send needs both participants to be members.
+  - `rate_check`: the relaxed limit needs email or real membership, never a bare flag.
+- Always allowed (no circular dependency): creating/updating your own profile row before verifying, reading your own profile and `id_verifications` row, your own experiences, blocks, mutes, reports, `set_my_area`, `hidden_event_ids`.
+- Client roles can't write `profiles.verified*`, `id_verified*`, `hidden`, `created_at`, `updated_at` (column-level grants; the protect triggers stay as a second layer) and can't write `id_verifications` at all.
+- Not in the database, so gated in the app only: Open Door publishing (Open Doors live on the phone) and live event listings (Meetup/Devpost, fetched by the app). There is no user event creation.
+- Authorization checks: `supabase/tests/id_gate.sql` (see "Apply").
 
 ## How it works
-- `identity` edge function (gateway JWT check **on**). Every call needs the user's Supabase token; the user id comes from that token, never from the body.
-  - `{ action: 'status' }` → `{ available, test }`
-  - `{ action: 'session' }` → `{ url, test }` or `{ state: 'processing' }`. Resumes the user's open session (fresh single-use URL from a Stripe retrieve) or creates one with `type=document`, `require_matching_selfie=true`, `metadata.user_id`. A Stripe `Idempotency-Key` (`idv:<user>:<previous session or first>`) plus a compare-and-set write stop double taps from creating two sessions. The URL is returned to the user only; never logged or stored.
-- `identity-webhook` edge function (gateway JWT check **off**; authenticated by the `Stripe-Signature` HMAC over the raw body, 5-minute tolerance, any `v1` may match). Invalid signature → 400. It only applies an event when `metadata.user_id` and our stored `session_id` for that user agree. Verified and canceled are final; older events never overwrite newer ones; duplicates are no-ops. Our own write failure → 500 so Stripe retries.
-- Shared pure rules: `supabase/functions/_shared/identityCore.ts` (tests: `src/lib/__tests__/identityCore.test.ts`).
-- Stored in `id_verifications` (owner can read, nobody but the service role writes): session id, status (`started` / `pending` / `verified` / `rejected` / `canceled`), `livemode`, `last_error` code, `event_at`, timestamps.
-- `profiles.id_verified` (public badge) is set only by the webhook, only for a **live-mode** verified event. Trigger `profiles_protect_id_verified` resets any app write.
+- `identity` edge function (gateway JWT check **on**). The user id comes from the verified token, never the body.
+  - `{ action: 'status' }` → `{ available, test }`. Only `available && !test` (live) can unlock Connected.
+  - `{ action: 'session' }` → `{ url, test }` or `{ state: 'processing' }`. Resumes the open session (fresh single-use URL from a Stripe retrieve) or creates one with `type=document`, `options[document][require_live_capture]=true`, `options[document][require_matching_selfie]=true`, `options[document][allowed_types][]=driving_license|passport|id_card`, `metadata.user_id`. **No** `require_id_number`, **no** `return_url`, no `provided_details`. Idempotency key `idv2:<user>:<previous session or first>` plus a compare-and-set write stop double taps from creating two sessions. Refuses only when the user is already a real member (same rule as the SQL predicate), so a stale flag can re-verify.
+- `identity-webhook` (gateway JWT check **off**; Stripe-Signature HMAC over the raw body, 5-minute tolerance). Applies an event only when `metadata.user_id` and our stored `session_id` agree; verified/canceled are final; older events never overwrite newer ones; duplicates are no-ops; our write failure → 500 so Stripe retries. Sets `profiles.id_verified` only for a live-mode verified event with `IDENTITY_LIVE_ENABLED=true`.
+- Pure rules and tests: `supabase/functions/_shared/identityCore.ts`, `src/lib/__tests__/identityCore.test.ts`.
+- Missing keys or webhook secret → `available: false`: the app says real verification is unavailable and why, and everything real stays locked. Never a fake camera flow or badge.
 
-### Test mode does not grant the badge
-A passed test-mode check is stored as `status=verified, livemode=false`. The app shows **"Test verification passed"** with a "Test verification" label, but `profiles.id_verified` stays false: no public badge, no ID gate, no relaxed rate limit, no Open Door trust. Live mode needs a live key **and** `IDENTITY_LIVE_ENABLED=true`; otherwise the function reports unavailable and the webhook ignores live events.
+## App
+- Onboarding: welcome → **create account** (email confirmation, sign in) → **basic profile** → **Verify your identity** (Connected explainer: ID photo, selfie, accepted IDs, privacy and retention, "verified ≠ safe", explicit consent checkbox) → Stripe's hosted camera flow → server-confirmed result → the remaining steps (preferences, resume, experience).
+- No "Optional" / "Do this later" / "Skip" unlocks anything. Escape hatches that keep real areas locked: **Explore demo mode instead** (demo people only) and **Sign out**. Guests can continue in demo mode.
+- States: not started, capturing (browser open), processing (spinner + polling 3 s → 30 s backoff, ~10 min), verified, needs another attempt, canceled/expired, unavailable (no provider configured, or test mode: "Live ID verification is switched off"), and a test pass labelled **"Test result — does not unlock Connected"**.
+- Return to app: no deep link. The app re-reads status when it comes to the foreground, on **Check status**, and while polling. Browser dismissed early → **Continue verification** reuses the session. App restart → status is read from the server; `resumeAt` reopens the step. Network failure → "Couldn't reach the server…", last status kept.
+- Locked areas (map real people, search, requests/chats, events, Open Door publishing) show the next action: Create an account / Verify your ID / Continue verification / Check status / Try again. Profile (account, sign out, privacy), `/verify-id` and demo content stay reachable. There is no in-app support screen yet.
 
-### App
-- Onboarding: preferences → profile ("Say hello") → create account (or skip as guest) → **Verify your identity** → resume → experience → done. Guests see "Sign in to verify". "Do this later" changes nothing.
-- Progress is saved (`resumeAt` in local app state), so closing the app during the browser trip reopens the ID step.
-- The hosted page opens in the external browser (Safari/Chrome; camera works there). No `return_url` and no deep link: the user closes the browser and the app re-reads status when it comes to the foreground, or on **Check status**. The app never marks anything verified itself.
-- Profile → "Verify your ID" opens `/verify-id`, the same panel.
-- Missing keys, a non-deployed function or any server error → "Verification currently unavailable" with Continue. Never a fake badge.
-- Gate: `app_config.id_gate` (default `off`). With it on, the DB blocks connection requests from members without `profiles.id_verified`.
+## Stripe docs (checked 2026-11-16)
+- Create session parameters (https://docs.stripe.com/api/identity/verification_sessions/create): `options.document.allowed_types` (`driving_license`, `id_card`, `passport`; other types fail with `document_type_not_allowed`), `require_id_number`, `require_live_capture` ("Disable image uploads, identity document images have to be captured using the device's camera"), `require_matching_selfie`; `return_url` ("The URL that the user will be redirected to upon completing the verification flow").
+- Hosted redirect flow (https://docs.stripe.com/identity/verify-identity-documents?platform=web&type=redirect): session URL is single-use, expires after 48 hours, must not be stored or logged; `return_url` is shown only with an `https://` web page. Nothing is documented about custom app schemes or `exp://` URLs, so we don't set it.
+- Sessions (https://docs.stripe.com/identity/verification-sessions): reuse the same session after an interruption; use an idempotency key; retrieve for a fresh URL after `requires_input`; cancel before `processing`; redaction deletes PII (up to 7 days).
+- Test vs live: "If your API key is in test mode, verification checks won't actually process" (create reference). Activation needs the Identity application (https://dashboard.stripe.com/identity/application) and business verification. Live webhooks need a live-mode endpoint (https://docs.stripe.com/identity/handle-verification-outcomes).
+- Selfie checks: in places like the EU, privacy law may require justifying biometrics or offering a non-biometric alternative (https://docs.stripe.com/identity/verification-checks?type=selfie). We offer no alternative; get legal advice before launching there.
+- Unsupported uses include verifying minors / under-16s (https://docs.stripe.com/identity/use-cases).
 
-## Setup (project owner, on your own machine; never paste keys into chat)
-1. Apply the ID section of `supabase/schema.sql` to connected-hackathon (adds `livemode`, `last_error`, `event_at`, `created_at`, widens the status check).
-2. Stripe Dashboard, **test mode** on (toggle top right):
-   - Identity: open https://dashboard.stripe.com/test/identity and complete the Identity application / activation if asked.
-   - Key: Developers → API keys → **Create restricted key** with *Identity Verification Sessions*: **Write** (includes read). Nothing else is needed. It starts with `rk_test_`. (A `sk_test_` secret key also works.)
-   - Webhook: Workbench → Webhooks → **Add destination** → events `identity.verification_session.verified`, `identity.verification_session.requires_input`, `identity.verification_session.processing`, `identity.verification_session.canceled` → Webhook endpoint → URL `https://avfahjcgczcfyvcnhzyy.supabase.co/functions/v1/identity-webhook` → create, then **Reveal** the signing secret (`whsec_...`).
-3. In your terminal:
+## Data retention
+Stripe's support page (https://support.stripe.com/questions/managing-your-id-verification-information) says biometric identifiers are removed within one year and the rest of the submitted identity data, including all captured images, is typically kept for 7 years, longer where law requires. Stripe acts as our processor for that data; deletion requests go to us (we can redact the session in Stripe). The app says only "Stripe keeps verification data for a period set by its own privacy policy" and links https://stripe.com/privacy; it never promises no retention.
+
+## Pricing
+Stripe Identity: **$1.50 per verification** for ID document + selfie, "charged when a user completes verification" (https://stripe.com/identity, checked 2026-11-16). ID number lookup is $0.50 (US SSN only); we don't use it. Test mode is free.
+
+## Expo Go limits
+- The hosted page opens in the external browser (Safari/Chrome) via `Linking.openURL`; the camera works there, and this works in Expo Go.
+- No `return_url` / deep link: Expo Go has no stable app URL, and Stripe doesn't document custom schemes. The user closes the browser and the app re-reads status.
+- Stripe's native sheet (`@stripe/stripe-identity-react-native`) needs native iOS/Android SDKs, camera permission and an ephemeral key endpoint, so it can't run in Expo Go (development build only). Not used.
+
+## Apply (owner, in this order; never paste keys into chat)
+1. **Database**: run `supabase/migrations/20261116120000_mandatory_id_gate.sql` on connected-hackathon (SQL editor: paste and Run, or `apply_migration`). Idempotent. Real-member areas lock for everyone without a live verified row as soon as it runs.
+2. **Check**: run `supabase/tests/id_gate.sql` in the SQL editor (or `psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/id_gate.sql`). It works in a rolled-back transaction and must end with `id_gate: all checks passed`.
+3. **Functions** (from the repo root so `supabase/config.toml` pins `verify_jwt`):
    ```bash
-   supabase secrets set STRIPE_SECRET_KEY=rk_test_... STRIPE_WEBHOOK_SECRET=whsec_... --project-ref avfahjcgczcfyvcnhzyy
    supabase functions deploy identity --project-ref avfahjcgczcfyvcnhzyy
    supabase functions deploy identity-webhook --no-verify-jwt --project-ref avfahjcgczcfyvcnhzyy
    ```
-   `supabase/config.toml` pins `verify_jwt = false` for `identity-webhook` only and `true` for `identity`; keep it that way and deploy from the repo root so the CLI reads it. After deploy, `list_edge_functions` (Supabase MCP) must show `verify_jwt: false` for `identity-webhook` and `true` for `identity`.
-   If the app gets 401 from `identity` before the function runs (gateway can't verify the project's JWT signing keys), redeploy it with `--no-verify-jwt`; the function still checks the token itself. (That flag overrides config.toml for that deploy only; the next deploy without it turns the check back on.)
-4. Do **not** set `IDENTITY_LIVE_ENABLED`. Live mode stays off.
+   Then `list_edge_functions` must show `verify_jwt: true` for `identity` and `false` for `identity-webhook`. (Only `identity` changed; redeploying the webhook is harmless.)
+4. **App**: reload the dev build / Expo Go.
 
-## Test (Stripe test mode)
-1. In the app, sign in, reach the ID step (or Profile → Verify your ID). You should see the "Test verification" label.
-2. Tap **Verify identity**. Safari opens Stripe's test page; pick a test outcome (e.g. *Verified*, or a failure such as *Document expired* / *Selfie mismatch*), no real ID needed.
-3. Close Safari, return to the app. It refreshes on foreground; or tap **Check status**.
-4. Expect: success → "Test verification passed" (no badge); failure → "That attempt didn't go through" + Try again (same session is reused).
-5. Check Workbench → Webhooks → event deliveries all return 200.
+### Test mode setup (if not done yet)
+Stripe Dashboard in test mode: complete the Identity application; create a restricted key with *Identity Verification Sessions: Write* (`rk_test_…`); add a webhook destination for `identity.verification_session.verified`, `.requires_input`, `.processing`, `.canceled` at `https://avfahjcgczcfyvcnhzyy.supabase.co/functions/v1/identity-webhook`; then
+`supabase secrets set STRIPE_SECRET_KEY=rk_test_... STRIPE_WEBHOOK_SECRET=whsec_... --project-ref avfahjcgczcfyvcnhzyy`.
+Do **not** set `IDENTITY_LIVE_ENABLED`.
 
-Limits: Open Doors are stored on the phone, so the Open Door gate is client-side only. The ID gate should stay off until a live-mode flow has been reviewed.
+Test: sign in → profile → ID step shows "Test mode" → Start ID check → pick a Stripe test outcome → close the browser → the app shows "Test result — does not unlock Connected" (verified test) or "That attempt didn't go through" (failure). Real areas stay locked either way.
+
+## Live activation (owner only, when ready)
+1. Stripe: switch to live mode, complete business verification and the Identity application, accept the Identity terms (https://stripe.com/identity/legal), and confirm the use case is supported (https://docs.stripe.com/identity/use-cases).
+2. Create a **live** restricted key (*Identity Verification Sessions: Write*, `rk_live_…`).
+3. Add a **live-mode** webhook destination with the same four events and URL; reveal its live `whsec_…` secret (different from the test one).
+4. `supabase secrets set STRIPE_SECRET_KEY=rk_live_... STRIPE_WEBHOOK_SECRET=whsec_... IDENTITY_LIVE_ENABLED=true --project-ref avfahjcgczcfyvcnhzyy`
+   (one key per project: setting live keys stops test mode).
+5. Verify yourself end to end with a real ID; confirm webhook deliveries return 200 and that `is_real_member` is true for your user.
+6. Budget for $1.50 per completed verification.

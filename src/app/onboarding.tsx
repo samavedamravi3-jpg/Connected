@@ -21,8 +21,8 @@ import { C, F, R, S, T } from '@/theme';
 
 type StepId = 'resume' | 'experience' | 'status' | 'field' | 'goals' | 'challenges' | 'people' | 'interests' | 'meet' | 'food' | 'privacy' | 'profile';
 const PREF_STEPS: StepId[] = ['status', 'field', 'goals', 'challenges', 'people', 'interests', 'meet', 'food', 'privacy'];
-// Account (if needed) and the ID check come right after 'profile', before resume and experience.
-const ALL_STEPS: StepId[] = [...PREF_STEPS, 'profile', 'resume', 'experience'];
+// Order: account (before these steps) -> basic profile -> mandatory ID check (its own phase) -> everything else.
+const ALL_STEPS: StepId[] = ['profile', ...PREF_STEPS, 'resume', 'experience'];
 const SECTION: Record<StepId, string> = {
   status: 'About you', field: 'About you', goals: 'What you need', challenges: 'What you need', people: 'What you need',
   resume: 'Your background', experience: 'Your background', interests: 'Your interests', meet: 'Meeting up', food: 'Meeting up', privacy: 'Meeting up', profile: 'Your profile',
@@ -46,7 +46,7 @@ export default function Onboarding() {
     accountOnly ? 'account' : edit ? 'steps' : resumeAt === 'idverify' ? 'idverify' : resumeAt ? 'steps' : 'welcome',
   );
   const [confirmNote, setConfirmNote] = useState('');
-  const [i, setI] = useState(resumeAt && resumeAt !== 'idverify' ? Math.max(0, ALL_STEPS.indexOf(resumeAt)) : 0);
+  const [i, setI] = useState(resumeAt && resumeAt !== 'idverify' ? Math.max(0, ALL_STEPS.indexOf(resumeAt as StepId)) : 0);
   const [err, setErr] = useState('');
   const [customSkill, setCustomSkill] = useState('');
   const { prefs, profile, setPrefs, setProfile } = app;
@@ -56,24 +56,36 @@ export default function Onboarding() {
     setErr('');
     setI(n);
     scroll.current?.scrollTo({ y: 0, animated: false });
-    const s = steps[n];
-    if (!edit && (s === 'resume' || s === 'experience')) app.setResumeAt(s);
+    // Steps after the ID check reopen where you left off (browser trip, app closed). Guests have no account to resume.
+    if (!edit && app.session && n > 0) app.setResumeAt(steps[n]);
   };
 
-  /** Account exists (or the user stayed a guest): show the ID step, remembered across app restarts. */
+  /** Account and basic profile exist: the mandatory ID check, remembered across app restarts. */
   function toIdStep() {
     app.finishOnboarding();
     app.setResumeAt('idverify');
     setPhase('idverify');
+  }
+  /** Leave the ID check for now: the app opens in demo mode, with every real-member area locked. */
+  function exploreDemo() {
+    app.setResumeAt(null);
+    router.replace('/');
+  }
+  function afterAccount() {
+    setConfirmNote('');
+    if (accountOnly) return toIdStep();
+    setPhase('steps');
+    go(0);
   }
   /** A save was rejected (moderation or validation): fix it on the profile step, which returns here on Next. */
   function backToProfile() {
     setPhase('steps');
     go(steps.indexOf('profile'));
   }
+  /** Verified (live): the rest of onboarding. */
   function afterIdStep() {
     setPhase('steps');
-    go(steps.indexOf('resume'));
+    go(steps.indexOf('profile') + 1);
   }
   function finish() {
     app.finishOnboarding();
@@ -98,8 +110,8 @@ export default function Onboarding() {
     const e = validate();
     if (e) return setErr(e);
     if (edit) return i < steps.length - 1 ? go(i + 1) : router.back();
-    // With a backend, save the profile to an account so other people can find you, then offer the ID check.
-    if (step === 'profile' && app.backendEnabled) return app.session ? toIdStep() : setPhase('account');
+    // Signed in: the profile is saved to the account, then the mandatory ID check. Guests continue in demo mode.
+    if (step === 'profile' && app.backendEnabled && app.session) return toIdStep();
     if (i < steps.length - 1) return go(i + 1);
     finish();
   }
@@ -119,7 +131,7 @@ export default function Onboarding() {
   if (phase === 'welcome') {
     return (
       <Welcome
-        onStart={() => setPhase('steps')}
+        onStart={() => setPhase(app.backendEnabled && !app.session ? 'account' : 'steps')}
         onSample={() => { app.loadSample(); router.replace('/'); }}
         onSignIn={app.backendEnabled ? () => router.push('/auth') : undefined}
       />
@@ -133,9 +145,16 @@ export default function Onboarding() {
           icon="shield-checkmark-outline"
           section="Your account"
           title="Verify your identity"
-          sub="Optional, about two minutes. Stripe checks that your government ID matches a live selfie of you. It confirms you are who you say you are, not that anyone is safe to meet, so keep first meetings in public places."
+          sub="Required to meet real people on Connected. About two minutes: a photo of your government ID, then a selfie. Stripe runs the check."
         />
-        <IdVerifyPanel onDone={afterIdStep} onLater={afterIdStep} onSignIn={() => setPhase('account')} onEditProfile={backToProfile} />
+        <IdVerifyPanel onDone={afterIdStep} onSignIn={() => setPhase('account')} onEditProfile={backToProfile} />
+        {app.idStatus === 'verified' ? null : (
+          <View style={{ gap: S.sm, paddingTop: S.md, borderTopWidth: 1, borderTopColor: C.line }}>
+            <Button label="Explore demo mode instead" icon="flask-outline" variant="quiet" onPress={exploreDemo} />
+            <Text style={[T.small, { textAlign: 'center' }]}>Demo people only. Real people, requests, chats and events stay locked until your ID is verified. Your profile is saved, and you can verify any time.</Text>
+            {app.session ? <Button label="Sign out" icon="log-out-outline" variant="quiet" onPress={() => { app.signOut(); }} /> : null}
+          </View>
+        )}
       </ScrollView>
     );
   }
@@ -143,12 +162,12 @@ export default function Onboarding() {
     return (
       <KeyboardAvoidingView style={{ flex: 1, backgroundColor: C.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={{ padding: S.lg, paddingTop: insets.top + S.sm, paddingBottom: insets.bottom + S.xl, gap: S.xl }} keyboardShouldPersistTaps="handled">
-          <IconButton icon="chevron-back" label="Back" onPress={() => (accountOnly ? router.back() : app.resumeAt === 'idverify' ? setPhase('idverify') : setPhase('steps'))} style={{ marginLeft: -S.sm }} />
+          <IconButton icon="chevron-back" label="Back" onPress={() => (accountOnly ? router.back() : app.resumeAt === 'idverify' ? setPhase('idverify') : setPhase('welcome'))} style={{ marginLeft: -S.sm }} />
           <StepTitle
             icon="person-add-outline"
             section="Your account"
-            title="Save your profile"
-            sub="Create an account so people nearby can find you and your requests and chats reach real people. Your email is never shown to anyone."
+            title="Create your account"
+            sub="Real people, requests and chats need an account and an ID check. Your email is never shown to anyone."
           />
           {confirmNote ? (
             <View style={styles.notice}>
@@ -163,18 +182,16 @@ export default function Onboarding() {
                 setConfirmNote('Check your email and tap the confirmation link, then sign in below.');
                 return;
               }
-              if (accountOnly) return router.back();
-              setConfirmNote('');
-              toIdStep();
+              afterAccount();
             }}
           />
           {accountOnly ? null : (
             <Pressable
-              onPress={toIdStep}
+              onPress={() => { setPhase('steps'); go(0); }}
               accessibilityRole="button"
               style={{ alignSelf: 'center', minHeight: 44, justifyContent: 'center' }}
             >
-              <Text style={T.small}>Skip for now (you&apos;ll only see demo people)</Text>
+              <Text style={T.small}>Continue in demo mode (demo people only, no real members)</Text>
             </Pressable>
           )}
         </ScrollView>

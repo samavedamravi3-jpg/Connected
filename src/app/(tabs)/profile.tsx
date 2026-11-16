@@ -15,15 +15,15 @@ import { useApp } from '@/state/AppState';
 import { C, F, S, T } from '@/theme';
 import type { IdStatus } from '@/lib/idStatus';
 
-// ID check (Stripe, government ID + live selfie). Separate from email verification above it.
+// ID check (Stripe, government photo ID + selfie): required for real members. Separate from the email check above it.
 const ID_TEXT: Record<IdStatus, string> = {
-  unverified: 'A quick government ID and live selfie check with Stripe. Adds an ID badge.',
-  started: 'You started a check but haven’t finished it.',
+  unverified: 'Required to meet real people: a government photo ID and selfie check with Stripe.',
+  started: 'You started a check but haven’t finished it. Real people stay locked until you do.',
   pending: 'Stripe is reviewing your check.',
   rejected: 'That attempt didn’t go through. You can try again.',
-  canceled: 'Your last check was canceled. You can start a new one.',
-  test_verified: 'Test verification passed. Test checks add no ID badge.',
-  verified: 'Your ID was checked. People see an ID badge.',
+  canceled: 'Your last check was canceled. Start a new one to unlock real people.',
+  test_verified: 'Test result — does not unlock Connected.',
+  verified: 'Government ID and selfie checked. Real people are unlocked, and people see an ID badge.',
 };
 const ID_BUTTON: Record<IdStatus, string> = { unverified: 'Verify', started: 'Continue', pending: 'Status', rejected: 'Retry', canceled: 'Verify', test_verified: 'Details', verified: '' };
 
@@ -113,7 +113,7 @@ export default function ProfileTab() {
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text style={T.label}>{app.verification.verified ? 'Email verified' : 'Verify your email'}</Text>
                   <Text style={T.small}>
-                    {app.verification.verified ? `Confirmed with a ${app.verification.kind ?? ''} email. People in your field can get nearby alerts about you.` : 'Confirm a school or work email to get a check. Only verified people trigger nearby alerts.'}
+                    {app.verification.verified ? `Confirmed with a ${app.verification.kind ?? ''} email. This email badge is separate from ID verification.` : 'Confirm a school or work email for an email badge. It’s separate from ID verification and doesn’t unlock real people.'}
                   </Text>
                 </View>
                 {app.verification.verified ? <VerifiedBadge label size={18} /> : <Button label="Verify" small onPress={() => router.push('/verify')} />}
@@ -136,7 +136,7 @@ export default function ProfileTab() {
           ) : (
             <>
               <Text style={T.label}>Create an account</Text>
-              <Text style={T.small}>Save your profile so real people nearby can find you, and send real requests and messages.</Text>
+              <Text style={T.small}>Real people, requests and chats need an account and a government photo ID + selfie check.</Text>
               <View style={{ flexDirection: 'row', gap: S.sm }}>
                 <Button label="Create account" small onPress={() => router.push({ pathname: '/onboarding', params: { edit: 'account' } })} style={{ flex: 1 }} />
                 <Button label="Sign in" small variant="secondary" onPress={() => router.push('/auth')} style={{ flex: 1 }} />

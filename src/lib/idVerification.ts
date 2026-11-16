@@ -18,7 +18,10 @@ export async function fetchIdStatus(userId: string, publicVerified: boolean): Pr
   return toIdStatus(data, publicVerified);
 }
 
-/** Is an ID provider configured on the server, and is it Stripe test mode? Any failure reads as unavailable. */
+/**
+ * Is an ID provider configured on the server, and is it Stripe test mode? Any failure reads as unavailable.
+ * Only `available && !test` (live mode) can unlock Connected.
+ */
 export async function idServerMode(): Promise<{ available: boolean; test: boolean }> {
   if (!supabase) return { available: false, test: false };
   const { data, error } = await supabase.functions.invoke('identity', { body: { action: 'status' } });
@@ -56,27 +59,25 @@ export async function startIdVerification(): Promise<'opened' | 'processing'> {
   return 'opened';
 }
 
-/** Whether the server currently requires ID verification for sensitive actions (a switch in app_config). */
-async function gateOn(): Promise<boolean> {
-  if (!supabase) return false;
-  const { data } = await supabase.rpc('id_gate_on');
-  return data === true;
-}
-
 /**
- * Call before a sensitive action. Returns true when the action is blocked (and the prompt is showing).
- * The database enforces the same rule for connection requests; this just explains it before the attempt.
+ * Call before a real-member action. Returns true when the action is blocked (and the prompt is showing).
+ * Real membership is mandatory and always on; the database enforces it, this explains it before the attempt.
  */
-export async function idBlocks(status: IdStatus, action: string): Promise<boolean> {
-  if (status === 'verified' || !(await gateOn())) return false;
-  Alert.alert('Verify your ID first', `To ${action}, confirm your identity. It takes a couple of minutes, and we never keep your ID photos.`, [
-    { text: 'Not now', style: 'cancel' },
-    { text: 'Verify', onPress: () => router.push('/verify-id') },
-  ]);
+export function idBlocks(status: IdStatus, action: string): boolean {
+  if (status === 'verified') return false;
+  Alert.alert(
+    status === 'test_verified' ? 'Test result — does not unlock Connected' : 'Verify your ID first',
+    `To ${action}, verify your identity with a government photo ID and a selfie. Stripe runs the check; Connected doesn’t keep your ID images.`,
+    [
+      { text: 'Not now', style: 'cancel' },
+      { text: 'Verify', onPress: () => router.push('/verify-id') },
+    ],
+  );
   return true;
 }
 
 /** The identity function couldn't find your profile row yet ("Finish setting up your profile first"). */
 export const isProfileNotReadyError = (e: unknown) => /setting up your profile/i.test(String((e as { message?: string } | null)?.message ?? ''));
 
-export const isIdRequiredError =(e: unknown) => String((e as { message?: string } | null)?.message ?? '').includes('id_required');
+/** The database refused because you (id_required) or the other person (recipient_unavailable) isn't a real member. */
+export const isIdRequiredError = (e: unknown) => /id_required|recipient_unavailable/.test(String((e as { message?: string } | null)?.message ?? ''));
