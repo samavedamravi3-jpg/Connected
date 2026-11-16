@@ -323,8 +323,8 @@ export default function PersonScreen() {
 function Block({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
     <View style={{ gap: S.md }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <Text style={T.h2} accessibilityRole="header">{title}</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', columnGap: S.md }}>
+        <Text style={[T.h2, { flexShrink: 1 }]} accessibilityRole="header">{title}</Text>
         {hint ? <Text style={[T.small, { color: C.accent }]}>{hint}</Text> : null}
       </View>
       {children}

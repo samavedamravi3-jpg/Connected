@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ComponentProps, ReactNode } from 'react';
-import { Image, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { AVATAR_COLORS, C, R, S, T } from '@/theme';
 import { initials } from '@/lib/match';
 
@@ -12,24 +12,27 @@ type ButtonProps = {
   variant?: 'primary' | 'secondary' | 'quiet' | 'danger' | 'blue';
   icon?: IconName;
   disabled?: boolean;
+  /** Shows a spinner in place of the icon and blocks presses. */
+  loading?: boolean;
   small?: boolean;
   style?: StyleProp<ViewStyle>;
   accessibilityHint?: string;
 };
 
-export function Button({ label, onPress, variant = 'primary', icon, disabled, small, style, accessibilityHint }: ButtonProps) {
+export function Button({ label, onPress, variant = 'primary', icon, disabled, loading, small, style, accessibilityHint }: ButtonProps) {
   const v = btn[variant];
+  const off = disabled || loading;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityHint={accessibilityHint}
-      accessibilityState={{ disabled: !!disabled }}
-      disabled={disabled}
+      accessibilityState={{ disabled: !!off, busy: !!loading }}
+      disabled={off}
       onPress={onPress}
       style={({ pressed }) => [styles.btn, small && styles.btnSmall, v.box, pressed && v.pressed, disabled && { opacity: 0.45 }, style]}
     >
-      {icon ? <Ionicons name={icon} size={small ? 16 : 18} color={v.text.color} /> : null}
+      {loading ? <ActivityIndicator size="small" color={v.text.color} /> : icon ? <Ionicons name={icon} size={small ? 16 : 18} color={v.text.color} /> : null}
       <Text style={[styles.btnText, small && { fontSize: 14 }, v.text]}>{label}</Text>
     </Pressable>
   );
@@ -80,7 +83,7 @@ export function Segmented<T extends string | number>({ options, value, onChange,
             accessibilityRole="radio"
             accessibilityState={{ selected: on }}
             onPress={() => onChange(o.id)}
-            style={[styles.segBtn, i > 0 && styles.segDivider, on && styles.segOn]}
+            style={({ pressed }) => [styles.segBtn, i > 0 && styles.segDivider, pressed && !on && { backgroundColor: C.bg2 }, on && styles.segOn]}
           >
             <Text style={[styles.segText, on && { color: C.white, fontWeight: '600' }]}>{o.label}</Text>
           </Pressable>
@@ -149,7 +152,7 @@ export function Section({ title, right, children, style }: { title?: string; rig
     <View style={[{ gap: S.md }, style]}>
       {title ? (
         <View style={styles.sectionHead}>
-          <Text style={T.h2} accessibilityRole="header">{title}</Text>
+          <Text style={[T.h2, { flexShrink: 1 }]} accessibilityRole="header">{title}</Text>
           {right}
         </View>
       ) : null}

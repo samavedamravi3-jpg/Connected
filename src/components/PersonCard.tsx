@@ -45,7 +45,7 @@ export function PersonCard({ person: p, distanceFromLabel, prefs, profile, onOpe
           <Text style={[T.small, { color: C.ink2 }]} numberOfLines={1}>
             {approxDistance(p.distanceMi)} {distanceFromLabel}{travel ? ` · ${travel}` : ''}
           </Text>
-          <Text style={styles.open} numberOfLines={1}>
+          <Text style={styles.open} numberOfLines={2}>
             {strength === 'strong' ? <Text style={styles.badge}>Strong match · </Text> : null}
             {free}
           </Text>
@@ -69,7 +69,7 @@ export function PersonCard({ person: p, distanceFromLabel, prefs, profile, onOpe
       {door ? (
         <View style={styles.door}>
           <Ionicons name="enter-outline" size={17} color={C.accent} />
-          <Text style={[T.small, { color: C.ink, flex: 1, fontSize: 14 }]} numberOfLines={1}>
+          <Text style={[T.small, { color: C.ink, flex: 1, fontSize: 14, lineHeight: 20 }]} numberOfLines={2}>
             {seeDoor
               ? `Open Door ${doorState(door) === 'live' ? `now until ${fmtTime(door.end)}` : fmtWindow(door.start, door.end).toLowerCase()} · ${venueById(door.venueId).name}`
               : 'Hosting an Open Door for another group'}
@@ -77,8 +77,8 @@ export function PersonCard({ person: p, distanceFromLabel, prefs, profile, onOpe
         </View>
       ) : null}
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.md }}>
-        <Button label="View profile" onPress={onOpen} style={{ flex: 1 }} />
+      <View style={{ gap: S.sm }}>
+        <Button label="View profile" onPress={onOpen} />
         <Text style={styles.demo}>{p.isDemo ? 'Demo profile, not a real person' : 'Connected member'}</Text>
       </View>
     </View>
@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
   point: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   pointText: { fontSize: 14, lineHeight: 20, color: C.ink, flex: 1 },
   door: { flexDirection: 'row', gap: S.sm, alignItems: 'center', backgroundColor: C.accentSoft, borderRadius: R.md, paddingHorizontal: S.md, paddingVertical: 10 },
-  demo: { fontSize: 12, color: C.ink3 },
+  demo: { fontSize: 12, lineHeight: 16, color: C.ink3, textAlign: 'center' },
   open: { fontSize: 13, lineHeight: 18, color: C.ok, fontWeight: '600' },
   demoBadge: { fontSize: 11, fontWeight: '600', color: C.ink2, borderWidth: 1, borderColor: C.line2, paddingHorizontal: 5, paddingVertical: 1, borderRadius: R.sm, overflow: 'hidden' },
 });

@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { useExperienceFlow } from '@/components/ExperienceFlow';
 import { Button } from '@/components/ui';
 import { fmtRange, sortExperiences } from '@/lib/experience';
@@ -50,10 +50,9 @@ export function ResumeExperienceCard() {
           <Text style={T.h3}>Show where you’ve been</Text>
           <Text style={[T.muted, { textAlign: 'center' }]}>Jobs, internships and school help us find people who’ve walked your path.</Text>
           <View style={{ alignSelf: 'stretch', gap: S.sm }}>
-            <Button label={flow.importing ? 'Reading your resume…' : 'Add resume (PDF)'} icon="document-text-outline" disabled={flow.importing} onPress={flow.importResume} />
+            <Button label={flow.importing ? 'Reading your resume…' : 'Add resume (PDF)'} icon="document-text-outline" loading={flow.importing} onPress={flow.importResume} />
             <Button label="Add experience" icon="add-outline" variant="secondary" onPress={() => flow.edit()} />
           </View>
-          {flow.importing ? <ActivityIndicator color={C.accent} /> : null}
         </View>
       ) : (
         <View style={{ marginTop: S.sm }}>
@@ -74,7 +73,7 @@ export function ResumeExperienceCard() {
           ))}
           <View style={{ flexDirection: 'row', gap: S.sm }}>
             <Button label="Add experience" icon="add-outline" variant="secondary" onPress={() => flow.edit()} style={{ flex: 1 }} />
-            <Button label={flow.importing ? 'Reading…' : 'Import resume'} icon="document-text-outline" variant="secondary" disabled={flow.importing} onPress={flow.importResume} style={{ flex: 1 }} />
+            <Button label={flow.importing ? 'Reading…' : 'Import resume'} icon="document-text-outline" variant="secondary" loading={flow.importing} onPress={flow.importResume} style={{ flex: 1 }} />
           </View>
         </View>
       )}

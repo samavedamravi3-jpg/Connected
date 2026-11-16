@@ -192,20 +192,21 @@ function WhereTag({ e }: { e: Ev }) {
 /** Card for the "Next 7 days" carousel: photo on top, title and details on a solid panel below it. */
 function BigCard({ e, fromLabel }: { e: Ev; fromLabel: string }) {
   const st = EVENT_STYLE[e.category];
+  // The save button is a sibling of the card's button (not nested) so screen readers can reach it.
   return (
+    <View style={styles.big}>
     <Pressable
       onPress={() => router.push({ pathname: '/event/[id]', params: { id: e.id } })}
       accessibilityRole="button"
       accessibilityLabel={`${e.title}, ${dayLabel(e.start)} ${fmtTime(e.start)}, ${e.online ? 'online' : 'in person'}`}
-      style={({ pressed }) => [styles.big, pressed && { opacity: 0.92 }]}
+      style={({ pressed }) => pressed && { opacity: 0.92 }}
     >
       <View style={[styles.bigMedia, { backgroundColor: st.soft }]}>
         {e.image ? <Image source={{ uri: e.image }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityIgnoresInvertColors /> : <Ionicons name={st.icon} size={40} color={st.solid} />}
         <View style={styles.datePill}>
-          <Text style={styles.datePillDay}>{shortDay(e.start)}</Text>
-          <Text style={styles.datePillNum}>{new Date(e.start).getDate()}</Text>
+          <Text style={styles.datePillDay} maxFontSizeMultiplier={1.3}>{shortDay(e.start)}</Text>
+          <Text style={styles.datePillNum} maxFontSizeMultiplier={1.3}>{new Date(e.start).getDate()}</Text>
         </View>
-        <View style={styles.bigSave}><SaveButton id={e.id} onImage /></View>
       </View>
       <View style={styles.bigBody}>
         <Text style={[styles.kind, { color: st.solid }]} numberOfLines={1}>
@@ -220,6 +221,8 @@ function BigCard({ e, fromLabel }: { e: Ev; fromLabel: string }) {
         </View>
       </View>
     </Pressable>
+    <View style={styles.bigSave}><SaveButton id={e.id} onImage /></View>
+    </View>
   );
 }
 
@@ -228,11 +231,12 @@ function Row({ e }: { e: Ev }) {
   const st = EVENT_STYLE[e.category];
   const free = e.cost.toLowerCase().startsWith('free');
   return (
+    <View style={styles.row}>
     <Pressable
       onPress={() => router.push({ pathname: '/event/[id]', params: { id: e.id } })}
       accessibilityRole="button"
       accessibilityLabel={`${e.title}, ${dayLabel(e.start)} ${fmtTime(e.start)}, ${e.online ? 'online' : 'in person'}`}
-      style={({ pressed }) => [styles.row, pressed && { backgroundColor: C.bg2 }]}
+      style={({ pressed }) => [styles.rowMain, pressed && { backgroundColor: C.bg2 }]}
     >
       <View style={styles.dateTile}>
         <Text style={styles.dateMonth}>{month(e.start)}</Text>
@@ -248,8 +252,9 @@ function Row({ e }: { e: Ev }) {
         </View>
         <Text style={styles.meta} numberOfLines={1}>{e.source ? `${e.source} · ${e.host}` : `${e.areaName} · Demo`}</Text>
       </View>
-      <SaveButton id={e.id} />
     </Pressable>
+    <View style={styles.rowSave}><SaveButton id={e.id} /></View>
+    </View>
   );
 }
 
@@ -277,7 +282,9 @@ const styles = StyleSheet.create({
   bigTitle: { fontFamily: F.displaySemi, color: C.ink, fontSize: 18, lineHeight: 23, minHeight: 46 },
   save: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg2 },
   saveOnImage: { backgroundColor: C.surface },
-  row: { flexDirection: 'row', alignItems: 'center', gap: S.md, padding: S.md, borderRadius: R.lg, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface },
+  row: { flexDirection: 'row', alignItems: 'center', borderRadius: R.lg, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface, overflow: 'hidden' },
+  rowMain: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: S.md, padding: S.md },
+  rowSave: { paddingRight: S.md },
   dateTile: { width: 56, paddingVertical: S.sm, borderRadius: R.md, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg2, alignSelf: 'flex-start' },
   dateMonth: { color: C.ink2, fontSize: 12, fontWeight: '600' },
   dateNum: { fontFamily: F.display, color: C.ink, fontSize: 22, lineHeight: 26 },

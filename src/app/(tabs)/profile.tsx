@@ -75,6 +75,7 @@ export default function ProfileTab() {
       </View>
 
       {app.backendEnabled ? (
+        <Section title="Account">
         <Card>
           {app.session ? (
             <>
@@ -138,6 +139,7 @@ export default function ProfileTab() {
             <Switch value={app.showDemo} onValueChange={app.setShowDemoPeople} trackColor={{ true: C.accent, false: C.line2 }} accessibilityLabel="Show demo people" />
           </View>
         </Card>
+        </Section>
       ) : null}
 
       <Section title="Profile" right={<Button label="Edit" variant="secondary" small onPress={() => router.push({ pathname: '/onboarding', params: { edit: 'profile' } })} />}>
@@ -150,7 +152,7 @@ export default function ProfileTab() {
       </Section>
 
       {!app.session ? (
-        <Note icon="flask-outline">{app.backendEnabled ? 'Guest mode: this profile lives on this phone and you only see demo people. Create an account in Account below to meet real members.' : 'Demo mode: this profile lives on this phone.'}</Note>
+        <Note icon="flask-outline">{app.backendEnabled ? 'Guest mode: this profile lives on this phone and you only see demo people. Create an account under Account above to meet real members.' : 'Demo mode: this profile lives on this phone.'}</Note>
       ) : null}
 
       <ResumeExperienceCard />
@@ -195,6 +197,7 @@ export default function ProfileTab() {
         {past.length ? <Text style={T.small}>{past.length} past session{past.length > 1 ? 's' : ''} ended or expired automatically.</Text> : null}
       </Section>
 
+      <Section title="Visibility & alerts">
       <Card>
         <View style={styles.switchRow}>
           <View style={{ flex: 1, gap: 2 }}>
@@ -237,6 +240,7 @@ export default function ProfileTab() {
           <Switch value={app.showDemoEvents} onValueChange={app.setShowDemoEvents} trackColor={{ true: C.accent, false: C.line2 }} accessibilityLabel="Show demo events" />
         </View>
       </Card>
+      </Section>
 
       <Section title="Privacy">
         <Note icon="lock-closed-outline">

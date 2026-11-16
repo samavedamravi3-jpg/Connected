@@ -58,6 +58,10 @@ const GREEN = (a: number) => `rgba(31,77,58,${a})`; // C.accent with alpha, for 
 const POOL_RADIUS_MI = 25;
 const MAX_LINES = 6;
 const PEEK_MIN = 144;
+/** Assistant button + gap + two map controls + the 12px lift above the sheet. */
+const RAIL_H = 44 + 8 + 95 + 12;
+/** Room kept under the hub key so the map attribution (Apple "Legal" / Google logo) never sits beneath it. */
+const KEY_CLEARANCE = 44;
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 type MapLook = 'network' | 'city3d' | 'satellite';
@@ -96,6 +100,7 @@ export default function MapScreen() {
   const lastHere = useRef<LatLng | null>(null);
 
   const [height, setHeight] = useState(0);
+  const [topH, setTopH] = useState(0);
   const [live, setLive] = useState(true);
   const [following, setFollowing] = useState(false);
   const [showLines, setShowLines] = useState(true);
@@ -341,7 +346,16 @@ export default function MapScreen() {
   const snaps = useMemo(() => [peek, Math.round(height * 0.5), Math.round(Math.min(height * 0.9, height - insets.top - 8))], [peek, height, insets.top]);
   const snap = useCallback((i: number) => sheetRef.current?.snapToIndex(i), []);
   // The map buttons and hotspot key sit 12px above the sheet and fade out as it opens past half way.
+  // They also fade when the sheet would push them up into the header/chips (short phones, status pill showing).
   const railStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(
+      interpolate(sheetY.value, [height * 0.12, height * 0.34], [0, 1], Extrapolation.CLAMP),
+      interpolate(sheetY.value, [topH + RAIL_H - 8, topH + RAIL_H + 8], [0, 1], Extrapolation.CLAMP),
+    ),
+    transform: [{ translateY: sheetY.value - height - 12 }],
+  }));
+  // The hub key is short, so it keeps the original fade only (visible whenever Hotspots is on and the sheet isn't expanded).
+  const keyStyle = useAnimatedStyle(() => ({
     opacity: interpolate(sheetY.value, [height * 0.12, height * 0.34], [0, 1], Extrapolation.CLAMP),
     transform: [{ translateY: sheetY.value - height - 12 }],
   }));
@@ -440,7 +454,7 @@ export default function MapScreen() {
         pitchEnabled={look !== 'network'}
         toolbarEnabled={false}
         showsCompass={look !== 'network'}
-        mapPadding={{ top: insets.top + 110, right: 0, bottom: peek, left: 0 }}
+        mapPadding={{ top: insets.top + 110, right: 0, bottom: peek + (showHotspots ? KEY_CLEARANCE : 0), left: 0 }}
         onPanDrag={() => { if (following) setFollowing(false); }}
         onRegionChangeComplete={(r) => {
           regionRef.current = r;
@@ -515,7 +529,7 @@ export default function MapScreen() {
                 >
                   <View collapsable={false} style={[styles.hotLabel, on && { borderColor: lv.color }]}>
                     <View style={[styles.hotDot, { backgroundColor: lv.color }]} />
-                    <Text style={styles.hotText} numberOfLines={1}>{h.name}</Text>
+                    <Text style={styles.hotText} numberOfLines={1} maxFontSizeMultiplier={1.2}>{h.name}</Text>
                   </View>
                 </Marker>
               );
@@ -583,7 +597,7 @@ export default function MapScreen() {
       </MapView>
 
       {/* Header: brand, short place, search, filters. Counts live in the sheet. */}
-      <View style={[styles.top, { paddingTop: insets.top + S.xs }]} pointerEvents="box-none">
+      <View style={[styles.top, { paddingTop: insets.top + S.xs }]} pointerEvents="box-none" onLayout={(e) => setTopH(e.nativeEvent.layout.height)}>
         <View style={[styles.header, shadow]}>
           <Pressable onPress={() => setModal('area')} accessibilityRole="button" accessibilityLabel={`Area: ${placeLabel}. Change area`} style={styles.headerMain} hitSlop={4}>
             <View style={styles.brand}>
@@ -680,7 +694,7 @@ export default function MapScreen() {
       </View>
 
       {/* Two map buttons, plus the assistant. They ride just above the sheet and fade out when it opens. */}
-      <Animated.View style={[styles.rail, railStyle]} pointerEvents="box-none">
+      <Animated.View style={[styles.rail, railStyle]} pointerEvents={sheetIndex === 1 && snaps[1] < topH + RAIL_H ? 'none' : 'box-none'}>
         <Pressable onPress={() => router.push('/assistant')} accessibilityRole="button" accessibilityLabel="Ask the Connected assistant" style={({ pressed }) => [styles.askBtn, shadow, pressed && { backgroundColor: C.accentPressed }]}>
           <Ionicons name="chatbubble-ellipses-outline" size={20} color={C.white} />
         </Pressable>
@@ -693,7 +707,7 @@ export default function MapScreen() {
 
       {/* Hotspot key: visible whenever Hotspots is on (not tied to the viewport); rides above the sheet, left of the buttons. */}
       {showHotspots ? (
-        <Animated.View style={[styles.key, shadow, railStyle]} pointerEvents="none" accessible accessibilityLabel="Map key: Major hub, Active hub, Emerging spot">
+        <Animated.View style={[styles.key, shadow, keyStyle]} pointerEvents="none" accessible accessibilityLabel="Map key: Major hub, Active hub, Emerging spot">
           {(['high', 'medium', 'emerging'] as const).map((lvl) => (
             <View key={lvl} style={styles.keyRow}>
               <View style={[styles.keySwatch, { backgroundColor: HOTSPOT_LEVELS[lvl].fill, borderColor: HOTSPOT_LEVELS[lvl].color }]} />
@@ -832,7 +846,7 @@ export default function MapScreen() {
                         <Text style={styles.contactName} numberOfLines={1}>{p.name}</Text>
                         {p.isDemo ? <Text style={styles.demoPill}>Demo</Text> : null}
                       </View>
-                      <Text style={styles.contactRole} numberOfLines={1}>{p.role} · {p.org}</Text>
+                      <Text style={styles.contactRole} numberOfLines={2}>{p.role} · {p.org}</Text>
                       {p.strength === 'strong' || reason ? (
                         <Text style={styles.reason}>
                           {p.strength === 'strong' ? <Text style={styles.strong}>Strong match{reason ? ' · ' : ''}</Text> : null}
@@ -959,8 +973,8 @@ const styles = StyleSheet.create({
   place: { fontSize: 15, fontWeight: '600', color: C.ink, flexShrink: 1 },
   locDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.accent },
   filterBtn: { width: 44, height: 44, borderRadius: R.md, alignItems: 'center', justifyContent: 'center' },
-  count: { position: 'absolute', top: 4, right: 4, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
-  countText: { color: C.white, fontSize: 10, fontWeight: '700' },
+  count: { position: 'absolute', top: 2, right: 2, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 1.5, borderColor: C.surface },
+  countText: { color: C.white, fontSize: 11, lineHeight: 13, fontWeight: '700', fontVariant: ['tabular-nums'] },
   quick: { gap: S.sm, paddingHorizontal: S.md, paddingVertical: 2 },
   nearDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.ok },
   askBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
@@ -977,7 +991,8 @@ const styles = StyleSheet.create({
   handle: { width: 36, height: 4, backgroundColor: C.line2 },
   handleHit: { paddingTop: 10, paddingBottom: 6 },
   sheetCounts: { fontSize: 13, lineHeight: 18, color: C.ink2, marginTop: -S.xs },
-  key: { position: 'absolute', left: S.md, bottom: 0, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(252,251,247,0.96)', borderRadius: R.md, borderWidth: 1, borderColor: C.line, paddingHorizontal: 10, minHeight: 32 },
+  // maxWidth keeps the key clear of the right-hand control rail; it wraps upward on narrow screens or large text.
+  key: { position: 'absolute', left: S.md, bottom: 0, maxWidth: '74%', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: S.md, rowGap: S.xs, backgroundColor: 'rgba(252,251,247,0.96)', borderRadius: R.md, borderWidth: 1, borderColor: C.line, paddingHorizontal: 10, paddingVertical: 8 },
   keyRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   keySwatch: { width: 12, height: 12, borderRadius: 6, borderWidth: 1.5 },
   keyText: { fontSize: 12, color: C.ink2, fontWeight: '500' },
@@ -1003,7 +1018,7 @@ const styles = StyleSheet.create({
   sheetMeta: { fontSize: 13, lineHeight: 18, color: C.ink3 },
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 44 },
   tabs: { flexDirection: 'row', backgroundColor: C.bg2, borderRadius: R.md, padding: 3 },
-  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, minHeight: 38, borderRadius: R.md - 3, borderWidth: 1, borderColor: 'transparent' },
+  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, minHeight: 44, paddingHorizontal: 4, borderRadius: R.md - 3, borderWidth: 1, borderColor: 'transparent' },
   tabOn: { backgroundColor: C.surface, borderColor: C.line },
   tabText: { fontSize: 14, fontWeight: '500', color: C.ink2 },
   tabTextOn: { color: C.ink, fontWeight: '600' },

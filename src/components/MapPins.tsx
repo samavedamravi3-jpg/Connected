@@ -25,6 +25,7 @@ export function nodeAnchor(strength: Strength, selected: boolean) {
   return { x: 0.5, y: (CARD_H + GAP + size / 2) / (CARD_H + GAP + size) };
 }
 
+// Pin text is capped for font scaling: markers are fixed-size views (CARD_H drives the anchor maths); the sheet list carries the scalable text.
 /**
  * A person as a node in your network. Solid green = strong match, green ring = good match,
  * quiet gray = other. Selected nodes grow and show a small name-and-role card above.
@@ -44,7 +45,7 @@ export function NodePin({ name, role, uri, strength, selected, door, real }: { n
       {uri ? (
         <Image source={{ uri }} style={{ width: size - 6, height: size - 6, borderRadius: (size - 6) / 2 }} />
       ) : (
-        <Text style={[styles.initials, { fontSize: size * 0.34, color: solid ? C.white : strength === 'some' ? C.ink3 : C.accent }]}>{initials(name)}</Text>
+        <Text maxFontSizeMultiplier={1} style={[styles.initials, { fontSize: size * 0.34, color: solid ? C.white : strength === 'some' ? C.ink3 : C.accent }]}>{initials(name)}</Text>
       )}
       {real ? <View style={styles.real} accessibilityLabel="Connected member" /> : null}
       {door ? (
@@ -60,8 +61,8 @@ export function NodePin({ name, role, uri, strength, selected, door, real }: { n
   return (
     <View collapsable={false} style={{ width: WIDTH, alignItems: 'center' }}>
       <View style={styles.card}>
-        <Text style={styles.cardName} numberOfLines={1}>{name}{real ? '  ·  Member' : ''}</Text>
-        <Text style={styles.cardRole} numberOfLines={1}>{role}</Text>
+        <Text style={styles.cardName} numberOfLines={1} maxFontSizeMultiplier={1.2}>{name}{real ? '  ·  Member' : ''}</Text>
+        <Text style={styles.cardRole} numberOfLines={1} maxFontSizeMultiplier={1.2}>{role}</Text>
       </View>
       <View style={styles.cardTip} />
       {/* The tip adds 4px below the card (10px tall, pulled up 6px); this spacer makes the gap exactly GAP. */}
@@ -90,7 +91,7 @@ export function ClusterPin({ count, tone = 'people' }: { count: number; tone?: '
   return (
     <View collapsable={false} style={{ padding: 4 }}>
       <View style={[styles.cluster, { width: size, height: size, borderRadius: size / 2, backgroundColor: tone === 'people' ? C.accent : C.blue }]}>
-        <Text style={styles.clusterText}>{count > 99 ? '99+' : count}</Text>
+        <Text style={styles.clusterText} maxFontSizeMultiplier={1}>{count > 99 ? '99+' : count}</Text>
       </View>
     </View>
   );

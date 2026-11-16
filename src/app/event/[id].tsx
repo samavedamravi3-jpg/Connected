@@ -123,10 +123,10 @@ export default function EventScreen() {
         </View>
 
         {!e.online ? (
-          <Pressable onPress={() => Linking.openURL(directions)} accessibilityRole="button" style={({ pressed }) => [styles.venue, pressed && { backgroundColor: C.bg2 }]}>
+          <Pressable onPress={() => Linking.openURL(directions)} accessibilityRole="link" accessibilityLabel={`Get directions to ${e.venue}`} style={({ pressed }) => [styles.venue, pressed && { backgroundColor: C.bg2 }]}>
             <Ionicons name="navigate-outline" size={22} color={C.accent} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.hostName} numberOfLines={1}>{e.venue}</Text>
+              <Text style={styles.hostName} numberOfLines={2}>{e.venue}</Text>
               <Text style={T.small}>Get directions</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={C.ink3} />

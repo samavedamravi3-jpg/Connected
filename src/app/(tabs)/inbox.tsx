@@ -121,42 +121,51 @@ function RequestRow({ r }: { r: ConnectionRequest }) {
   const last = app.messages[r.id]?.at(-1)?.text ?? r.message;
   const pendingForMe = r.incoming && r.status === 'requested';
 
+  const tag = pendingForMe ? 'New' : s.label;
+
+  // Actions sit beside (not inside) the row's button so screen readers can reach them.
   return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={() => (r.status === 'accepted' ? router.push({ pathname: '/chat/[id]', params: { id: r.id } }) : router.push({ pathname: '/person/[id]', params: { id: r.personId } }))}
-      style={({ pressed }) => [styles.item, pressed && { backgroundColor: C.bg2 }]}
-    >
-      <Avatar name={name} uri={p?.photo} />
-      <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-        <Row style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
-          <Text style={styles.name} numberOfLines={1}>{name}</Text>
-          <Tag label={pendingForMe ? 'New' : s.label} tone={pendingForMe ? 'warn' : s.tone} />
+    <View style={styles.item}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${name}, ${tag}. ${last.replace(/\s+/g, ' ')}`}
+        accessibilityHint={r.status === 'accepted' ? 'Opens the chat' : 'Opens their profile'}
+        onPress={() => (r.status === 'accepted' ? router.push({ pathname: '/chat/[id]', params: { id: r.id } }) : router.push({ pathname: '/person/[id]', params: { id: r.personId } }))}
+        style={({ pressed }) => [styles.itemMain, pressed && { backgroundColor: C.bg2 }]}
+      >
+        <Avatar name={name} uri={p?.photo} />
+        <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+          <Row style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
+            <Text style={styles.name} numberOfLines={1}>{name}</Text>
+            <Tag label={tag} tone={pendingForMe ? 'warn' : s.tone} />
+          </Row>
+          <Text style={T.small} numberOfLines={2}>{last.replace(/\s+/g, ' ')}</Text>
+          <Text style={[T.small, { fontSize: 12, lineHeight: 16 }]}>
+            {dayLabel(r.updatedAt)}, {fmtTime(r.updatedAt)}{r.remote ? '' : ' · demo'}
+          </Text>
+          {r.status === 'accepted' ? <Text style={[T.small, { color: C.accent, fontWeight: '600' }]}>Open chat</Text> : null}
+        </View>
+      </Pressable>
+      {pendingForMe ? (
+        <Row style={styles.actions}>
+          <Button label="Accept" small onPress={() => app.respondRemote(r.id, 'accepted').catch(failed('accept'))} />
+          <Button label="Decline" small variant="secondary" onPress={() => app.respondRemote(r.id, 'declined').catch(failed('decline'))} />
         </Row>
-        <Text style={T.small} numberOfLines={2}>{last.replace(/\s+/g, ' ')}</Text>
-        <Text style={[T.small, { fontSize: 12 }]}>
-          {dayLabel(r.updatedAt)}, {fmtTime(r.updatedAt)}{r.remote ? '' : ' · demo'}
-        </Text>
-        {pendingForMe ? (
-          <Row>
-            <Button label="Accept" small onPress={() => app.respondRemote(r.id, 'accepted').catch(failed('accept'))} />
-            <Button label="Decline" small variant="secondary" onPress={() => app.respondRemote(r.id, 'declined').catch(failed('decline'))} />
-          </Row>
-        ) : r.status === 'requested' ? (
-          <Row>
-            <Button label="Cancel" variant="secondary" small onPress={() => app.cancelRequest(r.id).catch(failed('cancel'))} />
-            {r.remote ? null : <Button label="Demo: accept" variant="quiet" small onPress={() => app.simulateReply(r.id, 'accepted')} />}
-          </Row>
-        ) : r.status === 'accepted' ? (
-          <Text style={[T.small, { color: C.accent, fontWeight: '600' }]}>Open chat</Text>
-        ) : null}
-      </View>
-    </Pressable>
+      ) : r.status === 'requested' ? (
+        <Row style={styles.actions}>
+          <Button label="Cancel" variant="secondary" small onPress={() => app.cancelRequest(r.id).catch(failed('cancel'))} />
+          {r.remote ? null : <Button label="Demo: accept" variant="quiet" small onPress={() => app.simulateReply(r.id, 'accepted')} />}
+        </Row>
+      ) : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  item: { flexDirection: 'row', gap: S.md, paddingVertical: S.md, paddingHorizontal: S.xs, borderBottomWidth: 1, borderBottomColor: C.line, borderRadius: R.sm, alignItems: 'flex-start' },
+  item: { paddingVertical: S.sm, borderBottomWidth: 1, borderBottomColor: C.line, gap: S.xs },
+  itemMain: { flexDirection: 'row', gap: S.md, paddingVertical: S.xs, paddingHorizontal: S.xs, borderRadius: R.sm, alignItems: 'flex-start' },
+  // Lines the buttons up with the text column: avatar (44) + gap + row padding.
+  actions: { marginLeft: 44 + S.md + S.xs },
   name: { fontFamily: F.displaySemi, fontSize: 17, lineHeight: 22, color: C.ink, flexShrink: 1 },
   empty: { alignItems: 'center', gap: S.md, paddingVertical: S.xxl, paddingHorizontal: S.lg },
 });
