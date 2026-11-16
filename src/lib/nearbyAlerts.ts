@@ -1,67 +1,84 @@
 /**
- * "Someone is nearby" alerts. Runs only while the map is open and live location is on:
- * no background location, no push server. Each real member alerts at most once every 3 hours.
- * Alerts are same-field only: your field must be set, and a person or event must match it.
- * Only verified people trigger person alerts.
+ * Nearby "You should connect" recommendations and same-field event alerts, while the app is OPEN on the map with live
+ * location on (foreground only: no background location, no push server; works in Expo Go). docs/nearby-alerts.md.
  *
- * Real path: while the map is open, `useNearbyPresence` saves your rounded position (set_my_area) and asks
- * Supabase/PostGIS for verified same-field members within 1 mile (alert_candidates). Those, plus any
- * people already loaded for the map, feed `useNearbyAlerts`.
- * Alerts while the app is closed need background location + push (a development build): docs/background-alerts-plan.md.
+ * Real path: `useNearbyRecommendations` saves your rounded position (set_my_area) and asks alert_candidates() who to
+ * recommend. The server decides eligibility (real members, same field, fresh area, radius, blocks/mutes, a shared
+ * interest/skill or a complementary intent); the pure controller in ./nearbyPolicy applies this phone's cooldown,
+ * daily cap and gap, shows the in-app card and, if allowed, one local notification.
+ * The demo ("Simulate a nearby match") never goes through this path.
  */
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { AppState, Platform } from 'react-native';
+import { Alert, Linking, Platform } from 'react-native';
 import { fieldLabel } from '@/data/options';
-import type { CommunityEvent, FieldId, LatLng, Person, Prefs } from '@/data/types';
-import { fetchAlertCandidates, setMyArea, type AlertHit } from './backend';
+import type { CommunityEvent, FieldId, LatLng } from '@/data/types';
+import { fetchNearbyRecs, isRemoteId, setMyArea } from './backend';
 import { distanceMi } from './geo';
-import { matchPoints } from './match';
+import { POLICY_DEFAULTS, createNearbyController, explainRec, type NearbyRec } from './nearbyPolicy';
 
-export const ALERT_RADIUS_MI = 1; // keep in step with alert_candidates (radius default 1, capped at 5 in SQL)
-const COOLDOWN_MS = 3 * 3_600_000;
 const CHANNEL = 'nearby';
 const EVENT_SOON_MS = 60 * 60_000;
+const EVENT_RADIUS_MI = 1;
+const POLL_MS = 60_000;
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
 });
 
-/** Asks for notification permission. Returns true if alerts can be shown. */
-export async function enableNearbyAlerts(): Promise<boolean> {
+/** granted (incl. iOS provisional), undetermined (we may ask), blocked (denied and the system won't ask again). */
+export type NotifState = 'granted' | 'undetermined' | 'blocked';
+
+export async function notificationState(): Promise<NotifState> {
+  try {
+    const p = await Notifications.getPermissionsAsync();
+    // iOS: rely on ios.status (SDK 58 docs); provisional (3) and ephemeral (4) deliver, quietly. Numbers because the
+    // IosAuthorizationStatus enum is re-exported in a way the import linter can't follow (like AndroidImportance below).
+    const iosOk = p.ios?.status === 3 || p.ios?.status === 4;
+    if (p.granted || iosOk) return 'granted';
+    return p.canAskAgain ? 'undetermined' : 'blocked';
+  } catch {
+    return 'blocked';
+  }
+}
+
+async function requestNotifications(): Promise<NotifState> {
   try {
     if (Platform.OS === 'android') {
       // 6 = AndroidImportance.HIGH (the enum is re-exported in a way the import linter can't follow).
       await Notifications.setNotificationChannelAsync(CHANNEL, { name: 'People nearby', importance: 6 });
     }
-    const cur = await Notifications.getPermissionsAsync();
-    if (cur.granted) return true;
-    if (!cur.canAskAgain) return false;
-    return (await Notifications.requestPermissionsAsync()).granted;
-  } catch {
-    return false;
-  }
+    await Notifications.requestPermissionsAsync();
+  } catch {}
+  return notificationState();
 }
 
-export type AlertPermission = 'granted' | 'denied' | 'undetermined';
-
-/** Reads the notification permission without prompting. */
-export async function alertPermission(): Promise<AlertPermission> {
-  try {
-    const p = await Notifications.getPermissionsAsync();
-    return p.granted ? 'granted' : p.canAskAgain ? 'undetermined' : 'denied';
-  } catch {
-    return 'denied';
-  }
-}
-
-/** Live, in-person events in your field that start within the hour and are within 1 mile of `me`. */
-export function eventsStartingSoon(me: LatLng, events: CommunityEvent[], myField: FieldId | null | undefined, now: number, mi = ALERT_RADIUS_MI) {
-  if (!myField) return [];
-  return events.filter(
-    (e) => !e.isDemo && !e.online && e.field === myField && e.start >= now - 15 * 60_000 && e.start <= now + EVENT_SOON_MS && e.end > now && distanceMi(me, e.coord) <= mi,
+const ask = (title: string, body: string, yes: string) =>
+  new Promise<boolean>((resolve) =>
+    Alert.alert(title, body, [{ text: 'Not now', style: 'cancel', onPress: () => resolve(false) }, { text: yes, onPress: () => resolve(true) }], { cancelable: true, onDismiss: () => resolve(false) }),
   );
+
+/**
+ * Turning alerts on: explain first, then ask for notification permission. Alerts stay on either way: without
+ * permission you still get the in-app card while the map is open. Returns the notification state.
+ */
+export async function turnOnNearbyAlerts(radiusMi: number): Promise<NotifState> {
+  let state = await notificationState();
+  const what = `When a Connected member in your field is within about ${radiusMi} mi and you share an interest, skill or mentoring goal, you'll see a card on the map${state === 'granted' ? ' and a notification' : ''}. Only while the app is open on the map with live location on.`;
+  if (state === 'undetermined') {
+    if (await ask('Nearby recommendations', `${what}\n\nAllow notifications so you also get a banner? Nothing is ever sent to the other person automatically.`, 'Continue')) state = await requestNotifications();
+  }
+  if (state === 'blocked') {
+    Alert.alert('In-app only', `${what}\n\nNotifications are off for Connected, so you'll only see the card in the app. You can allow them in Settings.`, [
+      { text: 'OK', style: 'cancel' },
+      { text: 'Open Settings', onPress: () => Linking.openSettings() },
+    ]);
+  } else if (state === 'granted') {
+    Alert.alert('Nearby alerts on', what);
+  }
+  return state;
 }
 
 /** Sends a real local notification. Returns false (and logs why) instead of failing silently. */
@@ -75,112 +92,97 @@ export async function sendLocal(title: string, body: string, data: Record<string
   }
 }
 
-/** The notification for a nearby member. Shared by the real path and the demo so both look identical. */
-export function notifyNearby(p: Person | AlertHit, prefs: Prefs | undefined, mi: number, demo = false): Promise<boolean> {
-  // Lead with why they fit (shared skill, employer or role from experience) when there is one.
-  const why = prefs && 'skills' in p ? matchPoints(p, prefs).find((x) => /^(Also worked at|Also skilled in|Has worked in)/.test(x.text))?.text : undefined;
-  return sendLocal(
-    `${demo ? 'Demo · ' : ''}${p.name} is nearby · ${fieldLabel(p.field)}`,
-    `${why ? `${why}. ` : ''}${'role' in p ? `${p.role}${p.org ? ` at ${p.org}` : ''} · ` : ''}${mi < 0.3 ? 'right around you' : `about ${mi.toFixed(1)} mi away`}.${demo ? ' (Simulated for the demo.)' : ''} Tap to say hi.`,
-    { personId: p.id },
+/** One notification for a recommendation; the text is the same shared-labels-only explanation as the card. */
+export async function notifyRec(r: NearbyRec): Promise<boolean> {
+  if ((await notificationState()) !== 'granted') return false;
+  return r.demo
+    ? sendLocal(`Demo · ${r.name} is nearby`, `${explainRec(r)} (Simulated for the demo, not a real member.)`, { demoPersonId: r.id })
+    : sendLocal('You should connect', explainRec(r), { personId: r.id, nearby: '1' });
+}
+
+/** Live, in-person events in your field that start within the hour and are within 1 mile of `me`. */
+export function eventsStartingSoon(me: LatLng, events: CommunityEvent[], myField: FieldId | null | undefined, now: number, mi = EVENT_RADIUS_MI) {
+  if (!myField) return [];
+  return events.filter(
+    (e) => !e.isDemo && !e.online && e.field === myField && e.start >= now - 15 * 60_000 && e.start <= now + EVENT_SOON_MS && e.end > now && distanceMi(me, e.coord) <= mi,
   );
 }
 
-export function useNearbyAlerts(enabled: boolean, me: LatLng | null, people: AlertHit[], myField: FieldId | null | undefined, events: CommunityEvent[] = [], prefs?: Prefs) {
+/** Same-field events starting soon nearby (3-hour cooldown per event, in memory). */
+export function useEventAlerts(enabled: boolean, me: LatLng | null, myField: FieldId | null | undefined, events: CommunityEvent[]) {
   const lastAlert = useRef(new Map<string, number>());
   const lat = me?.latitude;
   const lng = me?.longitude;
-
   useEffect(() => {
     if (!enabled || lat == null || lng == null || !myField) return;
-    const here = { latitude: lat, longitude: lng };
     const now = Date.now();
-    // The server already filtered by field, verified and radius.
-    for (const p of people) {
-      if (now - (lastAlert.current.get(p.id) ?? 0) < COOLDOWN_MS) continue;
-      lastAlert.current.set(p.id, now);
-      // A failed send must not burn the 3-hour cooldown.
-      void notifyNearby(p, prefs, p.distanceMi).then((ok) => { if (!ok) lastAlert.current.delete(p.id); });
-    }
-    for (const e of eventsStartingSoon(here, events, myField, now)) {
+    for (const e of eventsStartingSoon({ latitude: lat, longitude: lng }, events, myField, now)) {
       const key = `event:${e.id}`;
-      if (now - (lastAlert.current.get(key) ?? 0) < COOLDOWN_MS) continue;
+      if (now - (lastAlert.current.get(key) ?? 0) < 3 * 3_600_000) continue;
       lastAlert.current.set(key, now);
       const mins = Math.max(0, Math.round((e.start - now) / 60_000));
-      void sendLocal(`${e.title} · ${fieldLabel(e.field)}`, `${mins <= 0 ? 'Starting now' : `Starts in ${mins} min`} at ${e.venue}, within ${ALERT_RADIUS_MI} mile of you.`, { eventId: e.id });
+      void notificationState().then((s) => s === 'granted' && sendLocal(`${e.title} · ${fieldLabel(e.field)}`, `${mins <= 0 ? 'Starting now' : `Starts in ${mins} min`} at ${e.venue}, within ${EVENT_RADIUS_MI} mile of you.`, { eventId: e.id }));
     }
-  }, [enabled, lat, lng, people, myField, events, prefs]);
-
-  // Tapping an alert opens that person's profile or event.
-  useEffect(() => {
-    const sub = Notifications.addNotificationResponseReceivedListener((r) => {
-      const data = r.notification.request.content.data;
-      if (typeof data?.eventId === 'string') router.push({ pathname: '/event/[id]', params: { id: data.eventId } });
-      else if (typeof data?.personId === 'string') router.push({ pathname: '/person/[id]', params: { id: data.personId } });
-    });
-    return () => sub.remove();
-  }, []);
+  }, [enabled, lat, lng, myField, events]);
 }
 
-const PRESENCE_EVERY_MS = 60_000;
-const PRESENCE_MIN_GAP_MS = 20_000;
+/**
+ * Notification taps, mounted once at the root so a tap that opened the app (cold start) is handled too.
+ * Real people open with `nearby=1`, which makes the person screen re-check eligibility. Demo taps open the demo
+ * profile without it. Each response is handled once and then cleared.
+ */
+export function useNotificationRouting() {
+  const last = Notifications.useLastNotificationResponse();
+  const handled = useRef<string | null>(null);
+  useEffect(() => {
+    if (!last || handled.current === last.notification.request.identifier) return;
+    handled.current = last.notification.request.identifier;
+    const data = last.notification.request.content.data;
+    if (typeof data?.eventId === 'string') router.push({ pathname: '/event/[id]', params: { id: data.eventId } });
+    else if (typeof data?.personId === 'string' && isRemoteId(data.personId)) router.push({ pathname: '/person/[id]', params: { id: data.personId, nearby: '1' } });
+    else if (typeof data?.demoPersonId === 'string' && !isRemoteId(data.demoPersonId)) router.push({ pathname: '/person/[id]', params: { id: data.demoPersonId, nearby: 'demo' } });
+    Notifications.clearLastNotificationResponseAsync().catch(() => {});
+  }, [last]);
+}
 
-export type Presence = { candidates: AlertHit[]; error: string | null; syncedAt: number | null };
+export type RecState = { rec: NearbyRec | null; count: number; error: string | null; dismiss: () => void };
 
 /**
- * Real path. While `active` (map open, live location on, signed in): saves your rounded position and loads
- * verified same-field members within 1 mile from Supabase (PostGIS). Runs on the first fix, when you move,
- * and once a minute. Your exact position is never stored: the database rounds it to about a mile.
+ * Real path. Runs only while `active` (map focused, app in foreground, live location granted and on, signed in, real
+ * member, alerts on, discovery on, field set). Leaving any of those stops the timer and drops in-flight answers.
  */
-export function useNearbyPresence(active: boolean, me: LatLng | null, userId: string | undefined, shareArea: boolean): Presence {
-  const [state, setState] = useState<Presence>({ candidates: [], error: null, syncedAt: null });
+export function useNearbyRecommendations(active: boolean, me: LatLng | null, userId: string | undefined, shareArea: boolean, cooldownH: number): RecState {
+  const [rec, setRec] = useState<NearbyRec | null>(null);
+  const [res, setRes] = useState<{ count: number; error: string | null }>({ count: 0, error: null });
   const meRef = useRef(me);
-  const lastRun = useRef(0);
-  const inFlight = useRef(false);
-  const runRef = useRef<() => void>(() => {});
-  const lat = me?.latitude;
-  const lng = me?.longitude;
-  const hasFix = lat != null && lng != null;
-
   useEffect(() => {
-    meRef.current = hasFix ? { latitude: lat, longitude: lng } : null;
-  }, [hasFix, lat, lng]);
+    meRef.current = me;
+  }, [me]);
+  const hasFix = me != null;
 
-  // One stable timer per session: GPS fixes arrive every few seconds and must not reset it.
   useEffect(() => {
     if (!active || !userId || !hasFix) return;
-    let alive = true;
-    runRef.current = async () => {
-      const at = meRef.current;
-      if (!alive || !at || inFlight.current || AppState.currentState !== 'active') return;
-      inFlight.current = true;
-      lastRun.current = Date.now();
-      try {
-        if (shareArea) await setMyArea(at);
-        const candidates = await fetchAlertCandidates(at, ALERT_RADIUS_MI);
-        if (alive) setState({ candidates, error: null, syncedAt: Date.now() });
-      } catch (e) {
-        console.warn('Nearby check failed', e);
-        // Drop old candidates on failure so stale people can't keep alerting.
-        if (alive) setState({ candidates: [], error: e instanceof Error ? e.message : 'Nearby check failed', syncedAt: null });
-      } finally {
-        inFlight.current = false;
-      }
-    };
-    const first = setTimeout(() => runRef.current(), Math.max(0, PRESENCE_MIN_GAP_MS - (Date.now() - lastRun.current)));
-    const every = setInterval(() => runRef.current(), PRESENCE_EVERY_MS);
+    const c = createNearbyController({
+      userId,
+      policy: { ...POLICY_DEFAULTS, cooldownH },
+      everyMs: POLL_MS,
+      now: Date.now,
+      setInterval: (fn, ms) => setInterval(fn, ms),
+      clearInterval: (h) => clearInterval(h as ReturnType<typeof setInterval>),
+      storage: AsyncStorage,
+      beforeFetch: shareArea ? async () => { if (meRef.current) await setMyArea(meRef.current); } : undefined,
+      fetchRecs: fetchNearbyRecs,
+      onRecommend: setRec,
+      notify: notifyRec,
+      onResult: (recs, error) => setRes({ count: recs.length, error }),
+    });
+    void c.start();
     return () => {
-      alive = false;
-      clearTimeout(first);
-      clearInterval(every);
+      c.stop();
+      setRec(null);
+      setRes({ count: 0, error: null });
     };
-  }, [active, userId, shareArea, hasFix]);
+  }, [active, userId, hasFix, shareArea, cooldownH]);
 
-  // Moving: re-check on a fix if the last check is at least 20 s old (no timers to reset).
-  useEffect(() => {
-    if (active && userId && Date.now() - lastRun.current >= PRESENCE_MIN_GAP_MS) runRef.current();
-  }, [active, userId, lat, lng]);
-
-  // Nothing to show once the map closes or you sign out.
-  return active && userId ? state : { candidates: [], error: null, syncedAt: null };
+  return active && userId ? { rec, ...res, dismiss: () => setRec(null) } : { rec: null, count: 0, error: null, dismiss: () => {} };
 }

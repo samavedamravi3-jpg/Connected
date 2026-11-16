@@ -14,8 +14,10 @@ export type LayerToggle = { id: string; label: string; hint: string; icon: IconN
 export type StatusItem = { id: string; label: string; state: 'ok' | 'off' | 'warn'; hint?: string };
 export type AlertsPanel = {
   items: StatusItem[];
-  /** Same-field verified people within 1 mile right now (the count alerts are based on). */
+  /** Members the server recommends right now (same field, shared interest/skill or intent, within your alert radius). */
   nearby: number | null;
+  /** Your proximity alert radius (separate from the map's search distance). */
+  radiusMi: number;
   /** Server problem finding nearby members, shown so a failure isn't silent. */
   error?: string | null;
   demo: { value: boolean; onChange: (v: boolean) => void };
@@ -107,15 +109,15 @@ export function LayersSheet({ visible, onClose, looks, look, onLook, toggles, al
               <View style={styles.statusRow}>
                 <Ionicons name="people-outline" size={20} color={C.accent} />
                 <Text style={[styles.rowLabel, { flex: 1 }]}>
-                  Same-field people within 1 mile: {alerts.nearby == null ? 'waiting for your location' : alerts.nearby}
+                  Recommended within about {alerts.radiusMi} mi: {alerts.nearby == null ? 'not checking right now' : alerts.nearby}
                 </Text>
               </View>
-              {alerts.error ? <Text style={[styles.rowHint, { color: C.bad }]}>Couldn’t check for nearby members: {alerts.error}</Text> : null}
+              {alerts.error ? <Text style={[styles.rowHint, { color: C.bad }]}>Couldn’t check for recommendations: {alerts.error}</Text> : null}
               <View style={[styles.row, styles.rowBorder, { paddingHorizontal: 0 }]}>
                 <Ionicons name="flask-outline" size={20} color={alerts.demo.value ? C.accent : C.ink3} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.rowLabel}>Demo: simulate a nearby match</Text>
-                  <Text style={styles.rowHint}>Demo only. Puts a same-field demo person 0.2 mi away and sends a real notification.</Text>
+                  <Text style={styles.rowHint}>Demo only. Puts a sample person 0.2 mi away and shows a card labelled Demo (plus a Demo notification if allowed). Never a real member, never counted toward real alerts.</Text>
                 </View>
                 <Switch value={alerts.demo.value} onValueChange={alerts.demo.onChange} trackColor={{ true: C.accent, false: C.line2 }} accessibilityLabel="Demo: simulate a nearby match" />
               </View>

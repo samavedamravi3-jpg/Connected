@@ -7,7 +7,9 @@ import { Alert, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Tex
 import Animated, { Extrapolation, FadeIn, FadeInUp, FadeOut, FadeOutUp, interpolate, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import MapView, { Circle, Marker, Polygon, Polyline, type MapStyleElement, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FilterSheet } from '@/components/FilterSheet';
+import { NearbyRecCard } from '@/components/NearbyRecCard';
 import { LayersSheet, type AlertsPanel } from '@/components/LayersSheet';
 import { ClusterPin, EventPin, NodePin, YouNode, nodeAnchor } from '@/components/MapPins';
 import { MemberLock } from '@/components/MemberLock';
@@ -22,7 +24,8 @@ import { sortMyFieldFirst } from '@/lib/fieldClassifier';
 import { useClusters, type MapView as MapRegion } from '@/lib/cluster';
 import { approxDistance, deltaForMiles, distanceMi, travelTime } from '@/lib/geo';
 import { canSeeDoor, doorActive, matchPoints, matchScore, matchStrength } from '@/lib/match';
-import { ALERT_RADIUS_MI, alertPermission, enableNearbyAlerts, notifyNearby, useNearbyAlerts, useNearbyPresence, type AlertPermission } from '@/lib/nearbyAlerts';
+import { notificationState, notifyRec, turnOnNearbyAlerts, useEventAlerts, useNearbyRecommendations, type NotifState } from '@/lib/nearbyAlerts';
+import { muteAlertsFor, pausedReason, sharedLabels, type NearbyRec } from '@/lib/nearbyPolicy';
 import { useLiveLocation, type Fix } from '@/lib/useLiveLocation';
 import { useApp } from '@/state/AppState';
 import { C, F, R, S, T, alpha, shadow } from '@/theme';
@@ -240,72 +243,89 @@ export default function MapScreen() {
   }, [pool, filters, blocked, prefs, origin, realOnly]);
   const realCount = people.filter((p) => !p.isDemo).length;
 
-  // "Someone is nearby" alerts: verified same-field members within 1 mile of your live position, while the map is open.
-  // Real path: while the map is open we save your rounded position and ask Supabase (PostGIS) who is within 1 mile.
+  // Nearby recommendations ("You should connect"): real members the server says you share something with, within
+  // YOUR alert radius of YOUR saved coarse area, only while this map is open with live location on. The map's search
+  // distance and panned centre are never used for this.
   const liveMe = live && loc.fix ? loc.fix.coord : null;
   const mapOpen = loc.watching;
-  const presence = useNearbyPresence(mapOpen && !!app.session, liveMe, app.session?.userId, prefs.shareMode === 'area');
-  const alertPeople = useMemo(() => {
-    const ids = new Set<string>();
-    // Only fresh server results alert: map-loaded people may carry old saved areas.
-    return presence.candidates.filter((p) => !blocked.includes(p.id) && !ids.has(p.id) && ids.add(p.id));
-  }, [presence.candidates, blocked]);
-  useNearbyAlerts(app.nearbyAlerts, liveMe, alertPeople, prefs.field, visibleEvents, prefs);
-  const countAt = liveMe ?? (sim ? origin : null);
-  const closeBy = countAt ? alertPeople.length + (sim ? 1 : 0) : 0;
+  const discovering = prefs.discoverable && prefs.shareMode === 'area';
+  const paused = pausedReason({
+    alertsOn: app.nearbyAlerts, signedIn: !!app.session, realMember: !app.memberLocked && app.idStatus === 'verified', discoverable: prefs.discoverable,
+    sharingArea: prefs.shareMode === 'area', fieldSet: !!prefs.field, locationGranted: loc.perm === 'granted', mapLive: mapOpen,
+  });
+  const recs = useNearbyRecommendations(!paused, liveMe, app.session?.userId, discovering, app.nearbyCooldownH);
+  useEventAlerts(app.nearbyAlerts, liveMe, prefs.field, visibleEvents);
+  // A recommendation about someone you blocked or muted since is never shown.
+  const realCard = recs.rec && !blocked.includes(recs.rec.id) ? recs.rec : null;
 
-  const [notifPerm, setNotifPerm] = useState<AlertPermission>('undetermined');
+  // DEMO: a simulated card about the demo person. Never from the server, never recorded, never a real person.
+  const [demoRec, setDemoRec] = useState<NearbyRec | null>(null);
+  const card = demoRec ?? realCard;
+  const closeBy = paused ? (sim ? 1 : 0) : recs.count + (sim ? 1 : 0);
+
+  const [notifPerm, setNotifPerm] = useState<NotifState>('undetermined');
   useEffect(() => {
-    if (showLayers) alertPermission().then(setNotifPerm);
+    if (showLayers) notificationState().then(setNotifPerm);
   }, [showLayers]);
   const toggleSim = async (on: boolean) => {
     if (!on) {
       clearSimulatedMatches();
       setSim(null);
+      setDemoRec(null);
       return;
     }
-    if (!prefs.field) return Alert.alert('Set your field first', 'Alerts are same-field only. Pick the field you want to grow in under Profile > Preferences, then try again.');
+    if (!prefs.field) return Alert.alert('Set your field first', 'Recommendations are same-field only. Pick the field you want to grow in under Profile > Preferences, then try again.');
     const at = liveMe ?? origin;
     const person = simulateNearbyMatch(prefs.field, at, 0.2);
     if (!person) return Alert.alert('No demo person', 'There isn’t a demo person in your field to place nearby.');
     setSim({ ...person, distanceMi: 0.2 });
     setShowLayers(false);
     flyTo(at, 0.6, 600);
-    const granted = (await alertPermission()) === 'granted' || (await enableNearbyAlerts());
-    setNotifPerm(granted ? 'granted' : 'denied');
-    if (!granted) return Alert.alert('Notifications are off', 'The demo person is on the map, but allow notifications in Settings to see the alert.', [{ text: 'Not now', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }]);
-    if (!(await notifyNearby(person, prefs, 0.2, true))) Alert.alert('Couldn’t send the notification', 'The demo person is on the map, but the notification failed. Check notification settings for this app.');
+    const labels = sharedLabels([...prefs.interests, ...prefs.skills], [...person.interests, ...person.skills]);
+    const intents: NearbyRec['sharedIntents'] = prefs.goals.includes('mentorship') && person.offers.includes('mentorship') ? ['they_offer_mentorship'] : [];
+    const r: NearbyRec = { id: person.id, name: person.name, distanceBucketMi: 0.5, sharedLabels: labels, sharedIntents: intents, demo: true };
+    setDemoRec(r);
+    // A demo notification is labelled Demo and opens the demo profile only. Not counted against real alert limits.
+    const state = await notificationState();
+    setNotifPerm(state);
+    if (state === 'granted' && !(await notifyRec(r))) Alert.alert('Couldn’t send the notification', 'The demo card is on the map, but the notification failed. Check notification settings for this app.');
   };
   const alertsPanel: AlertsPanel = {
     items: [
-      { id: 'notif', label: 'Notifications allowed', state: notifPerm === 'granted' ? 'ok' : 'off', hint: notifPerm === 'granted' ? undefined : notifPerm === 'denied' ? 'Turn them on in Settings.' : 'Switch on Nearby alerts to allow them.' },
       { id: 'on', label: 'Nearby alerts switched on', state: app.nearbyAlerts ? 'ok' : 'off' },
+      { id: 'notif', label: 'Notifications allowed', state: notifPerm === 'granted' ? 'ok' : 'warn', hint: notifPerm === 'granted' ? undefined : notifPerm === 'blocked' ? 'Off in Settings: you’ll see the in-app card only.' : 'Optional: switch alerts on to be asked. Without it you get the in-app card.' },
       { id: 'signed', label: 'Signed in', state: app.session ? 'ok' : 'off', hint: app.session ? undefined : 'Real members only appear once you’re signed in.' },
-      { id: 'verified', label: 'You’re verified', state: app.verification.verified ? 'ok' : 'warn', hint: app.verification.verified ? undefined : 'Not needed for you to get alerts, but others only get alerts about verified members.' },
-      { id: 'share', label: 'Sharing your area', state: prefs.shareMode === 'area' ? 'ok' : 'off', hint: prefs.shareMode === 'area' ? undefined : 'You only see who’s nearby if you share your area (about 1 mile). Change it in Preferences.' },
-      { id: 'field', label: 'Field set', state: prefs.field ? 'ok' : 'off', hint: prefs.field ? undefined : 'Alerts are same-field only. Set it in Preferences.' },
+      { id: 'verified', label: 'ID verified', state: app.idStatus === 'verified' ? 'ok' : 'off', hint: app.idStatus === 'verified' ? undefined : 'Recommendations are between real (ID-verified) members only.' },
+      { id: 'share', label: 'In nearby discovery, sharing your area', state: discovering ? 'ok' : 'off', hint: discovering ? undefined : 'Turn on discovery and your rough area (about 1 km) in Profile.' },
+      { id: 'field', label: 'Field set', state: prefs.field ? 'ok' : 'off', hint: prefs.field ? undefined : 'Recommendations are same-field only. Set it in Preferences.' },
       {
         id: 'map', label: 'Map open with live location', state: mapOpen ? 'ok' : 'off',
         hint: mapOpen ? undefined : loc.perm !== 'granted' ? 'Allow location while using the app.' : !live ? 'Turn on Live location above.' : 'Keep this tab open with the app on screen.',
       },
     ],
-    nearby: countAt ? closeBy : null,
-    error: presence.error,
+    nearby: paused ? (sim ? 1 : null) : closeBy,
+    radiusMi: app.nearbyRadiusMi,
+    error: recs.error,
     demo: { value: !!sim, onChange: (v) => void toggleSim(v) },
   };
   const toggleAlerts = async () => {
     if (app.nearbyAlerts) return app.setNearbyAlerts(false);
-    const ok = await enableNearbyAlerts();
-    setNotifPerm(ok ? 'granted' : 'denied');
-    if (!ok) {
-      Alert.alert('Notifications are off', 'Allow notifications for this app in Settings to get nearby alerts.', [
-        { text: 'Not now', style: 'cancel' },
-        { text: 'Open Settings', onPress: () => Linking.openSettings() },
-      ]);
-      return;
-    }
     app.setNearbyAlerts(true);
-    Alert.alert('Nearby alerts on', `You'll get a notification when a Connected member in your field is within ${ALERT_RADIUS_MI} mile, or a same-field event is about to start nearby, while the map is open with live location on.`);
+    setNotifPerm(await turnOnNearbyAlerts(app.nearbyRadiusMi));
+  };
+  const openCard = (r: NearbyRec) => {
+    if (r.demo) {
+      setDemoRec(null);
+      router.push({ pathname: '/person/[id]', params: { id: r.id, nearby: 'demo' } });
+    } else {
+      recs.dismiss();
+      router.push({ pathname: '/person/[id]', params: { id: r.id, nearby: '1' } });
+    }
+  };
+  const notNow = (r: NearbyRec) => (r.demo ? setDemoRec(null) : recs.dismiss());
+  const muteCard = (r: NearbyRec) => {
+    recs.dismiss();
+    if (app.session) muteAlertsFor(AsyncStorage, app.session.userId, r.id).catch((e) => console.warn('Could not mute alerts', e));
   };
   const shareCard =
     !hideShareCard && app.backendEnabled
@@ -663,8 +683,10 @@ export default function MapScreen() {
           ) : null}
         </View>
 
-        {/* A single status slot under the chips, so nothing stacks over the map. */}
-        {moved ? (
+        {/* A single status slot under the chips, so nothing stacks over the map. A recommendation takes priority. */}
+        {card ? (
+          <NearbyRecCard rec={card} onView={() => openCard(card)} onNotNow={() => notNow(card)} onMute={() => muteCard(card)} />
+        ) : moved ? (
           <Animated.View entering={FadeInUp.duration(180)} exiting={FadeOutUp.duration(140)} style={{ alignSelf: 'center' }}>
             <Pressable
               onPress={() => { setSearchCenter(mapCenter); setAreaName('this area'); setSelectedId(null); if (!loc.fix) setHere({ coord: mapCenter, label: 'this area', isGps: false }); }}
@@ -693,7 +715,7 @@ export default function MapScreen() {
         ) : (app.nearbyAlerts || sim) && closeBy ? (
           <Animated.View entering={FadeInUp.duration(180)} exiting={FadeOutUp.duration(140)} style={[styles.pill, shadow, { alignSelf: 'center' }]} accessibilityLiveRegion="polite">
             <View style={styles.nearDot} />
-            <Text style={styles.pillText}>{closeBy} same-field member{closeBy === 1 ? '' : 's'} within {ALERT_RADIUS_MI} mile</Text>
+            <Text style={styles.pillText}>{closeBy} recommended member{closeBy === 1 ? '' : 's'} within about {app.nearbyRadiusMi} mi{sim ? ' (incl. demo)' : ''}</Text>
           </Animated.View>
         ) : null}
       </View>
@@ -923,7 +945,7 @@ export default function MapScreen() {
           { id: 'hot', label: 'Hotspots', hint: 'Neighborhood hubs, shown as soft areas. Not people.', icon: 'flame-outline', value: showHotspots, onChange: (v) => { setShowHotspots(v); setHotspotId(null); } },
           { id: 'lines', label: 'Connection lines', hint: 'Lines to your best matches', icon: 'git-network-outline', value: showLines, onChange: setShowLines },
           { id: 'events', label: 'Events', hint: 'In-person events nearby', icon: 'calendar-outline', value: showEvents, onChange: setShowEvents },
-          { id: 'alerts', label: 'Nearby alerts', hint: 'Same-field people within 1 mile', icon: 'notifications-outline', value: app.nearbyAlerts, onChange: () => { setShowLayers(false); void toggleAlerts(); } },
+          { id: 'alerts', label: 'Nearby alerts', hint: `Same-field recommendations within about ${app.nearbyRadiusMi} mi`, icon: 'notifications-outline', value: app.nearbyAlerts, onChange: () => { setShowLayers(false); void toggleAlerts(); } },
           ...(loc.perm === 'granted' ? [{ id: 'live', label: 'Live location', hint: 'Keeps your position current', icon: 'location-outline' as const, value: live, onChange: setLive }] : []),
         ]}
       />

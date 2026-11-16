@@ -1,6 +1,6 @@
 # Plan: nearby alerts while the app is closed (not built)
 
-**Status: plan only.** Today alerts fire only while the map is open (foreground location + local notifications), which works in Expo Go.
+**Status: plan only.** Current foreground rules (phase 5: recommendations, radius setting, 24 h cooldown, 3/day cap) are in `docs/nearby-alerts.md`; numbers below (1 mile, 3 h) predate it. Today alerts fire only while the map is open (foreground location + local notifications), which works in Expo Go.
 Closed-app alerts need background location and remote push. Both require a **development build**, not Expo Go (SDK 58 docs):
 - Background location: "not supported in the Expo Go app". TaskManager is unavailable on Android Expo Go and has no background execution on iOS.
 - Remote push: unavailable in Expo Go on Android since SDK 53; push needs FCM v1 (Android) and APNs keys (iOS, paid Apple Developer account) from `eas build`.

@@ -4,12 +4,13 @@ import { DEMO_INCOMING } from '@/data/demo';
 import { dataSource, rememberPeople, setBackendUser, setShowDemo } from '@/data/source';
 import type { ConnectionRequest, Experience, IncomingRequest, LatLng, Message, OpenDoor, Prefs, Profile, RequestStatus } from '@/data/types';
 import {
-  blockRemote, fetchHiddenEventIds, fetchMessages, fetchMyExperiences, syncMyExperiences, fetchMyRequests, fetchPeopleByIds, isRemoteId, loadMyDraft, loadMyRow, muteRemote, myRow, reportEventRemote, reportRemote, rowToMine, saveMyRow, unmuteRemote, type MyRow,
+  blockRemote, fetchHiddenEventIds, loadNearbyAlertPrefs, saveNearbyAlertPrefs, fetchMessages, fetchMyExperiences, syncMyExperiences, fetchMyRequests, fetchPeopleByIds, isRemoteId, loadMyDraft, loadMyRow, muteRemote, myRow, reportEventRemote, reportRemote, rowToMine, saveMyRow, unmuteRemote, type MyRow,
   sendRemoteMessage, sendRemoteRequest, setRemoteRequestStatus, subscribeToMine, unblockRemote, type RemoteMessage, type RemoteRequest,
 } from '@/lib/backend';
 import { EXP_LIMITS, sortExperiences } from '@/lib/experience';
 import { cleanPrefLists, uniqueLabels } from '@/lib/lists';
 import { assertClean } from '@/lib/moderation';
+import { RADIUS_OPTIONS_MI } from '@/lib/nearbyPolicy';
 import { fetchIdStatus, type IdStatus } from '@/lib/idVerification';
 import { authMessage } from '@/lib/authErrors';
 import { createProfileSync, type SaveIssue, type SyncState } from '@/lib/profileSync';
@@ -38,8 +39,12 @@ export type AppData = {
   showDemo: boolean;
   /** Mix the built-in sample events in with real live events. */
   showDemoEvents: boolean;
-  /** Notify me (while the app is open) when a real member is within 1 mile. */
+  /** Nearby recommendations (while the app is open on the map). Saved to the server too (nearby_alert_prefs). */
   nearbyAlerts: boolean;
+  /** Proximity alert distance, separate from the map's search distance. One of RADIUS_OPTIONS_MI. */
+  nearbyRadiusMi: number;
+  /** Hours before the same person can be recommended again. */
+  nearbyCooldownH: number;
   /** When you last opened each chat (by request id), for unread dots. Kept on this phone only. */
   lastRead: Record<string, number>;
   /** Onboarding step to reopen after the account exists: 'idverify', or a later step id. Null when finished. */
@@ -56,7 +61,7 @@ export const emptyPrefs: Prefs = {
 const emptyProfile: Profile = { name: '', lastName: '', status: null, org: '', intro: '', offer: '', photoUri: null };
 
 const fresh = (): AppData => ({
-  onboarded: false, prefs: emptyPrefs, profile: emptyProfile, requests: [], messages: {}, incoming: DEMO_INCOMING, doors: [], savedEvents: [], blocked: [], muted: [], hiddenEvents: [], mutedHosts: [], showDemo: true, showDemoEvents: false, nearbyAlerts: false, lastRead: {},
+  onboarded: false, prefs: emptyPrefs, profile: emptyProfile, requests: [], messages: {}, incoming: DEMO_INCOMING, doors: [], savedEvents: [], blocked: [], muted: [], hiddenEvents: [], mutedHosts: [], showDemo: true, showDemoEvents: false, nearbyAlerts: false, nearbyRadiusMi: 1, nearbyCooldownH: 24, lastRead: {},
 });
 
 export const SAMPLE: Pick<AppData, 'prefs' | 'profile'> = {
@@ -116,6 +121,7 @@ type Ctx = Omit<AppData, 'requests' | 'messages'> & {
   setShowDemoPeople: (v: boolean) => void;
   setShowDemoEvents: (v: boolean) => void;
   setNearbyAlerts: (v: boolean) => void;
+  setNearbyPrefs: (p: { radiusMi?: number; cooldownH?: number }) => void;
   finishOnboarding: () => void;
   setResumeAt: (s: OnboardingResume | null) => void;
   loadSample: () => void;
@@ -291,6 +297,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sync.schedule(myRow(session.userId, data.profile, data.prefs, hereRef.current));
   }, [sync, session, data.onboarded, data.profile, data.prefs, hereKey]);
 
+  // ---- Nearby alert settings: pull once after sign-in (server wins when it has a row), then push changes ----
+  const [nearbyReady, setNearbyReady] = useState<string | null>(null);
+  useEffect(() => {
+    if (!sessionUserId || !hydrated) return;
+    let alive = true;
+    loadNearbyAlertPrefs(sessionUserId)
+      .then((p) => {
+        if (!alive) return;
+        if (p) setData((d) => ({ ...d, nearbyAlerts: p.enabled, nearbyRadiusMi: p.radiusMi, nearbyCooldownH: p.cooldownH }));
+        setNearbyReady(sessionUserId);
+      })
+      .catch((e) => console.warn('Could not load nearby alert settings', e));
+    return () => {
+      alive = false;
+    };
+  }, [sessionUserId, hydrated]);
+  useEffect(() => {
+    if (!sessionUserId || nearbyReady !== sessionUserId) return;
+    saveNearbyAlertPrefs({ enabled: data.nearbyAlerts, radiusMi: data.nearbyRadiusMi, cooldownH: data.nearbyCooldownH }).catch((e) => console.warn('Could not save nearby alert settings', e));
+  }, [sessionUserId, nearbyReady, data.nearbyAlerts, data.nearbyRadiusMi, data.nearbyCooldownH]);
+
   // ---- Experience sync: pull once after sign-in (remote wins when it has entries), then push changes ----
   const [expReady, setExpReady] = useState<string | null>(null);
   useEffect(() => {
@@ -449,6 +476,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setShowDemoPeople: (v) => setData((d) => ({ ...d, showDemo: v })),
       setShowDemoEvents: (v) => setData((d) => ({ ...d, showDemoEvents: v })),
       setNearbyAlerts: (v) => setData((d) => ({ ...d, nearbyAlerts: v })),
+      setNearbyPrefs: ({ radiusMi, cooldownH }) =>
+        setData((d) => ({
+          ...d,
+          nearbyRadiusMi: radiusMi != null && (RADIUS_OPTIONS_MI as readonly number[]).includes(radiusMi) ? radiusMi : d.nearbyRadiusMi,
+          nearbyCooldownH: cooldownH != null && cooldownH >= 1 && cooldownH <= 168 ? Math.round(cooldownH) : d.nearbyCooldownH,
+        })),
       finishOnboarding: () => setData((d) => ({ ...d, onboarded: true })),
       setResumeAt: (s) => setData((d) => ({ ...d, resumeAt: s })),
       loadSample: () => setData((d) => ({ ...d, ...SAMPLE, onboarded: true, resumeAt: null })),

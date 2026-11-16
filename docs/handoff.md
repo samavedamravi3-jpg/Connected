@@ -12,3 +12,7 @@
 - Impeccable v4.9.x installed at project scope: .claude/skills/impeccable, .claude/agents/impeccable-*, hooks in .claude/settings.local.json (gitignored), engine in ~/.impeccable. Not yet loadable as /impeccable in a session started before install: reload Claude Code (exit, then `claude --continue` in this folder) and run `/impeccable critique` or `/impeccable polish`.
 - Metro on :8081 (exp://192.168.86.34:8081) and API server on :8787 keep running.
 - Not verified on device: all redesign visuals. app.json splash/android icon backgrounds still purple.
+
+## Phase 5: nearby recommendations (not applied, not pushed)
+- DB: `supabase/migrations/20261116200000_nearby_recommendations.sql` (origin-free `alert_candidates()`, `nearby_alert_prefs` + `set_nearby_alert_prefs`). Tests: `supabase/tests/nearby.sql` (local container only). Apply after phases 3 and 4.
+- Client: `src/lib/nearbyPolicy.ts` (pure, tested), `src/lib/nearbyAlerts.ts`, `src/components/NearbyRecCard.tsx`, Profile > Visibility & alerts. Foreground only. Details: `docs/nearby-alerts.md`. Not verified on a phone.

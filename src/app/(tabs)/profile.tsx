@@ -1,12 +1,14 @@
 import { router } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import { Avatar, Button, Card, ChipGroup, KV, Note, Row, Section, Tag } from '@/components/ui';
+import { useEffect, useState } from 'react';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Avatar, Button, Card, ChipGroup, KV, Note, Row, Section, Segmented, Tag } from '@/components/ui';
 import { ResumeExperienceCard } from '@/components/ResumeExperienceCard';
 import { IdBadge, VerifiedBadge } from '@/components/VerifiedBadge';
 import { AVAILABILITY, MEET_MODES, audienceLabel, challengeLabel, dietLabel, fieldLabel, foodLabel, goalLabel, statusLabel, traitLabel, venueById } from '@/data/options';
 import { dataSource } from '@/data/source';
-import { enableNearbyAlerts } from '@/lib/nearbyAlerts';
+import { notificationState, turnOnNearbyAlerts, type NotifState } from '@/lib/nearbyAlerts';
+import { COOLDOWN_OPTIONS_H, LOCATION_ROUNDING, POLICY_DEFAULTS, RADIUS_OPTIONS_MI } from '@/lib/nearbyPolicy';
 import type { AvailabilityId } from '@/data/types';
 import { doorState, fullName } from '@/lib/match';
 import { pickProfilePhoto, removeProfilePhoto } from '@/lib/photo';
@@ -32,6 +34,10 @@ export default function ProfileTab() {
   const { prefs, profile } = app;
   const active = app.doors.filter((d) => ['live', 'upcoming'].includes(doorState(d, app.now)));
   const past = app.doors.filter((d) => !active.includes(d));
+  const [notif, setNotif] = useState<NotifState>('undetermined');
+  useEffect(() => {
+    notificationState().then(setNotif);
+  }, []);
 
   const changePhoto = async () => {
     const res = await pickProfilePhoto(profile.photoUri);
@@ -241,19 +247,43 @@ export default function ProfileTab() {
         <View style={styles.switchRow}>
           <View style={{ flex: 1, gap: 2 }}>
             <Text style={T.label}>Nearby alerts</Text>
-            <Text style={T.small}>Get a notification when a member is within 1 mile. Only while the map is open; no background tracking.</Text>
+            <Text style={T.small}>“You should connect” cards about real members in your field nearby who share an interest, skill or mentoring goal with you. Nothing is ever sent to them automatically.</Text>
           </View>
           <Switch
             value={app.nearbyAlerts}
             onValueChange={async (v) => {
-              if (!v) return app.setNearbyAlerts(false);
-              if (await enableNearbyAlerts()) app.setNearbyAlerts(true);
-              else Alert.alert('Notifications are off', 'Allow notifications for this app in Settings to get nearby alerts.');
+              app.setNearbyAlerts(v);
+              setNotif(v ? await turnOnNearbyAlerts(app.nearbyRadiusMi) : await notificationState());
             }}
             trackColor={{ true: C.accent, false: C.line2 }}
             accessibilityLabel="Nearby alerts"
           />
         </View>
+        {app.nearbyAlerts ? (
+          <View style={{ gap: S.md }}>
+            <View style={{ gap: S.xs }}>
+              <Text style={T.label}>Alert distance</Text>
+              <Segmented label="Alert distance" options={RADIUS_OPTIONS_MI.map((mi) => ({ id: mi, label: `${mi} mi` }))} value={app.nearbyRadiusMi} onChange={(mi) => app.setNearbyPrefs({ radiusMi: mi })} />
+              <Text style={T.small}>Only for these alerts. The map’s search distance (Filters) is separate and doesn’t change who you’re alerted about.</Text>
+            </View>
+            <View style={{ gap: S.xs }}>
+              <Text style={T.label}>Same person again after</Text>
+              <Segmented label="Same person again after" options={COOLDOWN_OPTIONS_H.map((h) => ({ id: h, label: h < 24 ? `${h} h` : h === 24 ? '1 day' : `${h / 24} days` }))} value={app.nearbyCooldownH} onChange={(h) => app.setNearbyPrefs({ cooldownH: h })} />
+              <Text style={T.small}>At most {POLICY_DEFAULTS.dailyCap} alerts a day and one every {POLICY_DEFAULTS.minGapMin} minutes.</Text>
+            </View>
+            {notif !== 'granted' ? (
+              <Note tone="warn" icon="notifications-off-outline">
+                {notif === 'blocked' ? 'Notifications are off for Connected, so you’ll only see the card in the app.' : 'Notifications aren’t allowed yet, so you’ll only see the card in the app.'}
+              </Note>
+            ) : null}
+            {notif === 'blocked' ? <Button label="Open Settings" small variant="secondary" icon="settings-outline" onPress={() => Linking.openSettings()} /> : null}
+            <Note icon="information-circle-outline">
+              Works only while Connected is open on the Map tab with live location on. It can’t alert you when the app is closed or in the background.
+              {'\n\n'}Location is approximate: rounded to {LOCATION_ROUNDING}, so distances are rough (“within about half a mile”).
+              {'\n\n'}What’s shared: when you’re recommended to someone, they see your first name and last initial, a rough distance, and only the interests, skills or mentoring goal you both listed. Never your exact location, your experience or your resume. You must be ID-verified, in nearby discovery and sharing your rough area, and so must they.
+            </Note>
+          </View>
+        ) : null}
         <View style={styles.divider} />
         <View style={styles.switchRow}>
           <View style={{ flex: 1, gap: 2 }}>
@@ -267,7 +297,7 @@ export default function ProfileTab() {
 
       <Section title="Privacy">
         <Note icon="lock-closed-outline">
-          Location is used once, while the app is open, to center your map. It’s never tracked in the background. Other people see an approximate area at most, never your position.
+          Location is used only while the app is open: to center your map and, if nearby alerts are on, to save your rough area (about 1 km) while the map is open. It’s never tracked in the background. Other people see an approximate area at most, never your position.
         </Note>
         {app.blocked.length ? (
           app.blocked.map((id) => (

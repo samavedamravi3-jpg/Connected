@@ -8,12 +8,19 @@ import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Intro } from '@/components/Intro';
+import { useNotificationRouting } from '@/lib/nearbyAlerts';
 import { AppProvider } from '@/state/AppState';
 import { C, F } from '@/theme';
 
 // Keep the native splash up until the fonts settle and the intro is on screen (Intro hides it on mount;
 // Expo Go shows the app icon instead and this call is harmless there).
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+/** Notification taps (including one that launched the app) open the right screen. */
+function NotificationRouting() {
+  useNotificationRouting();
+  return null;
+}
 
 export default function RootLayout() {
   const [introDone, setIntroDone] = useState(false);
@@ -48,6 +55,7 @@ export default function RootLayout() {
             <Stack.Screen name="verify-id" options={{ title: 'Verify your ID', presentation: 'modal' }} />
             <Stack.Screen name="assistant" options={{ headerShown: false, presentation: 'modal' }} />
           </Stack>
+          <NotificationRouting />
           {introDone ? null : <Intro onDone={() => setIntroDone(true)} />}
         </View>
       </AppProvider>

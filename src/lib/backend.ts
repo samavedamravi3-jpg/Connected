@@ -8,6 +8,7 @@ import type {
 } from '@/data/types';
 import { cleanExperience } from './experience';
 import { cleanPrefLists } from './lists';
+import { parseRecs, type NearbyRec } from './nearbyPolicy';
 import { fieldLabelShort } from './match';
 import { assertClean, ContentRejectedError, dbError, experienceProblem, PROFILE_TEXT, profileRuleErrors, type FieldError } from './moderation';
 import { supabase } from './supabase';
@@ -222,13 +223,31 @@ export async function setMyArea(at: LatLng): Promise<void> {
   if (error) throw error;
 }
 
-/** Verified, same-field members within `radiusMi` who recently had the map open (PostGIS on the server). RLS applies. */
-export type AlertHit = { id: string; name: string; field: FieldId; distanceMi: number };
-
-export async function fetchAlertCandidates(at: LatLng, radiusMi = 1): Promise<AlertHit[]> {
-  const { data, error } = await db().rpc('alert_candidates', { lat: at.latitude, lng: at.longitude, radius_mi: radiusMi });
+/**
+ * Nearby recommendations (alert_candidates). No coordinates are sent: the server measures from YOUR stored coarse area
+ * (set_my_area) with YOUR saved alert radius, and returns only id, first name + last initial, a distance bucket and
+ * the shared labels / intents that justify it. Empty unless you're a real member with nearby alerts switched on.
+ */
+export async function fetchNearbyRecs(): Promise<NearbyRec[]> {
+  const { data, error } = await db().rpc('alert_candidates');
   if (error) throw error;
-  return ((data ?? []) as { id: string; name: string; field: FieldId; distance_mi: number }[]).map((r) => ({ id: r.id, name: r.name, field: r.field, distanceMi: Number(r.distance_mi) }));
+  return parseRecs(data);
+}
+
+export type NearbyAlertPrefs = { enabled: boolean; radiusMi: number; cooldownH: number };
+
+/** Your saved proximity alert settings, or null if you never saved any. */
+export async function loadNearbyAlertPrefs(userId: string): Promise<NearbyAlertPrefs | null> {
+  const { data, error } = await db().from('nearby_alert_prefs').select('alerts_enabled, alert_radius_mi, cooldown_hours').eq('user_id', userId).maybeSingle();
+  if (error) throw error;
+  const r = data as { alerts_enabled: boolean; alert_radius_mi: number | string; cooldown_hours: number } | null;
+  return r ? { enabled: r.alerts_enabled, radiusMi: Number(r.alert_radius_mi), cooldownH: r.cooldown_hours } : null;
+}
+
+/** Saves them through the validating RPC (the table itself is read-only for the app). */
+export async function saveNearbyAlertPrefs(p: NearbyAlertPrefs): Promise<void> {
+  const { error } = await db().rpc('set_nearby_alert_prefs', { p_enabled: p.enabled, p_radius_mi: p.radiusMi, p_cooldown_hours: p.cooldownH });
+  if (error) throw error;
 }
 
 export async function fetchPeopleByIds(ids: string[]): Promise<Person[]> {

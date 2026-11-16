@@ -5,7 +5,7 @@ import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleShee
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MeetSpots } from '@/components/MeetSpots';
 import { IdBadge, VerifiedBadge } from '@/components/VerifiedBadge';
-import { Avatar, Button, IconButton, Segmented, Tag } from '@/components/ui';
+import { Avatar, Button, IconButton, Note, Segmented, Tag } from '@/components/ui';
 import { audienceLabel, availabilityLabel, fieldLabel, venueById } from '@/data/options';
 import { dataSource } from '@/data/source';
 import type { Person } from '@/data/types';
@@ -17,7 +17,7 @@ import {
   canSeeDoor, conversationStarter, doorActive, doorState, firstName, matchPoints, matchStrength, sharedInterests, sharedLanguages, sharedSkills, type Tone,
 } from '@/lib/match';
 import type { MeetSpot } from '@/lib/places';
-import { isRemoteId } from '@/lib/backend';
+import { fetchNearbyRecs, isRemoteId } from '@/lib/backend';
 import { idBlocks, isIdRequiredError } from '@/lib/idVerification';
 import { fmtTime, fmtWindow } from '@/lib/time';
 import { latestRequest, useApp } from '@/state/AppState';
@@ -30,7 +30,7 @@ const TONES: { id: Tone; label: string }[] = [
 ];
 
 export default function PersonScreen() {
-  const { id, d, from } = useLocalSearchParams<{ id: string; d?: string; from?: string }>();
+  const { id, d, from, nearby } = useLocalSearchParams<{ id: string; d?: string; from?: string; nearby?: string }>();
   const app = useApp();
   const insets = useSafeAreaInsets();
   const scroll = useRef<ScrollViewInstance>(null);
@@ -43,6 +43,17 @@ export default function PersonScreen() {
     dataSource.fetchPerson(id).then((person) => alive && setFetched({ id, person }));
     return () => { alive = false; };
   }, [id]);
+  // Opened from a nearby recommendation: ask the server again whether they're still eligible right now.
+  const [recheck, setRecheck] = useState<{ id: string; state: 'nearby' | 'gone' | 'error' } | null>(null);
+  useEffect(() => {
+    if (nearby !== '1' || !isRemoteId(id)) return;
+    let alive = true;
+    fetchNearbyRecs()
+      .then((rs) => alive && setRecheck({ id, state: rs.some((r) => r.id === id) ? 'nearby' : 'gone' }))
+      .catch(() => alive && setRecheck({ id, state: 'error' }));
+    return () => { alive = false; };
+  }, [id, nearby]);
+  const nearbyState = nearby === 'demo' ? 'demo' : nearby === '1' && isRemoteId(id) ? (recheck?.id === id ? recheck.state : 'checking') : null;
   const p = cached ?? (fetched?.id === id ? fetched.person : undefined);
   const loadingPerson = !cached && fetched?.id !== id;
   const door = p?.door && doorActive(p.door) ? p.door : undefined;
@@ -175,6 +186,11 @@ export default function PersonScreen() {
         </View>
 
         <View style={styles.body}>
+          {nearbyState === 'checking' ? <Note icon="time-outline">Checking that {first} is still nearby…</Note> : null}
+          {nearbyState === 'nearby' ? <Note tone="accent" icon="location-outline">{first} is still nearby. Nothing is sent unless you write and send a request yourself.</Note> : null}
+          {nearbyState === 'gone' ? <Note tone="warn" icon="navigate-outline">No longer nearby. {first} isn’t nearby or recommended for you right now. You can still look at their profile.</Note> : null}
+          {nearbyState === 'error' ? <Note tone="warn" icon="cloud-offline-outline">Couldn’t check whether {first} is still nearby. Check your connection.</Note> : null}
+          {nearbyState === 'demo' ? <Note icon="flask-outline">Demo: this came from a simulated nearby alert about a sample profile, not a real member.</Note> : null}
           {!req && !isBlocked ? (
             <Button label={`Message ${first}`} icon="chatbubble-outline" onPress={() => scroll.current?.scrollTo({ y: composeY - S.lg, animated: true })} />
           ) : null}
