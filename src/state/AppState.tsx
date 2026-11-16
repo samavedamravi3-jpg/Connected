@@ -456,7 +456,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // Text held back for review comes back into the editor (private), so the next save retries it.
           const draft = await loadMyDraft(d.user.id).catch(() => null);
           const held = draft ? { ...(typeof draft.org === 'string' && { org: draft.org }), ...(typeof draft.intro === 'string' && { intro: draft.intro }), ...(typeof draft.offer === 'string' && { offer: draft.offer }) } : {};
-          setData((cur) => ({ ...cur, onboarded: true, resumeAt: null, prefs: { ...cur.prefs, ...mine.prefs }, profile: { ...cur.profile, ...mine.profile, ...held } }));
+          const heldChips: Partial<Prefs> = Object.fromEntries(
+            (['interests', 'skills', 'languages'] as const).flatMap((k) => (Array.isArray(draft?.[k]) && draft[k].every((x) => typeof x === 'string') ? [[k, draft[k]]] : [])),
+          );
+          setData((cur) => ({ ...cur, onboarded: true, resumeAt: null, prefs: cleanPrefLists({ ...cur.prefs, ...mine.prefs, ...heldChips }), profile: { ...cur.profile, ...mine.profile, ...held } }));
         }
         return { hasProfile: !!row };
       },

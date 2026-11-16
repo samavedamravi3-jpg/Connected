@@ -16,15 +16,8 @@ export const FIELDS: { id: FieldId; label: string; icon: Icon }[] = [
   { id: 'education', label: 'Education', icon: 'school-outline' },
 ];
 
-export const INTERESTS = [
-  'Fintech', 'Data & analytics', 'AI', 'Cybersecurity', 'Product', 'UX research', 'Startups', 'Sustainability',
-  'Public health', 'Community work', 'Sales', 'Investing', 'Teaching', 'Writing', 'Hackathons', 'Open source',
-];
-
-export const SKILLS = [
-  'Excel', 'SQL', 'Python', 'JavaScript', 'Figma', 'Project management', 'Public speaking', 'Customer service',
-  'Spanish', 'Research', 'Writing', 'Financial modeling', 'Clinical care', 'CAD', 'Marketing', 'Teaching',
-];
+// Suggested chips live with the server's allowlist (custom chips get the server's AI review).
+export { INTERESTS, LANGUAGES, SKILLS } from '../../supabase/functions/_shared/profileOptions';
 
 export const GOALS: { id: GoalId; label: string; hint: string; verb: string; icon: Icon }[] = [
   { id: 'mentorship', label: 'Mentorship', hint: 'Someone further along to learn from', verb: 'looking for a mentor', icon: 'compass-outline' },
@@ -63,8 +56,6 @@ export const TRAITS: { id: TraitId; label: string; hint: string; icon: Icon; com
   { id: 'near', label: 'Someone a few years ahead', hint: 'Close enough to remember what it was like', icon: 'footsteps-outline', common: 'A few years ahead' },
   { id: 'hiring', label: 'Recruiters & hiring managers', hint: 'The people who decide who gets hired', icon: 'briefcase-outline', common: 'Involved in hiring' },
 ];
-
-export const LANGUAGES = ['English', 'Spanish', 'Mandarin', 'Hindi', 'Arabic', 'French', 'Vietnamese', 'Portuguese', 'Korean', 'Polish', 'Russian', 'Yoruba', 'Tagalog'];
 
 export const MEET_MODES: { id: MeetMode; label: string; icon: Icon }[] = [
   { id: 'inperson', label: 'In person', icon: 'cafe-outline' },

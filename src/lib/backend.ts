@@ -167,10 +167,19 @@ export function rowToMine(r: ProfileRow): { profile: Partial<Profile>; prefs: Pa
   };
 }
 
+/**
+ * Columns the app may read on other people's rows (the database grants SELECT on exactly these; keep in sync with
+ * supabase/migrations/20261116220000_review_fixes.sql). Your own full row comes from my_profile().
+ */
+export const PUBLIC_PROFILE_COLUMNS =
+  'id, first_name, last_name, status, org, intro, offer, field, mode, interests, skills, languages, foods, diet, availability, meet_mode, discoverable, area_name, area_lat, area_lng, verified, id_verified';
+
+/** Your own row, every column (my_profile() runs as the owner and returns only auth.uid()'s row). */
 export async function loadMyRow(userId: string): Promise<ProfileRow | null> {
-  const { data, error } = await db().from('profiles').select('*').eq('id', userId).maybeSingle();
+  const { data, error } = await db().rpc('my_profile').maybeSingle();
   if (error) throw error;
-  return (data as ProfileRow | null) ?? null;
+  const row = (data as ProfileRow | null) ?? null;
+  return row && row.id === userId ? row : null;
 }
 
 export const RATE_LIMITED_MESSAGE = 'You’ve made a lot of profile changes. Try again in a few minutes.';
@@ -197,29 +206,37 @@ export async function saveMyRow(row: MyRow): Promise<{ held: string[] } | void> 
   throw error;
 }
 
-/** Your profile text held back for review (only you can read it), or null. */
-export async function loadMyDraft(userId: string): Promise<{ org?: string; intro?: string; offer?: string } | null> {
+export type MyDraft = { org?: string; intro?: string; offer?: string; area_name?: string; interests?: string[]; skills?: string[]; languages?: string[] };
+
+/** Your profile text and custom chips held back for review (only you can read them), or null. */
+export async function loadMyDraft(userId: string): Promise<MyDraft | null> {
   const { data, error } = await db().from('profile_drafts').select('fields').eq('user_id', userId).maybeSingle();
   if (error) throw error;
-  return ((data as { fields?: Record<string, unknown> } | null)?.fields as { org?: string; intro?: string; offer?: string } | undefined) ?? null;
+  return ((data as { fields?: Record<string, unknown> } | null)?.fields as MyDraft | undefined) ?? null;
 }
 
 export async function fetchNearby(center: LatLng, radiusMi: number): Promise<Person[]> {
-  const { data, error } = await db().rpc('nearby_profiles', { lat: center.latitude, lng: center.longitude, radius_mi: radiusMi });
+  // The database clamps the radius to 25 miles and rate limits this call.
+  const { data, error } = await db().rpc('nearby_profiles', { lat: center.latitude, lng: center.longitude, radius_mi: Math.min(radiusMi, 25) });
   if (error) throw error;
   return withExperience(((data ?? []) as ProfileRow[]).map(rowToPerson));
 }
 
 /** Everyone you're allowed to see (for search and the assistant). RLS filters the rows. */
 export async function fetchVisible(myId: string): Promise<Person[]> {
-  const { data, error } = await db().from('profiles').select('*').neq('id', myId).eq('discoverable', true).limit(300);
+  const { data, error } = await db().from('profiles').select(PUBLIC_PROFILE_COLUMNS).neq('id', myId).eq('discoverable', true).limit(300);
   if (error) throw error;
   return withExperience(((data ?? []) as ProfileRow[]).map(rowToPerson));
 }
 
-/** Saves your position for alerts. The database rounds it (about a mile) and ignores it for "public places only". */
+/**
+ * Saves your position for alerts. The database rounds it (about a mile), ignores it for "public places only", allows 30
+ * position changes an hour and refuses a jump of more than 25 miles within 10 minutes.
+ */
 export async function setMyArea(at: LatLng): Promise<void> {
   const { error } = await db().rpc('set_my_area', { lat: at.latitude, lng: at.longitude });
+  if (error?.message?.includes('implausible_move')) throw new Error('your position jumped too far. It resumes in about 10 minutes.');
+  if (error?.code === '54000') throw new Error('you’ve moved a lot this hour. It resumes shortly.');
   if (error) throw error;
 }
 
@@ -252,7 +269,7 @@ export async function saveNearbyAlertPrefs(p: NearbyAlertPrefs): Promise<void> {
 
 export async function fetchPeopleByIds(ids: string[]): Promise<Person[]> {
   if (!ids.length) return [];
-  const { data, error } = await db().from('profiles').select('*').in('id', ids);
+  const { data, error } = await db().from('profiles').select(PUBLIC_PROFILE_COLUMNS).in('id', ids);
   if (error) throw error;
   return withExperience(((data ?? []) as ProfileRow[]).map(rowToPerson));
 }

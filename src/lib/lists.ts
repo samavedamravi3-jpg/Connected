@@ -1,8 +1,9 @@
 /** Pure helpers for set-like string lists (chips, preferences) so each label appears once. */
 import type { Prefs } from '@/data/types';
+import { labelKey } from '../../supabase/functions/_shared/profileOptions';
 
-/** Comparison key: NFKC, trimmed, single spaces, case-insensitive. */
-export const labelKey = (s: string) => s.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
+/** Comparison key: NFKC, trimmed, single spaces, case-insensitive (shared with the profile-write function). */
+export { labelKey };
 
 /** Trims, collapses inner whitespace, drops empties and case-insensitive repeats. Keeps the first spelling and the order. */
 export function uniqueLabels<T extends string>(xs: readonly T[] | null | undefined): T[] {
