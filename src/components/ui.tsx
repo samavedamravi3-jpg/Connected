@@ -22,6 +22,9 @@ type ButtonProps = {
 export function Button({ label, onPress, variant = 'primary', icon, disabled, loading, small, style, accessibilityHint }: ButtonProps) {
   const v = btn[variant];
   const off = disabled || loading;
+  // Disabled goes neutral grey in every variant; loading keeps the variant's color and shows a spinner.
+  const dim = disabled && !loading;
+  const fg = dim ? C.ink3 : v.text.color;
   return (
     <Pressable
       accessibilityRole="button"
@@ -30,20 +33,20 @@ export function Button({ label, onPress, variant = 'primary', icon, disabled, lo
       accessibilityState={{ disabled: !!off, busy: !!loading }}
       disabled={off}
       onPress={onPress}
-      style={({ pressed }) => [styles.btn, small && styles.btnSmall, v.box, pressed && v.pressed, disabled && { opacity: 0.45 }, style]}
+      style={({ pressed }) => [styles.btn, small && styles.btnSmall, v.box, pressed && v.pressed, dim && v.off, style]}
     >
-      {loading ? <ActivityIndicator size="small" color={v.text.color} /> : icon ? <Ionicons name={icon} size={small ? 16 : 18} color={v.text.color} /> : null}
-      <Text style={[styles.btnText, small && { fontSize: 14 }, v.text]}>{label}</Text>
+      {loading ? <ActivityIndicator size="small" color={fg} /> : icon ? <Ionicons name={icon} size={small ? 16 : 18} color={fg} /> : null}
+      <Text style={[styles.btnText, small && { fontSize: 14 }, v.text, dim && { color: fg }]}>{label}</Text>
     </Pressable>
   );
 }
 
 const btn = {
-  primary: StyleSheet.create({ box: { backgroundColor: C.accent }, pressed: { backgroundColor: C.accentPressed }, text: { color: C.white } }),
-  blue: StyleSheet.create({ box: { backgroundColor: C.blue }, pressed: { opacity: 0.85 }, text: { color: C.white } }),
-  secondary: StyleSheet.create({ box: { backgroundColor: C.surface, borderWidth: 1, borderColor: C.line2 }, pressed: { backgroundColor: C.bg2 }, text: { color: C.ink } }),
-  quiet: StyleSheet.create({ box: { backgroundColor: 'transparent', paddingHorizontal: S.sm }, pressed: { backgroundColor: C.bg2 }, text: { color: C.ink2 } }),
-  danger: StyleSheet.create({ box: { backgroundColor: 'transparent', paddingHorizontal: S.sm }, pressed: { backgroundColor: C.badSoft }, text: { color: C.bad } }),
+  primary: StyleSheet.create({ box: { backgroundColor: C.accent }, pressed: { backgroundColor: C.accentPressed }, off: { backgroundColor: C.bg2 }, text: { color: C.white } }),
+  blue: StyleSheet.create({ box: { backgroundColor: C.blue }, pressed: { opacity: 0.85 }, off: { backgroundColor: C.bg2 }, text: { color: C.white } }),
+  secondary: StyleSheet.create({ box: { backgroundColor: C.surface, borderWidth: 1, borderColor: C.line2 }, pressed: { backgroundColor: C.bg2 }, off: { borderColor: C.line }, text: { color: C.ink } }),
+  quiet: StyleSheet.create({ box: { backgroundColor: 'transparent', paddingHorizontal: S.sm }, pressed: { backgroundColor: C.bg2 }, off: {}, text: { color: C.ink2 } }),
+  danger: StyleSheet.create({ box: { backgroundColor: 'transparent', paddingHorizontal: S.sm }, pressed: { backgroundColor: C.badSoft }, off: {}, text: { color: C.bad } }),
 };
 
 export function Chip({ label, selected, onPress, icon }: { label: string; selected: boolean; onPress: () => void; icon?: IconName }) {
@@ -54,7 +57,7 @@ export function Chip({ label, selected, onPress, icon }: { label: string; select
       accessibilityLabel={label}
       onPress={onPress}
       hitSlop={4}
-      style={({ pressed }) => [styles.chip, selected && styles.chipOn, pressed && !selected && { backgroundColor: C.bg2 }]}
+      style={({ pressed }) => [styles.chip, selected && styles.chipOn, pressed && (selected ? styles.chipOnPressed : { backgroundColor: C.bg2 })]}
     >
       {selected ? <Ionicons name="checkmark" size={16} color={C.white} /> : icon ? <Ionicons name={icon} size={16} color={C.ink2} /> : null}
       <Text style={[styles.chipText, selected && styles.chipTextOn]}>{label}</Text>
@@ -99,7 +102,7 @@ export function Choice({ title, hint, selected, onPress, multi }: { title: strin
       accessibilityRole={multi ? 'checkbox' : 'radio'}
       accessibilityState={multi ? { checked: selected } : { selected }}
       onPress={onPress}
-      style={({ pressed }) => [styles.choice, selected && styles.choiceOn, pressed && !selected && { backgroundColor: C.bg2 }]}
+      style={({ pressed }) => [styles.choice, selected && styles.choiceOn, pressed && { backgroundColor: selected ? C.accentLine : C.bg2 }]}
     >
       <View style={[styles.mark, multi && { borderRadius: R.sm }, selected && { borderColor: C.accent, backgroundColor: multi ? C.accent : C.surface }]}>
         {selected ? multi ? <Ionicons name="checkmark" size={14} color={C.white} /> : <View style={styles.markDot} /> : null}
@@ -165,9 +168,11 @@ export function Card({ children, style }: { children: ReactNode; style?: StylePr
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
-export function Note({ children, tone = 'neutral', icon }: { children: ReactNode; tone?: 'neutral' | 'warn' | 'accent'; icon?: IconName }) {
-  const bg = tone === 'warn' ? C.warnSoft : tone === 'accent' ? C.accentSoft : C.bg2;
-  const fg = tone === 'warn' ? C.warn : tone === 'accent' ? C.accent : C.ink3;
+const NOTE = { neutral: [C.bg2, C.ink3], warn: [C.warnSoft, C.warn], accent: [C.accentSoft, C.accent], ok: [C.okSoft, C.ok], bad: [C.badSoft, C.bad] } as const;
+
+/** Inline callout. `ok` / `bad` are the success and error states; `accent` is for brand highlights, not status. */
+export function Note({ children, tone = 'neutral', icon }: { children: ReactNode; tone?: keyof typeof NOTE; icon?: IconName }) {
+  const [bg, fg] = NOTE[tone];
   return (
     <View style={[styles.note, { backgroundColor: bg }]}>
       {icon ? <Ionicons name={icon} size={18} color={fg} style={{ marginTop: 1 }} /> : null}
@@ -204,6 +209,7 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: S.sm },
   chip: { minHeight: 40, paddingHorizontal: 14, borderRadius: R.md, borderWidth: 1, borderColor: C.line2, backgroundColor: C.surface, flexDirection: 'row', alignItems: 'center', gap: 6 },
   chipOn: { backgroundColor: C.accent, borderColor: C.accent },
+  chipOnPressed: { backgroundColor: C.accentPressed, borderColor: C.accentPressed },
   chipText: { fontSize: 15, color: C.ink },
   chipTextOn: { color: C.white, fontWeight: '600' },
   seg: { flexDirection: 'row', borderWidth: 1, borderColor: C.line2, borderRadius: R.md, overflow: 'hidden' },

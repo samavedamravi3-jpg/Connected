@@ -3,7 +3,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AVAILABILITY, FIELDS, GOALS, INTERESTS, TRAVEL_MI } from '@/data/options';
 import type { Filters } from '@/lib/filters';
-import { C, R, S, T } from '@/theme';
+import { C, R, S, T, alpha } from '@/theme';
 import { Button, ChipGroup, IconButton, Segmented } from './ui';
 
 type Props = {
@@ -70,7 +70,7 @@ function Block({ label, hint, children }: { label: string; hint?: string; childr
 }
 
 const styles = StyleSheet.create({
-  scrim: { flex: 1, backgroundColor: 'rgba(28,27,23,0.4)' },
+  scrim: { flex: 1, backgroundColor: alpha(C.ink, 0.4) },
   sheet: { maxHeight: '82%', backgroundColor: C.bg, borderTopLeftRadius: R.lg, borderTopRightRadius: R.lg, paddingHorizontal: S.lg, paddingTop: S.sm },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: S.sm },
   foot: { flexDirection: 'row', gap: S.sm, paddingTop: S.md, borderTopWidth: 1, borderTopColor: C.line },

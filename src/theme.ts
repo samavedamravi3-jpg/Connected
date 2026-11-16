@@ -1,18 +1,24 @@
-import { Platform } from 'react-native';
-
-/** Connected. palette: warm paper neutrals, one deep forest-green accent, a muted slate (`blue` token) for info only. */
+/**
+ * Connected. palette: cool, faintly violet neutrals; one rich purple accent (the app icon's purple) reserved for
+ * primary actions, selection, the active tab and meaningful highlights; a muted slate (`blue` token) for info only.
+ * Semantic ok/warn/bad and the map hotspot colors (src/data/hotspots.ts) stay distinct from the accent.
+ * No react-native imports here so node tests can check contrast (src/lib/__tests__/theme.test.ts).
+ */
 export const C = {
-  bg: '#F6F4EE',
-  surface: '#FCFBF7',
-  bg2: '#EFEBE1',
-  line: '#DDD8CB',
-  line2: '#C4BEAE',
-  ink: '#1C1B17',
-  ink2: '#4A4840',
-  ink3: '#66635A',
-  accent: '#1F4D3A',
-  accentPressed: '#173B2C',
-  accentSoft: '#E3ECE5',
+  bg: '#F5F4F8',
+  surface: '#FDFDFE',
+  bg2: '#ECEAF1',
+  line: '#DCD9E3',
+  line2: '#C2BECD',
+  ink: '#1B1A21',
+  ink2: '#47454F',
+  ink3: '#63606C',
+  /** White on accent 7.5:1; accent on accentSoft 6.4:1. Same purple as splash and adaptive icon in app.json. */
+  accent: '#5B35C9',
+  accentPressed: '#4A28A8',
+  accentSoft: '#EEEAFB',
+  /** The icon's lavender dot: pressed state of accentSoft surfaces and marks drawn on solid purple. */
+  accentLine: '#D9CCFF',
   blue: '#2F5D7C',
   blueSoft: '#E4ECF2',
   ok: '#1E6B3E',
@@ -23,6 +29,10 @@ export const C = {
   badSoft: '#FAECE9',
   white: '#FFFFFF',
 } as const;
+
+/** `#RRGGBB` plus alpha as rgba(), for map overlays, scrims and translucent panels. */
+export const alpha = (hex: string, a: number) =>
+  `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)},${a})`;
 
 /** Display face for titles and names only (loaded in the root layout). If loading fails, platforms fall back to the system font. */
 export const F = {
@@ -43,10 +53,8 @@ export const T = {
   label: { fontSize: 15, lineHeight: 20, fontWeight: '600' as const, color: C.ink },
 };
 
-export const AVATAR_COLORS = ['#DCE6DD', '#E8E1D2', '#E3E6D6', '#DDE3E6', '#EADFD6', '#D9E2D5', '#E6E2D8'];
+/** Initials backgrounds: quiet cool tints, one lavender; ink2 initials stay >= 4.5:1 on each. */
+export const AVATAR_COLORS = ['#E4E1EE', '#DDE5EC', '#E8E3DD', '#DFE6E1', '#E9E0E8', '#E2E4E9', '#E6E4DA'];
 
-/** Subtle neutral lift, for floating map controls and sheets only. */
-export const shadow = Platform.select({
-  ios: { shadowColor: '#1C1B17', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
-  default: { elevation: 3 },
-});
+/** Subtle neutral lift, for floating map controls and sheets only. iOS reads the shadow* keys, Android the elevation. */
+export const shadow = { shadowColor: C.ink, shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 3 };

@@ -30,7 +30,7 @@ Used on a phone, often on the move (campus, events, cafes). Four tabs; the map w
 
 ## Brand Commitments
 
-- Forest-green accent on warm paper; Bricolage Grotesque headings.
+- Rich purple accent (#5B35C9, the app icon and splash purple) on cool neutral surfaces, used only for actions, selection and meaningful highlights; Bricolage Grotesque headings.
 - Personality: calm, trustworthy, useful.
 
 ## Evidence on Hand

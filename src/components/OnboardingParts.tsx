@@ -12,10 +12,10 @@ export function OptionCard({ icon, title, hint, selected, onPress, multi }: { ic
       accessibilityState={multi ? { checked: selected } : { selected }}
       accessibilityLabel={hint ? `${title}. ${hint}` : title}
       onPress={onPress}
-      style={({ pressed }) => [styles.card, selected && styles.cardOn, pressed && !selected && { backgroundColor: C.bg2 }]}
+      style={({ pressed }) => [styles.card, selected && styles.cardOn, pressed && { backgroundColor: selected ? C.accentLine : C.bg2 }]}
     >
       <View style={[styles.iconWrap, selected && { backgroundColor: C.accent }]}>
-        <Ionicons name={icon} size={20} color={selected ? C.white : C.accent} />
+        <Ionicons name={icon} size={20} color={selected ? C.white : C.ink2} />
       </View>
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={[T.label, { fontSize: 16 }]}>{title}</Text>
@@ -36,10 +36,10 @@ export function Tile({ icon, label, selected, onPress, multi }: { icon: IconName
       accessibilityState={multi ? { checked: selected } : { selected }}
       accessibilityLabel={label}
       onPress={onPress}
-      style={({ pressed }) => [styles.tile, selected && styles.cardOn, pressed && !selected && { backgroundColor: C.bg2 }]}
+      style={({ pressed }) => [styles.tile, selected && styles.cardOn, pressed && { backgroundColor: selected ? C.accentLine : C.bg2 }]}
     >
       <View style={[styles.iconWrap, { width: 44, height: 44, borderRadius: 22 }, selected && { backgroundColor: C.accent }]}>
-        <Ionicons name={icon} size={22} color={selected ? C.white : C.accent} />
+        <Ionicons name={icon} size={22} color={selected ? C.white : C.ink2} />
       </View>
       <Text style={[T.label, { textAlign: 'center' }]}>{label}</Text>
     </Pressable>
@@ -78,7 +78,8 @@ export function Label({ children, right }: { children: ReactNode; right?: ReactN
 const styles = StyleSheet.create({
   card: { flexDirection: 'row', alignItems: 'center', gap: S.md, padding: S.md, paddingRight: S.lg, borderRadius: R.lg, borderWidth: 1, borderColor: C.line2, backgroundColor: C.surface },
   cardOn: { borderColor: C.accent, backgroundColor: C.accentSoft },
-  iconWrap: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
+  // Unselected icons sit on neutral grey so purple only marks the chosen option.
+  iconWrap: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.bg2, alignItems: 'center', justifyContent: 'center' },
   check: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: C.line2, alignItems: 'center', justifyContent: 'center' },
   checkOn: { backgroundColor: C.accent, borderColor: C.accent },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: S.sm },

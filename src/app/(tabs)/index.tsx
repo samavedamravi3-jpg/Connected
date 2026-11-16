@@ -24,37 +24,39 @@ import { canSeeDoor, doorActive, matchPoints, matchScore, matchStrength } from '
 import { ALERT_RADIUS_MI, alertPermission, enableNearbyAlerts, notifyNearby, useNearbyAlerts, useNearbyPresence, type AlertPermission } from '@/lib/nearbyAlerts';
 import { useLiveLocation, type Fix } from '@/lib/useLiveLocation';
 import { useApp } from '@/state/AppState';
-import { C, F, R, S, T, shadow } from '@/theme';
+import { C, F, R, S, T, alpha, shadow } from '@/theme';
 
 /**
- * Connected. map style: a calm warm-paper city with white streets, so forest-green network nodes and
+ * Connected. map style: a calm, cool-neutral city with white streets, so purple network nodes and
  * connection lines read clearly. Fully applied on Android (Google Maps). Apple Maps on iOS can't be
- * recolored, so a soft paper wash (the Polygon below) gives it the same feel there.
+ * recolored, so a soft neutral wash (the Polygon below) gives it the same feel there.
+ * Map-only cartography tints (park, water, label greys) stay local; they are not UI tokens.
  */
-const MAP_BG = '#F1EEE6';
+const MAP_BG = '#F0EFF3';
+const MAP_LABEL = '#8A8794';
 const ANDROID_MAP_STYLE: MapStyleElement[] = [
   { elementType: 'geometry', stylers: [{ color: MAP_BG }] },
   { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#6B675C' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#F6F4EE' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#686570' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: C.bg }] },
   { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
-  { featureType: 'administrative.neighborhood', elementType: 'labels.text.fill', stylers: [{ color: '#8A857A' }] },
+  { featureType: 'administrative.neighborhood', elementType: 'labels.text.fill', stylers: [{ color: MAP_LABEL }] },
   { featureType: 'poi', stylers: [{ visibility: 'off' }] },
   { featureType: 'poi.park', stylers: [{ visibility: 'on' }] },
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#E1E8DC' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#DFE8E0' }] },
   { featureType: 'poi.park', elementType: 'labels', stylers: [{ visibility: 'off' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#FFFFFF' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#E3DED2' }] },
-  { featureType: 'road.arterial', elementType: 'labels.text.fill', stylers: [{ color: '#8A857A' }] },
-  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#ECE6D8' }] },
-  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#DAD2C0' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: C.white }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#E1DEE7' }] },
+  { featureType: 'road.arterial', elementType: 'labels.text.fill', stylers: [{ color: MAP_LABEL }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#E9E7EE' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#D6D2DE' }] },
   { featureType: 'road.local', elementType: 'labels', stylers: [{ visibility: 'off' }] },
   { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#D3DEE0' }] },
-  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#8A857A' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#D3DDE6' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: MAP_LABEL }] },
 ];
-const WASH = Platform.OS === 'ios' ? 'rgba(246,244,238,0.42)' : 'rgba(246,244,238,0.12)';
-const GREEN = (a: number) => `rgba(31,77,58,${a})`; // C.accent with alpha, for map overlays
+const WASH = alpha(C.bg, Platform.OS === 'ios' ? 0.42 : 0.12);
+const ACCENT = (a: number) => alpha(C.accent, a); // map overlays
 const POOL_RADIUS_MI = 25;
 const MAX_LINES = 6;
 const PEEK_MIN = 144;
@@ -468,7 +470,7 @@ export default function MapScreen() {
         accessibilityLabel="Map of your network nearby"
       >
         {look === 'network' ? <Polygon coordinates={wash} fillColor={WASH} strokeWidth={0} strokeColor="transparent" zIndex={0} tappable={false} /> : null}
-        <Circle center={origin} radius={filters.distanceMi * 1609.34} strokeColor={GREEN(0.25)} fillColor={GREEN(0.03)} strokeWidth={1} zIndex={1} />
+        <Circle center={origin} radius={filters.distanceMi * 1609.34} strokeColor={ACCENT(0.25)} fillColor={ACCENT(0.03)} strokeWidth={1} zIndex={1} />
         {eventClusters.clusters.map((c) =>
           c.kind === 'cluster' ? (
             <Marker
@@ -542,7 +544,7 @@ export default function MapScreen() {
                 <Polyline
                   key={`l-${p.id}`}
                   coordinates={[origin, p.coord]}
-                  strokeColor={on ? GREEN(0.9) : p.strength === 'strong' ? GREEN(0.5) : GREEN(0.3)}
+                  strokeColor={on ? ACCENT(0.9) : p.strength === 'strong' ? ACCENT(0.5) : ACCENT(0.3)}
                   strokeWidth={on ? 2.5 : 1.5}
                   lineDashPattern={on ? undefined : [2, 6]}
                   zIndex={2}
@@ -551,7 +553,7 @@ export default function MapScreen() {
             })
           : null}
         {loc.fix && loc.fix.accuracyM && loc.fix.accuracyM < 250 ? (
-          <Circle center={loc.fix.coord} radius={loc.fix.accuracyM} strokeColor={GREEN(0.2)} fillColor={GREEN(0.08)} strokeWidth={1} zIndex={3} />
+          <Circle center={loc.fix.coord} radius={loc.fix.accuracyM} strokeColor={ACCENT(0.2)} fillColor={ACCENT(0.08)} strokeWidth={1} zIndex={3} />
         ) : null}
         {peopleClusters.clusters.map((c) => {
           if (c.kind === 'cluster') {
@@ -648,12 +650,12 @@ export default function MapScreen() {
           </ScrollView>
           {!chipEdge.start ? (
             <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(150)} style={[styles.fade, { left: 0 }]} pointerEvents="none">
-              <LinearGradient colors={['rgba(241,238,230,0.95)', 'rgba(241,238,230,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+              <LinearGradient colors={[alpha(MAP_BG, 0.95), alpha(MAP_BG, 0)]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
             </Animated.View>
           ) : null}
           {chipEdge.end ? (
             <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(150)} style={[styles.fade, { right: 0 }]} pointerEvents="none">
-              <LinearGradient colors={['rgba(241,238,230,0)', 'rgba(241,238,230,0.95)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+              <LinearGradient colors={[alpha(MAP_BG, 0), alpha(MAP_BG, 0.95)]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
             </Animated.View>
           ) : null}
         </View>
@@ -995,7 +997,7 @@ const styles = StyleSheet.create({
   handleHit: { paddingTop: 10, paddingBottom: 6 },
   sheetCounts: { fontSize: 13, lineHeight: 18, color: C.ink2, marginTop: -S.xs },
   // maxWidth keeps the key clear of the right-hand control rail; past that it scrolls sideways instead of wrapping or shrinking.
-  key: { position: 'absolute', left: S.md, bottom: 0, maxWidth: '74%', backgroundColor: 'rgba(252,251,247,0.96)', borderRadius: R.md, borderWidth: 1, borderColor: C.line },
+  key: { position: 'absolute', left: S.md, bottom: 0, maxWidth: '74%', backgroundColor: alpha(C.surface, 0.96), borderRadius: R.md, borderWidth: 1, borderColor: C.line },
   keyScroll: { flexDirection: 'row', alignItems: 'center', columnGap: S.md, paddingHorizontal: 10, paddingVertical: 8 },
   keyRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   keySwatch: { width: 12, height: 12, borderRadius: 6, borderWidth: 1.5 },
@@ -1003,7 +1005,7 @@ const styles = StyleSheet.create({
   emptyCard: { gap: S.sm, paddingHorizontal: S.lg, paddingVertical: S.md, marginBottom: S.lg },
   emptyActions: { flexDirection: 'row', flexWrap: 'wrap', gap: S.sm, marginTop: S.xs },
   emptyTitle: { fontSize: 15, lineHeight: 20, fontWeight: '600', color: C.ink },
-  hotLabel: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(252,251,247,0.95)', borderRadius: R.sm, borderWidth: 1.5, borderColor: 'transparent', paddingHorizontal: 7, paddingVertical: 3, shadowColor: '#1C1B17', shadowOpacity: 0.1, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+  hotLabel: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: alpha(C.surface, 0.95), borderRadius: R.sm, borderWidth: 1.5, borderColor: 'transparent', paddingHorizontal: 7, paddingVertical: 3, shadowColor: C.ink, shadowOpacity: 0.1, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
   hotDot: { width: 7, height: 7, borderRadius: 4 },
   hotText: { fontSize: 11, fontWeight: '600', color: C.ink },
   hotIcon: { width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
@@ -1025,7 +1027,7 @@ const styles = StyleSheet.create({
   tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, minHeight: 44, paddingHorizontal: 4, borderRadius: R.md - 3, borderWidth: 1, borderColor: 'transparent' },
   tabOn: { backgroundColor: C.surface, borderColor: C.line },
   tabText: { fontSize: 14, fontWeight: '500', color: C.ink2 },
-  tabTextOn: { color: C.ink, fontWeight: '600' },
+  tabTextOn: { color: C.accent, fontWeight: '600' },
   tabCount: { fontSize: 13, fontWeight: '600', color: C.ink3, fontVariant: ['tabular-nums'] },
   permRow: { flexDirection: 'row', alignItems: 'center', gap: S.sm, backgroundColor: C.accentSoft, borderRadius: R.md, padding: S.sm, paddingLeft: S.md },
   contact: { flexDirection: 'row', alignItems: 'center', gap: S.md, paddingVertical: S.md, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: C.line },
@@ -1040,7 +1042,7 @@ const styles = StyleSheet.create({
   doorText: { fontSize: 12, fontWeight: '600', color: C.blue },
   freeText: { fontSize: 12, fontWeight: '600', color: C.ok },
   empty: { flexDirection: 'row', alignItems: 'center', gap: S.md, paddingHorizontal: S.lg, paddingVertical: S.md },
-  scrim: { flex: 1, backgroundColor: 'rgba(28,27,23,0.4)', justifyContent: 'center', padding: S.lg },
+  scrim: { flex: 1, backgroundColor: alpha(C.ink, 0.4), justifyContent: 'center', padding: S.lg },
   areaBox: { backgroundColor: C.surface, borderRadius: R.lg, padding: S.lg, gap: S.md },
   areaRow: { flexDirection: 'row', alignItems: 'center', gap: S.md, minHeight: 50, paddingHorizontal: S.sm, borderRadius: R.md },
   areaIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },

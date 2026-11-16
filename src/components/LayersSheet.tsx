@@ -3,7 +3,7 @@ import type { ComponentProps } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { C, R, S, T } from '@/theme';
+import { C, R, S, T, alpha } from '@/theme';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
   legend: { flexDirection: 'row', flexWrap: 'wrap', columnGap: S.lg, rowGap: S.xs, paddingHorizontal: S.xs },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   legendDot: { width: 14, height: 14, borderRadius: 7, borderWidth: 1.5 },
-  scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(28,27,23,0.4)' },
+  scrim: { ...StyleSheet.absoluteFill, backgroundColor: alpha(C.ink, 0.4) },
   anchor: { flex: 1, justifyContent: 'flex-end' },
   sheet: { backgroundColor: C.bg, borderTopLeftRadius: R.lg, borderTopRightRadius: R.lg, paddingHorizontal: S.lg, paddingTop: S.md, gap: S.md },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

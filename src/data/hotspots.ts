@@ -19,8 +19,9 @@ export type Hotspot = {
   peak: string;
 };
 
+/** Map-category colors, deliberately off the purple accent (C.accent) so hubs never read as selection or people clusters. */
 export const HOTSPOT_LEVELS: Record<HotspotLevel, { label: string; hint: string; color: string; fill: string; stroke: string }> = {
-  high: { label: 'Major hub', hint: 'Busiest professional areas', color: '#5B35C9', fill: 'rgba(91,53,201,0.20)', stroke: 'rgba(91,53,201,0.60)' },
+  high: { label: 'Major hub', hint: 'Busiest professional areas', color: '#C2410C', fill: 'rgba(194,65,12,0.18)', stroke: 'rgba(194,65,12,0.60)' },
   medium: { label: 'Active hub', hint: 'Steady weekday activity', color: '#D23F8C', fill: 'rgba(210,63,140,0.16)', stroke: 'rgba(210,63,140,0.55)' },
   emerging: { label: 'Emerging spot', hint: 'Growing, more casual', color: '#0E8A7E', fill: 'rgba(14,138,126,0.15)', stroke: 'rgba(14,138,126,0.55)' },
 };

@@ -11,7 +11,7 @@ import { dataSource } from '@/data/source';
 import { approxDistance, distanceMi } from '@/lib/geo';
 import { dayLabel, fmtTime } from '@/lib/time';
 import { useApp } from '@/state/AppState';
-import { C, R, S, T } from '@/theme';
+import { C, R, S, T, alpha } from '@/theme';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -69,7 +69,7 @@ export default function EventScreen() {
         ) : (
           <Ionicons name={st.icon} size={56} color={st.solid} style={{ alignSelf: 'center', marginTop: insets.top + 70 }} />
         )}
-        <LinearGradient colors={['rgba(28,27,23,0.5)', 'rgba(28,27,23,0)']} style={[styles.topScrim, { height: insets.top + 90 }]} pointerEvents="none" />
+        <LinearGradient colors={[alpha(C.ink, 0.5), alpha(C.ink, 0)]} style={[styles.topScrim, { height: insets.top + 90 }]} pointerEvents="none" />
         <View style={[styles.heroBar, { top: insets.top + S.sm }]}>
           <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back" style={styles.heroBtn} hitSlop={4}>
             <Ionicons name="chevron-back" size={22} color={C.ink} />

@@ -505,9 +505,9 @@ function NetworkArt() {
   const e = [[0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [1, 6], [2, 6], [3, 4]] as const;
   return (
     <Svg width={270} height={150} viewBox="0 0 270 150" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      <Circle cx={130} cy={70} r={30} fill="none" stroke="#FFFFFF" strokeOpacity={0.25} strokeWidth={1.2} />
-      {e.map(([a, b], k) => <Line key={k} x1={n[a][0]} y1={n[a][1]} x2={n[b][0]} y2={n[b][1]} stroke="#FFFFFF" strokeOpacity={0.45} strokeWidth={1.3} />)}
-      {n.map(([x, y, r], k) => <Circle key={k} cx={x} cy={y} r={r} fill={k === 0 ? '#FFFFFF' : '#B9CFC1'} />)}
+      <Circle cx={130} cy={70} r={30} fill="none" stroke={C.white} strokeOpacity={0.25} strokeWidth={1.2} />
+      {e.map(([a, b], k) => <Line key={k} x1={n[a][0]} y1={n[a][1]} x2={n[b][0]} y2={n[b][1]} stroke={C.white} strokeOpacity={0.45} strokeWidth={1.3} />)}
+      {n.map(([x, y, r], k) => <Circle key={k} cx={x} cy={y} r={r} fill={k === 0 ? C.white : C.accentLine} />)}
     </Svg>
   );
 }
@@ -585,7 +585,7 @@ const styles = StyleSheet.create({
   photoBadge: { position: 'absolute', right: 2, bottom: 2, width: 30, height: 30, borderRadius: 15, backgroundColor: C.accent, borderWidth: 3, borderColor: C.bg, alignItems: 'center', justifyContent: 'center' },
   hero: { alignItems: 'center', gap: S.lg, paddingBottom: S.xl + R.lg, backgroundColor: C.accent },
   heroWord: { color: C.white, fontFamily: F.display, fontSize: 34, letterSpacing: -0.8 },
-  heroDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#B9CFC1', marginLeft: 2, marginBottom: 8 },
+  heroDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.accentLine, marginLeft: 2, marginBottom: 8 },
   sheet: { flex: 1, marginTop: -R.lg, backgroundColor: C.bg, borderTopLeftRadius: R.lg, borderTopRightRadius: R.lg },
   howIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
   doneHero: { alignItems: 'center', gap: S.md, paddingHorizontal: S.xl, paddingBottom: S.xxl, backgroundColor: C.accent },

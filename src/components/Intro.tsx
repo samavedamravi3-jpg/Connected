@@ -2,7 +2,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Line } from 'react-native-svg';
-import { C, F } from '@/theme';
+import { C, F, alpha } from '@/theme';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 const AnimatedLine = Animated.createAnimatedComponent(Line);
@@ -21,7 +21,7 @@ const EDGES: [number, number][] = [[0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [1, 6
 const len = (a: number, b: number) => Math.hypot(NODES[a].x - NODES[b].x, NODES[a].y - NODES[b].y);
 
 const TOTAL_HOLD_MS = 2550;
-const NODE = '#B9CFC1'; // pale green on the forest background
+const NODE = C.accentLine; // the icon's lavender dot on the purple background
 
 /** Animated "Connected." launch intro. Calls onDone after it fades out; tap to skip. */
 export function Intro({ onDone }: { onDone: () => void }) {
@@ -89,7 +89,7 @@ export function Intro({ onDone }: { onDone: () => void }) {
                 cy={NODES[0].y}
                 r={v.pulse.interpolate({ inputRange: [0, 1], outputRange: [10, 46] })}
                 fill="none"
-                stroke="#FFFFFF"
+                stroke={C.white}
                 strokeWidth={1.5}
                 opacity={v.pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0] })}
               />
@@ -102,7 +102,7 @@ export function Intro({ onDone }: { onDone: () => void }) {
                     y1={NODES[a].y}
                     x2={NODES[b].x}
                     y2={NODES[b].y}
-                    stroke="#FFFFFF"
+                    stroke={C.white}
                     strokeOpacity={0.55}
                     strokeWidth={1.4}
                     strokeLinecap="round"
@@ -117,7 +117,7 @@ export function Intro({ onDone }: { onDone: () => void }) {
                   cx={n.x}
                   cy={n.y}
                   r={v.nodes[i].interpolate({ inputRange: [0, 1], outputRange: [0, n.r] })}
-                  fill={i === 0 ? '#FFFFFF' : NODE}
+                  fill={i === 0 ? C.white : NODE}
                   opacity={v.nodes[i]}
                 />
               ))}
@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
   fill: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.accent },
   center: { alignItems: 'center', gap: 18, marginTop: -40 },
   wordRow: { flexDirection: 'row', alignItems: 'flex-end' },
-  word: { color: '#FFFFFF', fontFamily: F.display, fontSize: 46, letterSpacing: -1.2 },
+  word: { color: C.white, fontFamily: F.display, fontSize: 46, letterSpacing: -1.2 },
   period: { width: 13, height: 13, borderRadius: 7, backgroundColor: NODE, marginLeft: 3, marginBottom: 11 },
-  tag: { color: 'rgba(255,255,255,0.78)', fontSize: 16, letterSpacing: 0.2 },
+  tag: { color: alpha(C.white, 0.78), fontSize: 16, letterSpacing: 0.2 },
 });

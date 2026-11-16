@@ -56,7 +56,13 @@
           "resizeMode": "contain"
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-notifications",
+        {
+          "color": "#5B35C9"
+        }
+      ]
     ],
     "extra": {
       "router": {

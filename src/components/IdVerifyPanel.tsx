@@ -84,7 +84,7 @@ export function IdVerifyPanel({ onDone, onLater, onSignIn, onEditProfile }: { on
   if (status === 'verified') {
     return (
       <View style={{ gap: S.md }}>
-        <Note tone="accent" icon="shield-checkmark">ID verified. People see an ID badge on your profile.</Note>
+        <Note tone="ok" icon="shield-checkmark">ID verified. People see an ID badge on your profile.</Note>
         {onDone ? <Button label="Continue" onPress={onDone} /> : null}
       </View>
     );
