@@ -46,7 +46,7 @@ export async function startIdVerification(): Promise<'opened' | 'processing'> {
   const d = data as { url?: string; state?: string } | null;
   if (d?.state === 'processing') return 'processing';
   const url = d?.url;
-  if (!url || !/^https:\/\/[^/]*stripe\.com\//.test(url)) throw new Error('Couldn’t start verification. Try again later.');
+  if (!url || !/^https:\/\/([a-z0-9-]+\.)*stripe\.com\//.test(url)) throw new Error('Couldn’t start verification. Try again later.');
   // External browser (Safari / Chrome): camera access works there, and no redirect back into the app is needed.
   try {
     await Linking.openURL(url);
