@@ -70,8 +70,10 @@ export type Person = {
   yearsExp: number;
   foods: FoodId[];
   diet: DietId[];
-  /** Profile photo URL, when the person uploaded one. Demo profiles have none. */
+  /** Profile photo URL (512 px, signed, short-lived), when the person uploaded one. Demo profiles have none. */
   photo?: string;
+  /** 128 px version of `photo` for map markers and small avatars. */
+  photoThumb?: string;
   door?: OpenDoor;
   /** Work or school history, when they chose to show it. */
   experience?: Experience[];

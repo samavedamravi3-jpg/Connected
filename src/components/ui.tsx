@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { ComponentProps, ReactNode } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Image } from 'expo-image';
+import { useState, type ComponentProps, type ReactNode } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { AVATAR_COLORS, C, R, S, T } from '@/theme';
 import { initials } from '@/lib/match';
 
@@ -115,13 +116,14 @@ export function Choice({ title, hint, selected, onPress, multi }: { title: strin
   );
 }
 
-/** Profile photo when there is one, otherwise soft-colored initials. `ring` adds an accent outline. */
+/** Profile photo when there is one (and it loads), otherwise soft-colored initials. `ring` adds an accent outline. */
 export function Avatar({ name, size = 44, uri, ring }: { name: string; size?: number; uri?: string | null; ring?: boolean }) {
+  const [failed, setFailed] = useState<string | null>(null);
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   const inner = ring ? size - 6 : size;
-  const face = uri ? (
-    <Image source={{ uri }} style={{ width: inner, height: inner, borderRadius: inner / 2, backgroundColor: C.bg2 }} accessibilityIgnoresInvertColors />
+  const face = uri && failed !== uri ? (
+    <Image source={{ uri }} style={{ width: inner, height: inner, borderRadius: inner / 2, backgroundColor: C.bg2 }} contentFit="cover" cachePolicy="memory-disk" transition={120} onError={() => setFailed(uri)} accessibilityIgnoresInvertColors />
   ) : (
     <View style={{ width: inner, height: inner, borderRadius: inner / 2, backgroundColor: AVATAR_COLORS[h % AVATAR_COLORS.length], alignItems: 'center', justifyContent: 'center' }}>
       <Text style={{ fontWeight: '600', color: C.ink2, fontSize: inner * 0.36, letterSpacing: 0.3 }}>{initials(name)}</Text>

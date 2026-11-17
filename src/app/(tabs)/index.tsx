@@ -11,7 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FilterSheet } from '@/components/FilterSheet';
 import { NearbyRecCard } from '@/components/NearbyRecCard';
 import { LayersSheet, type AlertsPanel } from '@/components/LayersSheet';
-import { ClusterPin, EventPin, NodePin, YouNode, nodeAnchor } from '@/components/MapPins';
+import { ClusterPin, EventPin, PersonMarker, YouNode } from '@/components/MapPins';
 import { MemberLock } from '@/components/MemberLock';
 import { PersonCard } from '@/components/PersonCard';
 import { TextTabs } from '@/components/TextTabs';
@@ -434,6 +434,12 @@ export default function MapScreen() {
     // Keep the person above the half-open sheet.
     moveTo({ latitude: p.coord.latitude - (look === 'network' ? d * 0.22 : 0), longitude: p.coord.longitude }, look === 'network' ? d : Math.min(d, 0.03), 450);
   };
+  // Stable handler for the memoized person markers; always calls the latest `select`.
+  const selectRef = useRef(select);
+  useEffect(() => {
+    selectRef.current = select;
+  });
+  const onSelectPin = useCallback((p: NearbyPerson) => selectRef.current(p), []);
 
   const goToArea = (c: LatLng, name: string) => {
     setHere({ coord: c, label: name, isGps: false });
@@ -606,19 +612,16 @@ export default function MapScreen() {
             );
           }
           const p = c.item;
-          const on = p.id === selectedId;
           return (
-            <Marker
+            <PersonMarker
               key={p.id}
-              coordinate={p.coord}
-              anchor={nodeAnchor(p.strength, on)}
-              tracksViewChanges={trackPins}
-              zIndex={on ? 30 : p.strength === 'strong' ? 12 : p.strength === 'good' ? 11 : 10}
-              onPress={() => select(p)}
-              accessibilityLabel={`${p.name}, ${p.role}, ${p.strength === 'strong' ? 'strong match, ' : ''}${approxDistance(p.distanceMi)} ${fromLabel}`}
-            >
-              <NodePin name={p.name} role={p.role} uri={p.photo} strength={p.strength} selected={on} door={doorVisible(p)} real={!p.isDemo} />
-            </Marker>
+              p={p}
+              selected={p.id === selectedId}
+              door={doorVisible(p)}
+              settling={trackPins}
+              label={`${p.name}, ${p.role}, ${p.strength === 'strong' ? 'strong match, ' : ''}${approxDistance(p.distanceMi)} ${fromLabel}`}
+              onSelect={onSelectPin}
+            />
           );
         })}
         {loc.fix ? (
@@ -892,7 +895,7 @@ export default function MapScreen() {
                     accessibilityHint="Shows them on the map. Long press to open their profile."
                     style={({ pressed }) => [styles.contact, pressed && { backgroundColor: C.bg2 }]}
                   >
-                    <Avatar name={p.name} uri={p.photo} size={46} ring={p.strength === 'strong'} />
+                    <Avatar name={p.name} uri={p.photoThumb} size={46} ring={p.strength === 'strong'} />
                     <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         <Text style={styles.contactName} numberOfLines={1}>{p.name}</Text>

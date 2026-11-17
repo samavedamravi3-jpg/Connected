@@ -6,6 +6,7 @@ import { CHARLOTTE_CENTER, statusLabel } from '@/data/options';
 import type {
   AvailabilityId, ChallengeId, DietId, Experience, FieldId, FoodId, GoalId, LatLng, MeetMode, Mode, Person, Prefs, Profile, RequestStatus, ShareMode, StatusId, TraitId,
 } from '@/data/types';
+import { AVATAR_BUCKET, SIGN_TTL_S, avatarPaths, isFresh, photoFields, toSigned, type Signed } from './avatar';
 import { cleanExperience } from './experience';
 import { cleanPrefLists } from './lists';
 import { parseRecs, type NearbyRec } from './nearbyPolicy';
@@ -221,14 +222,14 @@ export async function fetchNearby(center: LatLng, radiusMi: number): Promise<Per
   // The database clamps the radius to 25 miles and rate limits this call.
   const { data, error } = await db().rpc('nearby_profiles', { lat: center.latitude, lng: center.longitude, radius_mi: Math.min(radiusMi, 25) });
   if (error) throw error;
-  return withExperience(((data ?? []) as ProfileRow[]).map(rowToPerson));
+  return withPhotos(await withExperience(((data ?? []) as ProfileRow[]).map(rowToPerson)));
 }
 
 /** Everyone you're allowed to see (for search and the assistant). RLS filters the rows. */
 export async function fetchVisible(myId: string): Promise<Person[]> {
   const { data, error } = await db().from('profiles').select(PUBLIC_PROFILE_COLUMNS).neq('id', myId).eq('discoverable', true).limit(300);
   if (error) throw error;
-  return withExperience(((data ?? []) as ProfileRow[]).map(rowToPerson));
+  return withPhotos(await withExperience(((data ?? []) as ProfileRow[]).map(rowToPerson)));
 }
 
 /**
@@ -273,7 +274,7 @@ export async function fetchPeopleByIds(ids: string[]): Promise<Person[]> {
   if (!ids.length) return [];
   const { data, error } = await db().from('profiles').select(PUBLIC_PROFILE_COLUMNS).in('id', ids);
   if (error) throw error;
-  return withExperience(((data ?? []) as ProfileRow[]).map(rowToPerson));
+  return withPhotos(await withExperience(((data ?? []) as ProfileRow[]).map(rowToPerson)));
 }
 
 // ---------------------------------------------------------------------------
@@ -313,6 +314,45 @@ async function withExperience(people: Person[]): Promise<Person[]> {
   const by = new Map<string, Experience[]>();
   for (const r of (data ?? []) as ExperienceRow[]) by.set(r.user_id, [...(by.get(r.user_id) ?? []), rowToExperience(r)]);
   return people.map((p) => (by.has(p.id) ? { ...p, experience: by.get(p.id) } : p));
+}
+
+// ---------------------------------------------------------------------------
+// Profile photos (private bucket, signed URLs; see src/lib/avatar.ts)
+// ---------------------------------------------------------------------------
+
+const signedPhotos = new Map<string, Signed>();
+
+/**
+ * Adds signed photo URLs. Storage signs only objects the caller may read (the owner's profile audience), and a missing
+ * photo comes back as a per-item error, so no profile column is needed. Never fails the people load.
+ */
+async function withPhotos(people: Person[]): Promise<Person[]> {
+  const now = Date.now();
+  const need = people.flatMap((p) => Object.values(avatarPaths(p.id))).filter((path) => !isFresh(signedPhotos.get(path), now));
+  try {
+    for (let i = 0; i < need.length; i += 200) {
+      const { data, error } = await db().storage.from(AVATAR_BUCKET).createSignedUrls(need.slice(i, i + 200), SIGN_TTL_S);
+      if (error) throw error;
+      for (const item of data ?? []) if (item.path) signedPhotos.set(item.path, toSigned(item, now));
+    }
+  } catch (e) {
+    console.warn('Could not load profile photos', e);
+  }
+  return people.map((p) => ({ ...p, ...photoFields(p.id, signedPhotos) }));
+}
+
+/** Uploads (or replaces) your photo: both JPEGs, already resized and re-encoded on the phone. */
+export async function uploadMyPhoto(userId: string, full: ArrayBuffer, thumb: ArrayBuffer): Promise<void> {
+  const paths = avatarPaths(userId);
+  for (const [path, body] of [[paths.full, full], [paths.thumb, thumb]] as const) {
+    const { error } = await db().storage.from(AVATAR_BUCKET).upload(path, body, { contentType: 'image/jpeg', upsert: true, cacheControl: '3600' });
+    if (error) throw error;
+  }
+}
+
+export async function deleteMyPhoto(userId: string): Promise<void> {
+  const { error } = await db().storage.from(AVATAR_BUCKET).remove(Object.values(avatarPaths(userId)));
+  if (error) throw error;
 }
 
 // ---------------------------------------------------------------------------

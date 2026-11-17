@@ -148,7 +148,8 @@ export default function PersonScreen() {
           Alert.alert(`Report ${first}`, p.isDemo ? 'What happened? Reporting also blocks them. Demo profiles’ reports stay on your phone.' : 'What happened? Reporting also blocks them, and the report is sent for review.', [
             { text: 'Made me uncomfortable', onPress: () => reportAndBlock('Made me uncomfortable') },
             { text: 'Spam or selling something', onPress: () => reportAndBlock('Spam or selling something') },
-            { text: 'Cancel', style: 'cancel' },
+            ...(p.photo ? [{ text: 'Inappropriate photo', onPress: () => reportAndBlock('Inappropriate photo') }] : []),
+            { text: 'Cancel', style: 'cancel' as const },
           ]),
       },
       { text: 'Cancel', style: 'cancel' },

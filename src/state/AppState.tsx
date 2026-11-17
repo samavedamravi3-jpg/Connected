@@ -4,8 +4,8 @@ import { DEMO_INCOMING } from '@/data/demo';
 import { dataSource, rememberPeople, setBackendUser, setShowDemo } from '@/data/source';
 import type { ConnectionRequest, Experience, IncomingRequest, LatLng, Message, OpenDoor, Prefs, Profile, RequestStatus } from '@/data/types';
 import {
-  blockRemote, fetchHiddenEventIds, loadNearbyAlertPrefs, saveNearbyAlertPrefs, fetchMessages, fetchMyExperiences, syncMyExperiences, fetchMyRequests, fetchPeopleByIds, isRemoteId, loadMyDraft, loadMyRow, muteRemote, myRow, reportEventRemote, reportRemote, rowToMine, saveMyRow, unmuteRemote, type MyRow,
-  sendRemoteMessage, sendRemoteRequest, setRemoteRequestStatus, subscribeToMine, unblockRemote, type RemoteMessage, type RemoteRequest,
+  blockRemote, deleteMyPhoto, fetchHiddenEventIds, loadNearbyAlertPrefs, saveNearbyAlertPrefs, fetchMessages, fetchMyExperiences, syncMyExperiences, fetchMyRequests, fetchPeopleByIds, isRemoteId, loadMyDraft, loadMyRow, muteRemote, myRow, reportEventRemote, reportRemote, rowToMine, saveMyRow, unmuteRemote, type MyRow,
+  sendRemoteMessage, sendRemoteRequest, setRemoteRequestStatus, subscribeToMine, unblockRemote, uploadMyPhoto, type RemoteMessage, type RemoteRequest,
 } from '@/lib/backend';
 import { EXP_LIMITS, sortExperiences } from '@/lib/experience';
 import { cleanPrefLists, uniqueLabels } from '@/lib/lists';
@@ -13,6 +13,8 @@ import { assertClean } from '@/lib/moderation';
 import { RADIUS_OPTIONS_MI } from '@/lib/nearbyPolicy';
 import { fetchIdStatus, type IdStatus } from '@/lib/idVerification';
 import { authMessage } from '@/lib/authErrors';
+import { photoSyncAction } from '@/lib/avatar';
+import { photoUploadBodies } from '@/lib/photo';
 import { createProfileSync, type SaveIssue, type SyncState } from '@/lib/profileSync';
 import { NOT_VERIFIED, toVerification, type Verification } from '@/lib/verification';
 import { backendEnabled, supabase } from '@/lib/supabase';
@@ -47,6 +49,8 @@ export type AppData = {
   nearbyCooldownH: number;
   /** When you last opened each chat (by request id), for unread dots. Kept on this phone only. */
   lastRead: Record<string, number>;
+  /** The photo this phone last pushed to the profile-photos bucket, and for which account (see photoSyncAction). */
+  photoSynced?: { userId: string; uri: string | null } | null;
   /** Onboarding step to reopen after the account exists: 'idverify', or a later step id. Null when finished. */
   resumeAt?: OnboardingResume | null;
 };
@@ -296,6 +300,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!session || !data.onboarded || !data.profile.name.trim()) return;
     sync.schedule(myRow(session.userId, data.profile, data.prefs, hereRef.current));
   }, [sync, session, data.onboarded, data.profile, data.prefs, hereKey]);
+
+  // ---- Profile photo: push this phone's photo (resized, re-encoded) to storage, or remove it when removed here ----
+  const photoUri = data.profile.photoUri;
+  useEffect(() => {
+    if (!sessionUserId || !hydrated) return;
+    const action = photoSyncAction(data.photoSynced, sessionUserId, photoUri);
+    if (action === 'none') return;
+    let alive = true;
+    (action === 'upload' && photoUri ? photoUploadBodies(photoUri).then((b) => uploadMyPhoto(sessionUserId, b.full, b.thumb)) : deleteMyPhoto(sessionUserId))
+      .then(() => alive && setData((d) => ({ ...d, photoSynced: { userId: sessionUserId, uri: photoUri } })))
+      // Retried on the next change or launch; the photo stays on this phone meanwhile.
+      .catch((e) => console.warn('Could not sync profile photo', e));
+    return () => {
+      alive = false;
+    };
+  }, [sessionUserId, hydrated, photoUri, data.photoSynced]);
 
   // ---- Nearby alert settings: pull once after sign-in (server wins when it has a row), then push changes ----
   const [nearbyReady, setNearbyReady] = useState<string | null>(null);

@@ -1,7 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
+import { memo, useEffect, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { Marker } from 'react-native-maps';
 import { EVENT_STYLE } from '@/data/eventVisuals';
-import type { EventCategory } from '@/data/types';
+import type { EventCategory, NearbyPerson } from '@/data/types';
+import { markerTracks } from '@/lib/avatar';
 import { initials } from '@/lib/match';
 import { C, R, alpha } from '@/theme';
 
@@ -28,21 +32,32 @@ export function nodeAnchor(strength: Strength, selected: boolean) {
 /**
  * A person as a node in your network. Solid purple = strong match, purple ring = good match,
  * quiet gray = other. Selected nodes grow and show a small name-and-role card above.
+ * With a photo (the 128 px thumbnail, never the full image) the ring alone carries the strength: purple for strong
+ * and good (thicker for strong), gray for other. A photo that fails to load falls back to initials.
  */
-export function NodePin({ name, role, uri, strength, selected, door, real }: { name: string; role: string; uri?: string | null; strength: Strength; selected: boolean; door: boolean; real?: boolean }) {
+export function NodePin({ name, role, uri, strength, selected, door, real, onImageLoad, onImageError }: { name: string; role: string; uri?: string | null; strength: Strength; selected: boolean; door: boolean; real?: boolean; onImageLoad?: () => void; onImageError?: () => void }) {
   const size = NODE[strength] + (selected ? 6 : 0);
   const solid = strength === 'strong' || selected;
   const ring = selected ? C.accent : strength === 'some' ? C.line2 : C.accent;
+  const border = strength === 'some' && !selected ? 1.5 : uri && solid ? 3 : 2.5;
   const node = (
     <View
       style={[
         styles.node,
-        { width: size, height: size, borderRadius: size / 2, borderColor: solid ? C.white : ring, backgroundColor: solid ? C.accent : C.white },
-        strength === 'some' && !selected && { borderWidth: 1.5 },
+        { width: size, height: size, borderRadius: size / 2, borderWidth: border },
+        uri ? { borderColor: ring, backgroundColor: C.bg2 } : { borderColor: solid ? C.white : ring, backgroundColor: solid ? C.accent : C.white },
       ]}
     >
       {uri ? (
-        <Image source={{ uri }} style={{ width: size - 6, height: size - 6, borderRadius: (size - 6) / 2 }} />
+        <Image
+          source={{ uri }}
+          style={{ width: size - border * 2, height: size - border * 2, borderRadius: size / 2 }}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          onLoad={onImageLoad}
+          onError={onImageError}
+          accessible={false}
+        />
       ) : (
         <Text maxFontSizeMultiplier={1} style={[styles.initials, { fontSize: size * 0.34, color: solid ? C.white : strength === 'some' ? C.ink3 : C.accent }]}>{initials(name)}</Text>
       )}
@@ -55,7 +70,8 @@ export function NodePin({ name, role, uri, strength, selected, door, real }: { n
     </View>
   );
 
-  if (!selected) return <View collapsable={false} style={{ padding: 4 }}>{node}</View>;
+  // 44 pt minimum tap area around the smaller nodes; the visible node stays its size.
+  if (!selected) return <View collapsable={false} style={styles.hit}>{node}</View>;
 
   return (
     <View collapsable={false} style={{ width: WIDTH, alignItems: 'center' }}>
@@ -70,6 +86,46 @@ export function NodePin({ name, role, uri, strength, selected, door, real }: { n
     </View>
   );
 }
+
+/**
+ * One person on the map. Keeps react-native-maps tracking view changes while the map settles (`settling`) and until
+ * this marker's thumbnail has loaded or failed (plus a short beat so the snapshot includes it), then stops.
+ * Memoized: only markers whose person, selection or settling state changed re-render.
+ */
+export const PersonMarker = memo(function PersonMarker({ p, selected, door, settling, label, onSelect }: { p: NearbyPerson & { strength: Strength }; selected: boolean; door: boolean; settling: boolean; label: string; onSelect: (p: NearbyPerson) => void }) {
+  const uri = p.photoThumb ?? null;
+  const [done, setDone] = useState<{ uri: string; failed: boolean } | null>(null);
+  const [settledUri, setSettledUri] = useState<string | null>(null);
+  const reported = !!uri && done?.uri === uri;
+  useEffect(() => {
+    if (!uri) return;
+    // A load that never reports back still stops tracking after a few seconds.
+    const t = setTimeout(() => setSettledUri(uri), reported ? 250 : 4000);
+    return () => clearTimeout(t);
+  }, [uri, reported]);
+  return (
+    <Marker
+      coordinate={p.coord}
+      anchor={nodeAnchor(p.strength, selected)}
+      tracksViewChanges={markerTracks(settling, uri, settledUri)}
+      zIndex={selected ? 30 : p.strength === 'strong' ? 12 : p.strength === 'good' ? 11 : 10}
+      onPress={() => onSelect(p)}
+      accessibilityLabel={label}
+    >
+      <NodePin
+        name={p.name}
+        role={p.role}
+        uri={reported && done.failed ? null : uri}
+        strength={p.strength}
+        selected={selected}
+        door={door}
+        real={!p.isDemo}
+        onImageLoad={() => uri && setDone({ uri, failed: false })}
+        onImageError={() => uri && setDone({ uri, failed: true })}
+      />
+    </Marker>
+  );
+});
 
 /** An in-person event: a rounded-square badge with the category icon, clearly different from round people nodes. */
 export function EventPin({ category }: { category: EventCategory }) {
@@ -116,7 +172,6 @@ const styles = StyleSheet.create({
   node: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2.5,
     shadowColor: C.ink,
     shadowOpacity: 0.16,
     shadowRadius: 3,
@@ -124,6 +179,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   initials: { fontWeight: '600', letterSpacing: 0.3 },
+  hit: { minWidth: 44, minHeight: 44, padding: 4, alignItems: 'center', justifyContent: 'center' },
   real: { position: 'absolute', right: -2, bottom: -2, width: 13, height: 13, borderRadius: 7, backgroundColor: C.ok, borderWidth: 2, borderColor: C.white },
   door: { position: 'absolute', right: -4, top: -4, width: 16, height: 16, borderRadius: 8, backgroundColor: C.blue, borderWidth: 2, borderColor: C.white, alignItems: 'center', justifyContent: 'center' },
   card: {
