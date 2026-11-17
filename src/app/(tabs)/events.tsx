@@ -1,7 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
-import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { EventImage } from '@/components/EventImage';
 import { MemberLock } from '@/components/MemberLock';
 import { Button, Tag } from '@/components/ui';
 import { EVENT_STYLE } from '@/data/eventVisuals';
@@ -259,7 +260,7 @@ function WhereTag({ e }: { e: Ev }) {
   return e.online ? <Tag label="Online" icon="globe-outline" tone="blue" /> : <Tag label="In person" icon="location-outline" />;
 }
 
-/** Card for the "Next 7 days" carousel: photo on top, title and details on a solid panel below it. */
+/** Card for the "Next 7 days" carousel: listing photo (or category tile) on top, title and details on a solid panel below it. */
 function BigCard({ e, fromLabel }: { e: Ev; fromLabel: string }) {
   const st = EVENT_STYLE[e.category];
   // The save button is a sibling of the card's button (not nested) so screen readers can reach it.
@@ -271,8 +272,8 @@ function BigCard({ e, fromLabel }: { e: Ev; fromLabel: string }) {
       accessibilityLabel={`${e.title}, ${dayLabel(e.start)} ${fmtTime(e.start)}, ${e.online ? 'online' : 'in person'}`}
       style={({ pressed }) => pressed && { opacity: 0.92 }}
     >
-      <View style={[styles.bigMedia, { backgroundColor: st.soft }]}>
-        {e.image ? <Image source={{ uri: e.image }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityIgnoresInvertColors /> : <Ionicons name={st.icon} size={40} color={st.solid} />}
+      <View style={styles.bigMedia}>
+        <EventImage e={e} style={StyleSheet.absoluteFill} iconSize={40} />
         <View style={styles.datePill}>
           <Text style={styles.datePillDay} maxFontSizeMultiplier={1.3}>{shortDay(e.start)}</Text>
           <Text style={styles.datePillNum} maxFontSizeMultiplier={1.3}>{new Date(e.start).getDate()}</Text>

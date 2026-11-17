@@ -2,8 +2,9 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import type { ComponentProps } from 'react';
-import { Alert, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { EventImage } from '@/components/EventImage';
 import { Button, Tag } from '@/components/ui';
 import { EVENT_STYLE } from '@/data/eventVisuals';
 import { CHARLOTTE_CENTER, fieldLabel } from '@/data/options';
@@ -63,12 +64,9 @@ export default function EventScreen() {
     <ScrollView style={{ backgroundColor: C.bg }} contentContainerStyle={{ paddingBottom: insets.bottom + S.xxl }}>
       <Stack.Screen options={{ headerShown: false }} />
       {/* Photo (or a plain category panel) with the controls on a scrim; the title sits below on a solid background. */}
-      <View style={[styles.hero, { height: insets.top + 220, backgroundColor: st.soft }]}>
-        {e.image ? (
-          <Image source={{ uri: e.image }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityLabel={`Photo for ${e.title}`} />
-        ) : (
-          <Ionicons name={st.icon} size={56} color={st.solid} style={{ alignSelf: 'center', marginTop: insets.top + 70 }} />
-        )}
+      <View style={[styles.hero, { height: insets.top + 220 }]}>
+        {/* The credit sits bottom-right; the scrim and buttons sit on top. Photos come only from the listing's own API. */}
+        <EventImage e={e} style={StyleSheet.absoluteFill} iconSize={56} padTop={insets.top} credit={e.source ? `Photo: ${e.source} listing` : undefined} />
         <LinearGradient colors={[alpha(C.ink, 0.5), alpha(C.ink, 0)]} style={[styles.topScrim, { height: insets.top + 90 }]} pointerEvents="none" />
         <View style={[styles.heroBar, { top: insets.top + S.sm }]}>
           <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back" style={styles.heroBtn} hitSlop={4}>

@@ -6,6 +6,7 @@
  */
 import { CHARLOTTE_CENTER } from '@/data/options';
 import type { CommunityEvent, EventCategory, FieldId } from '@/data/types';
+import { meetupPhotoUrl } from './eventImage';
 import { FIELD_QUERIES, classifyField } from './fieldClassifier';
 
 const MEETUP = 'https://api.meetup.com/gql-ext';
@@ -76,7 +77,7 @@ async function meetup(q: string, category: EventCategory, field?: FieldId): Prom
       cost: fee ? `${n.feeSettings?.currency === 'USD' || !n.feeSettings?.currency ? '$' : `${n.feeSettings.currency} `}${fee}` : 'Free',
       description: plain(n.description ?? '') || `Hosted by ${n.group?.name ?? 'a Meetup group'}.`,
       isDemo: false,
-      image: n.featuredEventPhoto?.highResUrl,
+      image: meetupPhotoUrl(n.featuredEventPhoto),
       url: n.eventUrl,
       source: 'Meetup',
       online,
