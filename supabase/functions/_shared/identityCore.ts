@@ -136,7 +136,11 @@ export function resumeAction(s: { status?: string; url?: string | null; metadata
 export type Capture = 'live' | 'any';
 export const createKey = (userId: string, row: Row | null, capture: Capture = 'live') => `idv3:${capture}:${userId}:${row?.session_id || 'first'}`;
 
-/** Stripe test mode runs no real checks and offers predefined test cases; forcing live camera capture there made a test attempt fail with document_unverified_other. */
+/**
+ * Stripe test mode runs no real checks ("verification checks won't actually process") and offers predefined test cases, so
+ * live capture is left off there. It was not the cause of test failures: a 'any' session (2026-11-16 19:22Z) still ended
+ * document_unverified_other, the result of a failing test case or real images in test mode. Only live mode can really pass.
+ */
 export const captureFor = (test: boolean): Capture => (test ? 'any' : 'live');
 
 /**

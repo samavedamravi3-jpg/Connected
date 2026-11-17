@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import {
   captureFor, createKey, decide, isRealMember, parseSessionEvent, providerMode, resumeAction, reusable, sessionParams, statusFromStripe, verifyStripeSignature, SESSION_MAX_AGE_MS, type Row, type SessionEvent,
 } from '../../../supabase/functions/_shared/identityCore.ts';
-import { toIdStatus } from '../idStatus';
+import { idErrorMessage, stillCapturing, toIdStatus } from '../idStatus';
 
 const SECRET = 'whsec_test_secret';
 const sign = (body: string, t: number | string, secret = SECRET) => `t=${t},v1=${createHmac('sha256', secret).update(`${t}.${body}`).digest('hex')}`;
@@ -211,4 +211,29 @@ test('a session made under other capture rules is replaced, not resumed', () => 
   assert.equal(resumeAction({ ...open, metadata: { user_id: 'u1', capture: 'live' } }, 'u1', 'any'), 'new');
   assert.equal(resumeAction({ ...open, metadata: { user_id: 'u1' } }, 'u1', 'any'), 'new', 'sessions from before the capture tag');
   assert.equal(resumeAction({ ...open, metadata: { user_id: 'u1', capture: 'any' } }, 'u1', 'any'), 'open');
+});
+
+test('failure codes get their own message; test mode says it is a test and points to test cases', () => {
+  assert.match(idErrorMessage('device_not_supported', false), /camera/);
+  assert.match(idErrorMessage('consent_declined', false), /consent/);
+  assert.match(idErrorMessage('selfie_face_mismatch', false), /selfie/);
+  assert.match(idErrorMessage('document_expired', false), /expired.*Try again/);
+  assert.equal(idErrorMessage('under_supported_age', false).includes('Try again'), false, 'retrying cannot help');
+  assert.match(idErrorMessage(null, false), /didn’t go through/);
+  assert.match(idErrorMessage('something_new', false), /didn’t go through/);
+  const t = idErrorMessage('document_unverified_other', true);
+  assert.match(t, /^Stripe test mode/);
+  assert.match(t, /test cases/);
+  assert.match(t, /never unlocks/);
+  assert.equal(/\bverified\b/i.test(t.replace(/unverified|couldn’t verify/gi, '')), false, 'never says verified');
+});
+
+test('browser trip: lasts until a newer Stripe event, also when retrying from rejected', () => {
+  assert.equal(stillCapturing(undefined, 'started', null), false, 'never opened');
+  assert.equal(stillCapturing(null, 'started', null), true, 'first session, nothing back yet');
+  assert.equal(stillCapturing('2026-11-16T19:27:03Z', 'rejected', '2026-11-16T19:27:03Z'), true, 'resumed a rejected session');
+  assert.equal(stillCapturing('2026-11-16T19:27:03Z', 'rejected', '2026-11-16T19:40:00Z'), false, 'failed again: show the new error');
+  assert.equal(stillCapturing('2026-11-16T19:27:03Z', 'started', null), true, 'canceled/old row replaced by a new session');
+  assert.equal(stillCapturing(null, 'pending', '2026-11-16T19:40:00Z'), false, 'processing ends it');
+  assert.equal(stillCapturing(null, 'verified', null), false);
 });

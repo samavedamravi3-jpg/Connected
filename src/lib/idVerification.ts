@@ -18,6 +18,14 @@ export async function fetchIdStatus(userId: string, publicVerified: boolean): Pr
   return toIdStatus(data, publicVerified);
 }
 
+/** Your last attempt's failure code (Stripe last_error.code, never the reason text) and the time of the last Stripe event. */
+export async function fetchIdAttempt(userId: string): Promise<{ lastError: string | null; eventAt: string | null }> {
+  if (!supabase) return { lastError: null, eventAt: null };
+  const { data, error } = await supabase.from('id_verifications').select('last_error, event_at').eq('user_id', userId).maybeSingle();
+  if (error) throw error;
+  return { lastError: data?.last_error ?? null, eventAt: data?.event_at ?? null };
+}
+
 /**
  * Is an ID provider configured on the server, and is it Stripe test mode? Any failure reads as unavailable.
  * Only `available && !test` (live mode) can unlock Connected.

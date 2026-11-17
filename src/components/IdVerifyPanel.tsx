@@ -3,7 +3,8 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Linking, Pressable, Text, View } from 'react-native';
 import { Button, Note, Tag, type IconName } from '@/components/ui';
-import { idServerMode, isProfileNotReadyError, startIdVerification } from '@/lib/idVerification';
+import { stillCapturing, idErrorMessage } from '@/lib/idStatus';
+import { fetchIdAttempt, idServerMode, isProfileNotReadyError, startIdVerification } from '@/lib/idVerification';
 import { NOT_SAVED_MESSAGE } from '@/lib/profileSync';
 import { useApp } from '@/state/AppState';
 import { C, R, S, T } from '@/theme';
@@ -30,14 +31,26 @@ export function IdVerifyPanel({ onDone, onSignIn, onEditProfile }: { onDone?: ()
   const app = useApp();
   const [mode, setMode] = useState<{ available: boolean; test: boolean } | null>(null);
   const [busy, setBusy] = useState<'start' | 'check' | 'save' | null>(null);
-  const [opened, setOpened] = useState(false);
+  const [opened, setOpened] = useState<string | null | undefined>(undefined); // event_at when Stripe's page was opened
+  const [attempt, setAttempt] = useState<{ lastError: string | null; eventAt: string | null }>({ lastError: null, eventAt: null });
   const [consent, setConsent] = useState(false);
   const [err, setErr] = useState('');
   const [notReady, setNotReady] = useState(false); // a save or the server said your profile row isn't there yet
   const inFlight = useRef(false); // blocks a second tap before the disabled state renders
   const status = app.idStatus;
   const signedIn = !!app.session;
-  const refreshId = app.refreshId;
+  const uid = app.session?.userId;
+  const refreshStatus = app.refreshId;
+  const loadAttempt = useCallback(() => (uid ? fetchIdAttempt(uid).then(setAttempt).catch(() => {}) : Promise.resolve()), [uid]);
+  // Status (shared app state) plus this attempt's error code and event time (only this screen needs them).
+  const refreshId = useCallback(async () => {
+    const ok = await refreshStatus();
+    if (ok) await loadAttempt();
+    return ok;
+  }, [refreshStatus, loadAttempt]);
+  useEffect(() => {
+    loadAttempt();
+  }, [loadAttempt, status]);
   const ensureSaved = app.ensureProfileSaved;
   const ready = app.profileReady;
 
@@ -68,7 +81,8 @@ export function IdVerifyPanel({ onDone, onSignIn, onEditProfile }: { onDone?: ()
 
   // A test pass counts as not started: once live mode is on, the user runs a real check.
   const notStarted = status === 'unverified' || status === 'test_verified';
-  const polling = signedIn && (status === 'pending' || (opened && (notStarted || status === 'started')));
+  const capturing = stillCapturing(opened, status, attempt.eventAt);
+  const polling = signedIn && (status === 'pending' || capturing);
   useEffect(() => {
     if (!polling) return;
     let n = 0;
@@ -91,7 +105,7 @@ export function IdVerifyPanel({ onDone, onSignIn, onEditProfile }: { onDone?: ()
     setNotReady(false);
     try {
       if (kind !== 'check' && !(await ensureSaved())) return setNotReady(true);
-      if (kind === 'start' && (await startIdVerification()) === 'opened') setOpened(true);
+      if (kind === 'start' && (await startIdVerification()) === 'opened') setOpened(attempt.eventAt);
       if (kind !== 'save' && !(await refreshId())) setErr(OFFLINE);
     } catch (e) {
       if (isProfileNotReadyError(e)) setNotReady(true);
@@ -100,7 +114,7 @@ export function IdVerifyPanel({ onDone, onSignIn, onEditProfile }: { onDone?: ()
       inFlight.current = false;
       setBusy(null);
     }
-  }, [refreshId, ensureSaved]);
+  }, [refreshId, ensureSaved, attempt.eventAt]);
 
   if (!app.authReady) return <ActivityIndicator color={C.accent} accessibilityLabel="Loading your account" />;
   if (!signedIn) {
@@ -155,7 +169,6 @@ export function IdVerifyPanel({ onDone, onSignIn, onEditProfile }: { onDone?: ()
   if (status === 'test_verified' && mode.test) return <View style={{ gap: S.md }}>{testResult}{testMode}</View>;
 
   const fresh = notStarted || status === 'canceled';
-  const capturing = opened && (notStarted || status === 'started');
   const showIntro = fresh && !capturing;
   const issue = app.profileSaveIssue;
   // A draft (text waiting for review) doesn't block the ID check: the row is saved, only that text isn't public yet.
@@ -185,9 +198,9 @@ export function IdVerifyPanel({ onDone, onSignIn, onEditProfile }: { onDone?: ()
           <Text style={[T.small, { flex: 1 }]}>Stripe is checking your ID and selfie. This usually takes a few minutes; this screen updates by itself.</Text>
         </View>
       ) : null}
-      {status === 'rejected' ? (
+      {status === 'rejected' && !capturing ? (
         <View accessibilityRole="alert">
-          <Note tone="warn" icon="alert-circle-outline">That attempt didn’t go through. Use an unexpired driver’s license, passport or national ID card in good light, and make sure your face is clearly visible in the selfie.</Note>
+          <Note tone="warn" icon="alert-circle-outline">{idErrorMessage(attempt.lastError, mode.test)}</Note>
         </View>
       ) : null}
       {err ? <Text style={{ color: C.bad, fontSize: 14 }} accessibilityRole="alert">{err}</Text> : null}
