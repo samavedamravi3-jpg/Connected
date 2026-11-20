@@ -39,3 +39,28 @@ Docs: https://docs.expo.dev/eas/index.md
 - If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
 - Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
 - Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
+
+## Agent skills
+
+### Issue tracker
+
+Local markdown under `.scratch/` (no GitHub issues; nothing is pushed to the upstream repo). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`) as `Status:` lines. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context. See `docs/agents/domain.md`.
+
+## Skills for this project
+
+- `frontend-design`: any UI change.
+- `/grill-me` before big features; `/handoff` when switching tools.
+- `/to-spec` and `/to-tickets` for planning.
+- `diagnosing-bugs` for hard bugs.
+- `code-review` before commits.
+- `hyperframes` (and `lemo-opuscar`): demo/pitch video built from app screenshots and the real UI.
+- `agent-browser`: test the web build (`npx expo start --web`). Native-only screens (e.g. the map) need a phone.
+- `find-skills`: when a capability isn't installed.
