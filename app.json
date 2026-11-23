@@ -63,7 +63,8 @@
           "color": "#5B35C9"
         }
       ],
-      "expo-image"
+      "expo-image",
+      "expo-status-bar"
     ],
     "extra": {
       "router": {

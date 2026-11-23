@@ -7,6 +7,7 @@
  *   Claude through that proxy (which keeps the API key off the phone). If it fails, we fall back
  *   to the built-in engine.
  */
+import { assistantUrl } from './assistantUrl';
 import { CHALLENGES, LANGUAGES, TRAITS, fieldLabel, foodLabel } from '@/data/options';
 import type { ChallengeId, ConnectionRequest, FieldId, Person, Prefs, Profile, TraitId } from '@/data/types';
 import { effectiveSkills } from './experience';
@@ -268,7 +269,7 @@ export function contextForClaude(ctx: AssistantContext): string {
 
 /** Ask the Claude proxy. Returns null when it isn't configured or fails, so callers can fall back. */
 export async function claudeReply(history: AssistantMsg[], ctx: AssistantContext): Promise<AssistantMsg | null> {
-  const url = process.env.EXPO_PUBLIC_ASSISTANT_URL;
+  const url = assistantUrl();
   if (!url) return null;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 45_000);
