@@ -21,7 +21,7 @@
 // Real membership (ID check) is not required: a new user must be able to save a basic profile before verifying.
 //
 // Secrets (Supabase Edge Function Secrets, owner sets them): GROQ_API_KEY (required for the review) and optional
-// GROQ_MODERATION_MODEL (default llama-3.3-70b-versatile). The key is read here only, sent only to Groq, never logged
+// GROQ_MODERATION_MODEL (default openai/gpt-oss-120b). The key is read here only, sent only to Groq, never logged
 // or returned. No key = 'not_configured', a failing review = 'provider_error': either way fail closed, the text is
 // kept as a private draft. The assistant server (server/) and its MODERATION_SERVER_TOKEN are not used by this function.
 // Deploy: supabase functions deploy profile-write --project-ref avfahjcgczcfyvcnhzyy   (verify_jwt stays on, config.toml)
