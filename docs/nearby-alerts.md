@@ -8,7 +8,7 @@ doesn't try to. See "What background alerts would need" below.
 
 ## Who can be recommended (server, authoritative)
 
-The rules live in `public.alert_candidates()` (`supabase/migrations/20261116200000_nearby_recommendations.sql`, mirrored
+The rules live in `public.alert_candidates()` (`supabase/migrations/20261116175110_nearby_recommendations.sql`, mirrored
 in `schema.sql`). The function is a SECURITY DEFINER with `search_path = ''`, uses `auth.uid()`, is granted to
 `authenticated` only, and allows 12 calls a minute per user (`alert_rate`, server-only since phase 6: the app can't read,
 reset or delete its counter).
@@ -146,9 +146,9 @@ The demo is isolated:
 
 ## Apply (owner)
 
-1. Phases 3 and 4 first: `20261116120000_mandatory_id_gate.sql`, then `20261116180000_moderation_write_path.sql`.
-2. `supabase/migrations/20261116200000_nearby_recommendations.sql`. It's idempotent. Older app builds that call `alert_candidates(lat, lng, radius_mi)` then get "function not found" and show no alerts (fail closed).
-3. `supabase/migrations/20261116220000_review_fixes.sql` (phase 6). Older app builds that read profiles with `select *` then get "permission denied" (fail closed: no people shown, own profile not loaded); ship the matching app build.
+1. Phases 3 and 4 first: `20261116174554_mandatory_id_gate.sql`, then `20261116174714_moderation_write_path.sql`.
+2. `supabase/migrations/20261116175110_nearby_recommendations.sql`. It's idempotent. Older app builds that call `alert_candidates(lat, lng, radius_mi)` then get "function not found" and show no alerts (fail closed).
+3. `supabase/migrations/20261116175809_review_fixes.sql` (phase 6). Older app builds that read profiles with `select *` then get "permission denied" (fail closed: no people shown, own profile not loaded); ship the matching app build.
 4. Run `supabase/tests/id_gate.sql`, `moderation.sql`, `nearby.sql` and `review_fixes.sql`. All roll back and must end with `… all checks passed`.
 5. Reload the app.
 

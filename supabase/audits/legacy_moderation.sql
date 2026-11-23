@@ -1,5 +1,5 @@
 -- Legacy content audit: which existing rows fail the current rules (moderation_is_clean / moderation_name_ok from
--- 20261116180000_moderation_write_path.sql). READ-ONLY: selects only, safe on the live database, changes nothing.
+-- 20261116174714_moderation_write_path.sql). READ-ONLY: selects only, safe on the live database, changes nothing.
 -- Run after that migration, in the SQL editor or: psql "$DB_URL" -f supabase/audits/legacy_moderation.sql
 -- Rules only: rows the AI review would refuse but no rule matches are not found here.
 

@@ -1,6 +1,6 @@
 // The profile option ids the app offers (src/data/options.ts), shared with the profile-write edge function so the server
 // can allowlist them. No imports and no runtime APIs. src/lib/__tests__/profileOptions.test.ts fails when this drifts
-// from the app's catalog or from the database check constraints (supabase/migrations/20261116220000_review_fixes.sql).
+// from the app's catalog or from the database check constraints (supabase/migrations/20261116175809_review_fixes.sql).
 
 export const FIELD_IDS = ['finance', 'tech', 'health', 'energy', 'design', 'public', 'education'] as const;
 export const STATUS_IDS = ['student', 'early', 'experienced', 'changing', 'between'] as const;

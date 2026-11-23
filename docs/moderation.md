@@ -15,7 +15,7 @@ Probed 53 strings through the app's `checkText` and the live `public.moderation_
    They also blocked legitimate text: "magna cum laude", "Engineer at Venmo", "Product manager on the Zelle team", "Western Union analyst" and "Studied MLM fraud".
 5. **Limits didn't match.** The UI capped `intro`/`offer` at 280/200, `myRow` sliced at 400/300 and the DB allows 400/300. A modified client could publish 400 characters.
 
-The live DB was checked read-only. It has 1 profile, 0 experiences, 0 requests and 0 messages. Migration `20261116120000_mandatory_id_gate` is not applied there yet, so the old table-wide grants are still live.
+The live DB was checked read-only. It has 1 profile, 0 experiences, 0 requests and 0 messages. Migration `20261116174554_mandatory_id_gate` is not applied there yet, so the old table-wide grants are still live.
 
 ## Where text can be written, and what checks it
 
@@ -102,7 +102,7 @@ Remediation (no silent deletion):
 3 distinct reporters who are **real members** (ID-verified) auto-**hide** a profile or event (reversible, not a ban). Since phase 6, reports from unverified accounts are still stored and show in `admin_review_queue`, but they don't count toward the threshold, so throwaway accounts can't hide anyone. Reports are insert-only for the app (no reading or deleting them).
 
 ## Apply (owner, in this order; never paste keys into chat)
-1. Phase 3 first, if it isn't applied yet: `supabase/migrations/20261116120000_mandatory_id_gate.sql`.
+1. Phase 3 first, if it isn't applied yet: `supabase/migrations/20261116174554_mandatory_id_gate.sql`.
 2. **Assistant server** (for the assistant, resume import and the app's borderline-chat `/moderate` check only; profile-write no longer calls it). Deploy `server/` with the current code. It needs:
    - `GROQ_API_KEY` or `ANTHROPIC_API_KEY`.
    - `APP_TOKEN`: now **required**. Without it `/assistant`, `/resume` and the app's `/moderate` check answer 503. It ships in the app, so it is a speed bump, not a secret.
@@ -111,9 +111,9 @@ Remediation (no silent deletion):
 3. **Function secrets.** In Supabase Edge Function Secrets set `GROQ_API_KEY` (and optionally `GROQ_MODERATION_MODEL`, default `llama-3.3-70b-versatile`), e.g. `supabase secrets set GROQ_API_KEY=<key> --project-ref avfahjcgczcfyvcnhzyy` typed in your own terminal. profile-write calls Groq directly; the key never reaches the app. Without it every reviewed change becomes a private draft (`reason: 'not_configured'`); a failing or malformed Groq answer does the same (`'provider_error'`). That is fail closed by design. The old `MODERATION_URL` / `MODERATION_TOKEN` secrets are unused and can be deleted.
 4. **Function.** From the repo root, so `config.toml` keeps `verify_jwt = true`, run `supabase functions deploy profile-write --project-ref avfahjcgczcfyvcnhzyy`. Then `list_edge_functions` must show `verify_jwt: true`.
 5. **App.** Ship or reload the app build that calls profile-write. It works before step 6 too, because it writes with the service role.
-6. **Database.** Apply `supabase/migrations/20261116180000_moderation_write_path.sql`, then `20261116200000_nearby_recommendations.sql` and `20261116220000_review_fixes.sql` (full order in docs/handoff.md). All are idempotent, and re-running an older one no longer undoes a newer one. From then on, older app builds can't save profiles: they fail closed and publish nothing. Deploy profile-write from this commit **before** applying `20261116220000`: the function calls `profile_write_rate`, and until the migration exists the function answers 503 (fails closed) — so apply the migration right after the deploy.
+6. **Database.** Apply `supabase/migrations/20261116174714_moderation_write_path.sql`, then `20261116175110_nearby_recommendations.sql` and `20261116175809_review_fixes.sql` (full order in docs/handoff.md). All are idempotent, and re-running an older one no longer undoes a newer one. From then on, older app builds can't save profiles: they fail closed and publish nothing. Deploy profile-write from this commit **before** applying `20261116175809`: the function calls `profile_write_rate`, and until the migration exists the function answers 503 (fails closed) — so apply the migration right after the deploy.
 7. **Check.** Run `supabase/tests/id_gate.sql`, `moderation.sql`, `nearby.sql` and `review_fixes.sql`. Each runs in a rolled-back transaction and must end with `… all checks passed`.
-   If `20261116220000` printed a notice that a `profiles_*_ok` / `profiles_chips_len` constraint stays NOT VALID, existing rows break it (new writes are still checked). Find them (read-only), fix each through profile-write or by hand, then `alter table public.profiles validate constraint <name>;`:
+   If `20261116175809` printed a notice that a `profiles_*_ok` / `profiles_chips_len` constraint stays NOT VALID, existing rows break it (new writes are still checked). Find them (read-only), fix each through profile-write or by hand, then `alter table public.profiles validate constraint <name>;`:
    `select id from public.profiles where not (status is null or status in ('student','early','experienced','changing','between')) or not (mode in ('seeking','offering','both')) or not (goals <@ array['mentorship','advice','peers','collab','recruiting','other']);` (same shape for the other columns; the lists are in the migration).
 8. **Audit.** Run `supabase/audits/legacy_moderation.sql` (read-only) and remediate as described above.
 

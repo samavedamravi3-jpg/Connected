@@ -171,7 +171,7 @@ export function rowToMine(r: ProfileRow): { profile: Partial<Profile>; prefs: Pa
 
 /**
  * Columns the app may read on other people's rows (the database grants SELECT on exactly these; keep in sync with
- * supabase/migrations/20261116220000_review_fixes.sql). Your own full row comes from my_profile().
+ * supabase/migrations/20261116175809_review_fixes.sql). Your own full row comes from my_profile().
  */
 export const PUBLIC_PROFILE_COLUMNS =
   'id, first_name, last_name, status, org, intro, offer, field, mode, interests, skills, languages, foods, diet, availability, meet_mode, discoverable, area_name, area_lat, area_lng, verified, id_verified';

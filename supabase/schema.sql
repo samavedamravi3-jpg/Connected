@@ -1087,7 +1087,7 @@ revoke all on public.admin_review_queue from anon, authenticated;
 -- Hardening: Supabase default grants include TRUNCATE (which skips RLS), REFERENCES and TRIGGER. The app never needs them.
 revoke truncate, references, trigger on all tables in schema public from anon, authenticated;
 
--- Moderation write path (phase 4; same as supabase/migrations/20261116180000_moderation_write_path.sql).
+-- Moderation write path (phase 4; same as supabase/migrations/20261116174714_moderation_write_path.sql).
 -- Private drafts: profile text held back from the public row because its review couldn't run (ai_unavailable), or
 -- unpublished by the legacy audit (audit). fields = {"intro": "...", ...}. Owner-read only, never public.
 create table if not exists public.profile_drafts (
@@ -1122,7 +1122,7 @@ revoke all on public.moderation_events from anon, authenticated;
 -- Here at the end because every column must exist first. Revoking the table privilege also revokes column privileges.
 revoke insert, update on public.profiles from anon, authenticated;
 
--- Nearby recommendations (phase 5; same as supabase/migrations/20261116200000_nearby_recommendations.sql).
+-- Nearby recommendations (phase 5; same as supabase/migrations/20261116175110_nearby_recommendations.sql).
 -- alert_candidates() takes no coordinates: the origin is the caller's own stored coarse area. See docs/nearby-alerts.md.
 -- 1) Settings -------------------------------------------------------------------------------------------------------
 create table if not exists public.nearby_alert_prefs (
@@ -1288,7 +1288,7 @@ $$;
 revoke all on function public.alert_candidates() from public, anon;
 grant execute on function public.alert_candidates() to authenticated;
 
--- Review fixes (phase 6; same as supabase/migrations/20261116220000_review_fixes.sql). The function changes above
+-- Review fixes (phase 6; same as supabase/migrations/20261116175809_review_fixes.sql). The function changes above
 -- (is_blocked, has_connection, profiles_before_write, nearby_profiles, set_my_area, rate_check, reports_after,
 -- hidden_event_ids) are in place; these need every table and column first.
 -- Server-only tables: no client grants at all.
@@ -1416,7 +1416,7 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- Profile photos (mirrors supabase/migrations/20261117120000_profile_photos.sql)
+-- Profile photos (mirrors supabase/migrations/20261123143230_profile_photos.sql)
 -- ---------------------------------------------------------------------------
 
 -- Profile photos. Avatars only: ID-verification images and selfies stay with Stripe and never come here.

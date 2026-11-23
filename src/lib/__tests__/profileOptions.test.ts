@@ -1,5 +1,5 @@
 // The server's option allowlist (supabase/functions/_shared/profileOptions.ts) must match the app's catalog
-// (src/data/options.ts, src/data/types.ts) and the database check constraints (migration 20261116220000 and schema.sql).
+// (src/data/options.ts, src/data/types.ts) and the database check constraints (migration 20261116175809 and schema.sql).
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -29,7 +29,7 @@ test('server allowlist = app catalog', () => {
   for (const a of AREAS) assert.ok(AREA_NAMES.includes(a.name), a.name);
 });
 
-for (const file of ['supabase/migrations/20261116220000_review_fixes.sql', 'supabase/schema.sql']) {
+for (const file of ['supabase/migrations/20261116175809_review_fixes.sql', 'supabase/schema.sql']) {
   test(`database check constraints = server allowlist: ${file}`, () => {
     const sql = readFileSync(join(__dirname, '..', '..', '..', file), 'utf8');
     const all: Record<string, readonly string[]> = { ...Object.fromEntries(Object.entries(ENUM_COLUMNS).map(([k, v]) => [k, v.ids])), ...ENUM_LISTS };

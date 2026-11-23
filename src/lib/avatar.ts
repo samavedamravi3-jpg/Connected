@@ -2,7 +2,7 @@
  * Profile photo rules with no React Native imports, so node tests can check them (see __tests__/avatar.test.ts).
  * Photos live in the private `profile-photos` bucket as `<uid>/avatar.jpg` (512 px) and `<uid>/thumb.jpg` (128 px);
  * others read them through short-lived signed URLs that storage only signs for people allowed to read the owner's
- * profile row (supabase/migrations/20261117120000_profile_photos.sql). ID-verification images never come here.
+ * profile row (supabase/migrations/20261123143230_profile_photos.sql). ID-verification images never come here.
  */
 export const AVATAR_BUCKET = 'profile-photos';
 export const FULL_PX = 512;

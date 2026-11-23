@@ -1,4 +1,4 @@
--- Authorization and rule checks for the moderation write path (supabase/migrations/20261116180000_moderation_write_path.sql).
+-- Authorization and rule checks for the moderation write path (supabase/migrations/20261116174714_moderation_write_path.sql).
 -- Run AFTER the migration, as the postgres role:
 --   SQL editor: paste the whole file and Run.   psql: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/moderation.sql
 -- One transaction, rolled back: no data is kept. Any failed check stops with an error naming it; success ends with
@@ -51,7 +51,7 @@ insert into public.profile_drafts (user_id, fields) values ('00000000-0000-4000-
 insert into public.moderation_events (user_id, surface, field, decision, reason) values ('00000000-0000-4000-8000-0000000000e1', 'profile', 'intro', 'held', 'ai_unavailable');
 reset role;
 
--- 3) Client (as U): no direct update of any profile column, clean or dirty (since 20261116220000 the position goes only
+-- 3) Client (as U): no direct update of any profile column, clean or dirty (since 20261116175809 the position goes only
 -- through set_my_area, a definer function).
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000e1","role":"authenticated"}', true);

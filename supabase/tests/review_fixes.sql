@@ -1,4 +1,4 @@
--- Checks for the security-review fixes (supabase/migrations/20261116220000_review_fixes.sql).
+-- Checks for the security-review fixes (supabase/migrations/20261116175809_review_fixes.sql).
 -- Run AFTER all migrations, as the postgres role:
 --   SQL editor: paste the whole file and Run.   psql: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/review_fixes.sql
 -- One transaction, rolled back: no data is kept. Any failed check stops the script with an error naming it; success

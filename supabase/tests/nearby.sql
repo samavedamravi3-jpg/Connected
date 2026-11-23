@@ -1,4 +1,4 @@
--- Authorization and behaviour checks for nearby recommendations (supabase/migrations/20261116200000_nearby_recommendations.sql).
+-- Authorization and behaviour checks for nearby recommendations (supabase/migrations/20261116175110_nearby_recommendations.sql).
 -- Run AFTER all migrations, as the postgres role:
 --   SQL editor: paste the whole file and Run.   psql: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/nearby.sql
 -- One transaction, rolled back: no data is kept. Any failed check stops the script with an error naming it; success

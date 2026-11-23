@@ -1,6 +1,6 @@
--- Authorization checks for the mandatory ID gate (supabase/migrations/20261116120000_mandatory_id_gate.sql).
--- Run AFTER the migration (and, since phase 4, after 20261116180000_moderation_write_path.sql: profile writes go through
--- the profile-write function; since phase 5, after 20261116200000_nearby_recommendations.sql: alert_candidates()
+-- Authorization checks for the mandatory ID gate (supabase/migrations/20261116174554_mandatory_id_gate.sql).
+-- Run AFTER the migration (and, since phase 4, after 20261116174714_moderation_write_path.sql: profile writes go through
+-- the profile-write function; since phase 5, after 20261116175110_nearby_recommendations.sql: alert_candidates()
 -- takes no coordinates), as the postgres role:
 --   SQL editor: paste the whole file and Run.   psql: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/id_gate.sql
 -- Everything happens in one transaction that is rolled back: no data is kept. Any failed check stops the script with
@@ -91,7 +91,7 @@ end $$;
 
 -- Own profile and own verification row stay usable; badges and verification rows are not writable.
 do $$ declare n int; begin
-  -- Since the moderation write path (20261116180000), profile text is written only through profile-write.
+  -- Since the moderation write path (20261116174714), profile text is written only through profile-write.
   begin
     update public.profiles set intro = 'Still setting up' where id = '00000000-0000-4000-8000-0000000000a1';
     raise exception 'FAIL: client edited profile text directly';
