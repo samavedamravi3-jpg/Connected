@@ -42,7 +42,7 @@
         "expo-image-picker",
         {
           "photosPermission": "Connected lets you choose a profile photo from your library. Only the photo you pick is used.",
-          "cameraPermission": false,
+          "cameraPermission": "Connected uses the camera only when you choose to take a photo for a Nearby post.",
           "microphonePermission": false
         }
       ],

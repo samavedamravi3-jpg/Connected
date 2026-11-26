@@ -65,3 +65,33 @@ export function removeProfilePhoto(uri?: string | null) {
     // Already gone; nothing to do.
   }
 }
+
+/**
+ * Lets the user choose a wide cover photo (3:1) for the banner behind their portrait. Like the profile photo it is
+ * re-encoded to a metadata-free JPEG (no camera details or GPS) and kept in the app's documents folder.
+ * Stored on this phone only for now; syncing covers to other members needs a backend change.
+ */
+export async function pickCoverPhoto(previousUri?: string | null): Promise<PickResult> {
+  const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (!perm.granted) return { error: 'Photo access is off. You can turn it on in your phone’s settings.' };
+  const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [3, 1], quality: 0.85, exif: false });
+  if (result.canceled || !result.assets?.length) return null;
+  try {
+    const source = await ImageManipulator.manipulate(result.assets[0].uri).renderAsync();
+    const width = Math.min(1200, source.width);
+    const out = await ImageManipulator.manipulate(source).resize({ width }).renderAsync();
+    let saved: string;
+    try {
+      saved = (await out.saveAsync({ format: SaveFormat.JPEG, compress: 0.8 })).uri;
+    } finally {
+      source.release();
+      out.release();
+    }
+    const target = new File(Paths.document, `cover-${Date.now()}.jpg`);
+    await new File(saved).copy(target, { overwrite: true });
+    removeProfilePhoto(previousUri);
+    return { uri: target.uri };
+  } catch {
+    return { error: 'That photo couldn’t be prepared. Try another one.' };
+  }
+}

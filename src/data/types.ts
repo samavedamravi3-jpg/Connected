@@ -74,6 +74,8 @@ export type Person = {
   photo?: string;
   /** 128 px version of `photo` for map markers and small avatars. */
   photoThumb?: string;
+  /** Wide cover photo shown behind their portrait, when they added one. */
+  cover?: string;
   door?: OpenDoor;
   /** Work or school history, when they chose to show it. */
   experience?: Experience[];
@@ -181,4 +183,6 @@ export type Profile = {
   offer: string;
   /** Local file URI of your profile photo, copied into the app's documents folder. */
   photoUri: string | null;
+  /** Local file URI of your cover photo (the banner behind your portrait). On this phone only for now. */
+  coverUri?: string | null;
 };

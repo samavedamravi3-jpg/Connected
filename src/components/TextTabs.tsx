@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { C, S } from '@/theme';
 
 export type TextTab<Id extends string> = { id: Id; label: string; count: number };
@@ -26,7 +27,7 @@ export function TextTabs<Id extends string>({ tabs, value, onChange }: { tabs: r
             <Text style={[styles.label, on && styles.labelOn]}>
               {t.label} <Text style={styles.count}>{t.count}</Text>
             </Text>
-            <View style={[styles.bar, on && styles.barOn]} />
+            {on ? <Animated.View key={`on-${t.id}`} entering={FadeIn.duration(200)} style={[styles.bar, styles.barOn]} /> : <View style={styles.bar} />}
           </Pressable>
         );
       })}

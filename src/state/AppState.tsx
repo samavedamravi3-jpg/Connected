@@ -31,6 +31,8 @@ export type AppData = {
   incoming: IncomingRequest[];
   doors: OpenDoor[];
   savedEvents: string[];
+  /** Demo Collab Circles you took a seat in (on this phone only). */
+  joinedCircles?: string[];
   blocked: string[];
   /** People you muted: hidden from your map, search and alerts without telling them. */
   muted: string[];
@@ -140,6 +142,7 @@ type Ctx = Omit<AppData, 'requests' | 'messages'> & {
   saveDoor: (door: OpenDoor) => void;
   endDoor: (id: string) => void;
   toggleSavedEvent: (id: string) => void;
+  toggleCircle: (id: string) => void;
   block: (personId: string) => void;
   unblock: (personId: string) => void;
   report: (personId: string, reason: string) => void;
@@ -556,6 +559,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       markRead,
       saveDoor: (door) => setData((d) => ({ ...d, doors: d.doors.some((x) => x.id === door.id) ? d.doors.map((x) => (x.id === door.id ? door : x)) : [...d.doors, door] })),
       endDoor: (id) => setData((d) => ({ ...d, doors: d.doors.map((x) => (x.id === id ? { ...x, endedAt: Date.now() } : x)) })),
+      toggleCircle: (id) => setData((d) => { const j = d.joinedCircles ?? []; return { ...d, joinedCircles: j.includes(id) ? j.filter((x) => x !== id) : [...j, id] }; }),
       toggleSavedEvent: (id) => setData((d) => ({ ...d, savedEvents: d.savedEvents.includes(id) ? d.savedEvents.filter((x) => x !== id) : [...d.savedEvents, id] })),
       block: (personId) => {
         if (isRemoteId(personId)) blockRemote(personId).then(loadRemote).catch((e) => console.warn('Could not block', e));

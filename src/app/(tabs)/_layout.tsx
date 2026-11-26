@@ -44,11 +44,13 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Map', headerShown: false, tabBarIcon: ({ color }) => <Ionicons name="map-outline" size={22} color={String(color)} /> }} />
+      <Tabs.Screen name="nearby" options={{ title: 'Nearby', headerShown: false, tabBarIcon: ({ color }) => <Ionicons name="images-outline" size={22} color={String(color)} /> }} />
       <Tabs.Screen name="events" options={{ title: 'Events', tabBarIcon: ({ color }) => <Ionicons name="calendar-outline" size={22} color={String(color)} /> }} />
       <Tabs.Screen
         name="inbox"
         options={{
           title: 'Inbox',
+          headerShown: false,
           tabBarBadge: waiting || undefined,
           tabBarBadgeStyle: { backgroundColor: C.bad, fontSize: 11 },
           tabBarIcon: ({ color }) => <Ionicons name="chatbubbles-outline" size={22} color={String(color)} />,

@@ -49,6 +49,9 @@ export default function RootLayout() {
             <Stack.Screen name="open-door" options={{ title: 'Open Door', presentation: 'modal' }} />
             <Stack.Screen name="event/[id]" options={{ title: 'Event' }} />
             <Stack.Screen name="chat/[id]" options={{ title: 'Conversation' }} />
+            <Stack.Screen name="post/new" options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }} />
+            <Stack.Screen name="post/[id]" options={{ headerShown: false }} />
+            <Stack.Screen name="circle/[id]" options={{ title: '', headerShadowVisible: false }} />
             <Stack.Screen name="search" options={{ headerShown: false }} />
             <Stack.Screen name="auth" options={{ headerShown: false }} />
             <Stack.Screen name="verify" options={{ title: 'Get verified', presentation: 'modal' }} />
