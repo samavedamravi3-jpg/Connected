@@ -152,7 +152,7 @@ begin
     select 1
     from public.profiles p
     join public.id_verifications v on v.user_id = p.id
-    where p.id = uid and p.id_verified and v.status = 'verified' and v.livemode
+    where p.id = uid and p.id_verified and not p.hidden and v.status = 'verified' and v.livemode
   );
 end;
 $$;

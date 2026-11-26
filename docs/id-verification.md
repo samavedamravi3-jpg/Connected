@@ -91,3 +91,14 @@ A real ID and selfie in test mode is **not** a real check: Stripe documents only
    (one key per project: setting live keys stops test mode).
 5. Verify yourself end to end with a real ID; confirm webhook deliveries return 200 and that `is_real_member` is true for your user.
 6. Budget for $1.50 per completed verification.
+
+## Decisions (2026-11-23)
+- Target: hackathon demo. Real membership still requires a live-mode verified row; no demo shortcut is added and nothing is ever faked as verified.
+- Stripe Identity live mode is activated by the owner, who sets the live keys (never in chat).
+- Retries unlimited; users must be 18+ (Stripe does not verify minors); no region restriction yet (get legal advice on biometrics before launching in the EU).
+
+## Security review (2026-11-23, Opus)
+No critical/high issues. Medium: hidden users stayed members (fixed in `20261123180000_real_member_not_hidden.sql`, **not yet applied**; assert added to `supabase/tests/id_gate.sql`). Known limits, deferred: nothing ties one real person to one account (no identity hash), and no per-user cap on session creation (set a Stripe usage alert).
+
+## Live pilot restriction
+The deployed `identity` function only opens live Stripe sessions for the user whose id equals the `IDENTITY_LIVE_PILOT_USER_ID` function secret (test mode is unaffected). The value is set in Supabase, never in Git. Remove the check in `supabase/functions/identity/index.ts` to open live checks to everyone.

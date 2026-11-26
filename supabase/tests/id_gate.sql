@@ -56,6 +56,10 @@ do $$ begin
   assert not public.is_real_member('00000000-0000-4000-8000-0000000000a3'), 'F (flag without a live row) must not be a member';
   assert public.is_real_member('00000000-0000-4000-8000-0000000000b1'), 'L1 (live verified) must be a member';
   assert not public.is_real_member(null), 'null is not a member';
+  -- An auto-hidden/banned user stops counting as a member, and counts again when unhidden.
+  update public.profiles set hidden = true where id = '00000000-0000-4000-8000-0000000000b1';
+  assert not public.is_real_member('00000000-0000-4000-8000-0000000000b1'), 'hidden live-verified user must not be a member';
+  update public.profiles set hidden = false where id = '00000000-0000-4000-8000-0000000000b1';
   insert into public.app_config (key, value) values ('id_gate', 'off') on conflict (key) do update set value = 'off';
   assert public.id_gate_on(), 'id_gate_on() must stay true whatever app_config says';
 end $$;
