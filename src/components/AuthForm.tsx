@@ -2,7 +2,10 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { AuthFailure, RESEND_COOLDOWN_S } from '@/lib/authErrors';
+import { consentCurrent } from '@/lib/consent';
+import { LEGAL } from '@/legal/config';
 import { useApp } from '@/state/AppState';
+import { LegalLinks } from './Legal';
 import { C, R, S, T } from '@/theme';
 import { Button } from './ui';
 
@@ -20,6 +23,9 @@ export function AuthForm({ mode, onDone, onSwitchMode }: Props) {
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  // Nothing is pre-ticked. Needed for sign-up, and for sign-in on a phone with no current acceptance on record.
+  const needsAgree = !consentCurrent(app.consent);
+  const [agree, setAgree] = useState(false);
 
   const inFlight = useRef(false); // state is async, so a tap plus the keyboard's Return could both get through `busy`
   const [unconfirmed, setUnconfirmed] = useState(false);
@@ -54,9 +60,11 @@ export function AuthForm({ mode, onDone, onSwitchMode }: Props) {
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setErr('Enter a valid email address.');
     if (mode === 'signup' && password.length < 8) return setErr('Use at least 8 characters for your password.');
     if (!password) return setErr('Enter your password.');
+    if (needsAgree && !agree) return setErr(`Please confirm you are ${LEGAL.minAge} or older and accept the Terms and Privacy Policy.`);
     inFlight.current = true;
     setBusy(true);
     try {
+      if (needsAgree) app.acceptTerms();
       if (mode === 'signup') {
         const r = await app.signUp(email, password);
         onDone({ mode, needsConfirmation: r.needsConfirmation });
@@ -112,6 +120,19 @@ export function AuthForm({ mode, onDone, onSwitchMode }: Props) {
           </Pressable>
         </View>
       </View>
+      {needsAgree ? (
+        <Pressable
+          onPress={() => setAgree((v) => !v)}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: agree }}
+          accessibilityLabel={`I am ${LEGAL.minAge} or older and I accept the Terms of Service and Privacy Policy`}
+          style={{ flexDirection: 'row', gap: S.md, alignItems: 'flex-start', minHeight: 44 }}
+        >
+          <Ionicons name={agree ? 'checkbox' : 'square-outline'} size={24} color={agree ? C.accent : C.ink3} />
+          <Text style={[T.body, { flex: 1, fontSize: 15, lineHeight: 22 }]}>I’m {LEGAL.minAge} or older and I accept the Terms of Service and Privacy Policy.</Text>
+        </Pressable>
+      ) : null}
+      <LegalLinks ids={['terms', 'privacy']} />
       {err ? <Text style={styles.err} accessibilityRole="alert">{err}</Text> : null}
       {unconfirmed ? (
         <Button label={wait > 0 ? `Resend email in ${wait}s` : 'Resend confirmation email'} variant="secondary" onPress={resend} disabled={busy || wait > 0} />

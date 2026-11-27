@@ -32,6 +32,7 @@ import { radarTopics, type RadarTopic } from '@/lib/radar';
 import { useLiveLocation, type Fix } from '@/lib/useLiveLocation';
 import { useApp } from '@/state/AppState';
 import { C, F, R, S, T, alpha, shadow } from '@/theme';
+import { warn } from '@/lib/log';
 
 /**
  * Connected. map style: a calm, cool-neutral city with white streets, so purple network nodes and
@@ -331,7 +332,7 @@ export default function MapScreen() {
   const notNow = (r: NearbyRec) => (r.demo ? setDemoRec(null) : recs.dismiss());
   const muteCard = (r: NearbyRec) => {
     recs.dismiss();
-    if (app.session) muteAlertsFor(AsyncStorage, app.session.userId, r.id).catch((e) => console.warn('Could not mute alerts', e));
+    if (app.session) muteAlertsFor(AsyncStorage, app.session.userId, r.id).catch((e) => warn('Could not mute alerts', e));
   };
   const shareCard =
     !hideShareCard && app.backendEnabled

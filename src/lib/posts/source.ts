@@ -30,21 +30,6 @@ export interface PostsSource {
 const started = Date.now();
 const demo = buildDemoPosts(started);
 
-/** A quick reachability check so the feed can say "offline" instead of showing blank photos. */
-async function online(): Promise<boolean> {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 4000);
-  try {
-    // Any HTTP answer means the network works; only a failed request means offline.
-    await fetch('https://picsum.photos/id/4/8/8', { signal: ctrl.signal });
-    return true;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(t);
-  }
-}
-
 /** Re-encodes the photo: strips EXIF (camera details and GPS), caps the size, keeps proportions. */
 async function prepareImage(uri: string): Promise<{ uri: string; width: number; height: number }> {
   const src = await ImageManipulator.manipulate(uri).renderAsync();
@@ -63,7 +48,6 @@ async function prepareImage(uri: string): Promise<{ uri: string; width: number; 
 
 export const mockSource: PostsSource = {
   async list(viewer, now) {
-    if (!(await online())) throw new OfflineError();
     const { mine, hidden } = getPosts();
     return [...mine, ...demo].filter((p) => !hidden.includes(p.id) && isDiscoverable(p, viewer, now)).sort((a, b) => b.createdAt - a.createdAt);
   },

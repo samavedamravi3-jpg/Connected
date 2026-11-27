@@ -8,6 +8,7 @@
  */
 import { AREAS, availabilityLabel } from '@/data/options';
 import type { Message, Person, Prefs, Profile } from '@/data/types';
+import { aiAllowed } from './aiConsent';
 import { firstName, fullName, sharedInterests } from './match';
 
 export type AssistKind = 'reply' | 'plan' | 'question' | 'polish';
@@ -68,7 +69,8 @@ const TASK: Record<AssistKind, string> = {
 /** Claude via the existing proxy, else the built-in templates. */
 export async function chatAssist(kind: AssistKind, c: AssistCtx): Promise<AssistResult> {
   const url = process.env.EXPO_PUBLIC_ASSISTANT_URL;
-  if (!url || (kind === 'polish' && !c.draft.trim())) return builtInAssist(kind, c);
+  // Nothing leaves the phone unless the user allowed AI suggestions in Privacy & data.
+  if (!url || !aiAllowed() || (kind === 'polish' && !c.draft.trim())) return builtInAssist(kind, c);
   const p = c.person;
   const context = [
     `ME: ${fullName(c.profile) || 'the user'}; ${c.profile.org || ''}; goals ${c.prefs.goals.join(', ') || 'n/a'}; interests ${c.prefs.interests.join(', ') || 'n/a'}.`,

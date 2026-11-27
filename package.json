@@ -52,7 +52,9 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
-    "test": "tsx --test src/lib/__tests__/*.test.ts"
+    "test": "tsx --test src/lib/__tests__/*.test.ts",
+    "legal:build": "tsx scripts/build-legal-pages.ts",
+    "legal:check": "tsx scripts/build-legal-pages.ts --check"
   },
   "private": true
 }

@@ -19,6 +19,7 @@ import { distanceMi } from '@/lib/geo';
 import { dayLabel, fmtTime } from '@/lib/time';
 import { useApp } from '@/state/AppState';
 import { C, F, R, S, T } from '@/theme';
+import { warn } from '@/lib/log';
 
 type When = 'any' | 'week' | 'month';
 type Page = 'foryou' | 'week' | 'circles' | 'saved';
@@ -81,7 +82,7 @@ export default function Events() {
         },
         (e) => {
           if (id !== seq.current) return;
-          console.warn('Could not load events', e);
+          warn('Could not load events', e);
           setFailedFor(withDemo);
         },
       );

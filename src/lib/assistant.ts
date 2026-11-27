@@ -7,13 +7,14 @@
  *   Claude through that proxy (which keeps the API key off the phone). If it fails, we fall back
  *   to the built-in engine.
  */
+import { aiAllowed } from './aiConsent';
 import { assistantUrl } from './assistantUrl';
 import { CHALLENGES, LANGUAGES, TRAITS, fieldLabel, foodLabel } from '@/data/options';
 import type { ChallengeId, ConnectionRequest, FieldId, Person, Prefs, Profile, TraitId } from '@/data/types';
 import { effectiveSkills } from './experience';
 import { conversationStarter, firstName, fullName, matchPoints, matchScore, matchStrength } from './match';
 
-export type AssistantAction = { label: string; href: '/search' | '/open-door' | '/(tabs)/events' | '/(tabs)/inbox' | '/(tabs)/profile' | '/onboarding' | '/person/[id]'; params?: Record<string, string> };
+export type AssistantAction = { label: string; href: '/search' | '/open-door' | '/(tabs)/events' | '/(tabs)/inbox' | '/(tabs)/profile' | '/privacy' | '/onboarding' | '/person/[id]'; params?: Record<string, string> };
 export type AssistantMsg = {
   id: string;
   role: 'user' | 'assistant';
@@ -217,7 +218,7 @@ export function builtInReply(input: string, ctx: AssistantContext): AssistantMsg
     return { ...base, text: 'Tap the magnifying glass at the top of the map to search people by name, role, company, skill, language or neighborhood.', actions: [{ label: 'Search people', href: '/search' }] };
   }
   if (has(t, ['privacy', 'location', 'track', 'gps', 'who can see', 'safe', 'safety'])) {
-    return { ...base, text: 'Your location is used only while the map is open, to show distances. It’s never tracked in the background and nobody else sees it. Other people appear at their neighborhood, never a live position. You can hide yourself from discovery in Profile, and block or report anyone from their profile.', actions: [{ label: 'Privacy settings', href: '/(tabs)/profile' }] };
+    return { ...base, text: 'Your location is used only while the app is open, to center the map and show distances. It’s never tracked in the background. If you share your rough area, it’s saved rounded to about 1 km, and other people only ever see a neighborhood, never a live position. You can hide yourself from discovery in Profile, and block or report anyone from their profile.', actions: [{ label: 'Privacy settings', href: '/privacy' }] };
   }
   if (has(t, ['block', 'report', 'harass', 'uncomfortable'])) {
     return { ...base, text: 'Open the person’s profile, tap the "…" button at the top, then Block or Report. Blocking hides them from you and cancels pending requests. You can unblock in Profile. Always meet in public places.' };
@@ -270,7 +271,7 @@ export function contextForClaude(ctx: AssistantContext): string {
 /** Ask the Claude proxy. Returns null when it isn't configured or fails, so callers can fall back. */
 export async function claudeReply(history: AssistantMsg[], ctx: AssistantContext): Promise<AssistantMsg | null> {
   const url = assistantUrl();
-  if (!url) return null;
+  if (!url || !aiAllowed()) return null; // nothing leaves the phone until the user allows AI in Privacy & data
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 45_000);
   try {
@@ -295,4 +296,4 @@ export async function claudeReply(history: AssistantMsg[], ctx: AssistantContext
   }
 }
 
-export const claudeConfigured = () => !!process.env.EXPO_PUBLIC_ASSISTANT_URL;
+export const claudeConfigured = () => !!process.env.EXPO_PUBLIC_ASSISTANT_URL && aiAllowed();

@@ -20,8 +20,6 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
@@ -33,7 +31,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Connected uses your location once, while the app is open, to center the map near you. It is never tracked in the background or shown to anyone.",
+          "locationWhenInUsePermission": "Connected uses your location only while the app is open: to center the map near you and sort distances. If you choose to share your rough area, it is saved rounded to about 1 km. It is never tracked in the background.",
           "isIosBackgroundLocationEnabled": false,
           "isAndroidBackgroundLocationEnabled": false
         }

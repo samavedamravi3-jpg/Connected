@@ -18,6 +18,7 @@ import type { CommunityEvent, FieldId, LatLng } from '@/data/types';
 import { fetchNearbyRecs, isRemoteId, setMyArea } from './backend';
 import { distanceMi } from './geo';
 import { POLICY_DEFAULTS, createNearbyController, explainRec, type NearbyRec } from './nearbyPolicy';
+import { warn } from './log';
 
 const CHANNEL = 'nearby';
 const EVENT_SOON_MS = 60 * 60_000;
@@ -87,7 +88,7 @@ export async function sendLocal(title: string, body: string, data: Record<string
     await Notifications.scheduleNotificationAsync({ content: { title, body, data }, trigger: Platform.OS === 'android' ? { channelId: CHANNEL } : null });
     return true;
   } catch (e) {
-    console.warn('Could not send notification', e);
+    warn('Could not send notification', e);
     return false;
   }
 }

@@ -6,6 +6,7 @@ import type { ConnectionRequest, Experience, IncomingRequest, LatLng, Message, O
 import {
   blockRemote, deleteMyPhoto, fetchHiddenEventIds, loadNearbyAlertPrefs, saveNearbyAlertPrefs, fetchMessages, fetchMyExperiences, syncMyExperiences, fetchMyRequests, fetchPeopleByIds, isRemoteId, loadMyDraft, loadMyRow, muteRemote, myRow, reportEventRemote, reportRemote, rowToMine, saveMyRow, unmuteRemote, type MyRow,
   sendRemoteMessage, sendRemoteRequest, setRemoteRequestStatus, subscribeToMine, unblockRemote, uploadMyPhoto, type RemoteMessage, type RemoteRequest,
+  deleteMyAccount, recordConsentRemote,
 } from '@/lib/backend';
 import { EXP_LIMITS, sortExperiences } from '@/lib/experience';
 import { cleanPrefLists, uniqueLabels } from '@/lib/lists';
@@ -13,6 +14,9 @@ import { assertClean } from '@/lib/moderation';
 import { RADIUS_OPTIONS_MI } from '@/lib/nearbyPolicy';
 import { fetchIdStatus, type IdStatus } from '@/lib/idVerification';
 import { authMessage } from '@/lib/authErrors';
+import { makeConsent, needsConsentSync, type ConsentRecord } from '@/lib/consent';
+import { setAiAllowed } from '@/lib/aiConsent';
+import { warn } from '@/lib/log';
 import { photoSyncAction } from '@/lib/avatar';
 import { photoUploadBodies } from '@/lib/photo';
 import { createProfileSync, type SaveIssue, type SyncState } from '@/lib/profileSync';
@@ -55,6 +59,10 @@ export type AppData = {
   photoSynced?: { userId: string; uri: string | null } | null;
   /** Onboarding step to reopen after the account exists: 'idverify', or a later step id. Null when finished. */
   resumeAt?: OnboardingResume | null;
+  /** Terms/Privacy acceptance (version, time) and the 18+ confirmation. Optional choices are separate flags. */
+  consent?: ConsentRecord | null;
+  /** You allowed AI suggestions that send chat or profile text to an AI provider. Off until you turn it on. */
+  aiShare?: boolean;
 };
 
 /** 'idverify' (the mandatory ID check) or the id of an onboarding step after it. */
@@ -156,6 +164,13 @@ type Ctx = Omit<AppData, 'requests' | 'messages'> & {
   /** Undo every hidden event and muted host. */
   restoreEvents: () => void;
   reset: () => Promise<void>;
+  consent: ConsentRecord | null;
+  /** Records acceptance of the current Terms and Privacy Policy (and the 18+ confirmation) with the version and time. */
+  acceptTerms: () => void;
+  aiShare: boolean;
+  setAiShare: (v: boolean) => void;
+  /** Server-side deletion after re-entering the password. Clears this phone afterwards. Throws an Error whose message is a code. */
+  deleteAccount: (password: string) => Promise<void>;
 };
 
 const AppContext = createContext<Ctx | null>(null);
@@ -173,7 +188,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const sessionUserId = session?.userId;
   const [profileSync, setProfileSync] = useState<SyncState>({ ready: false, saving: false, issue: null });
   const [sync] = useState(() =>
-    createProfileSync<MyRow>((row) => saveMyRow(row).catch((e) => { console.warn('Could not save profile', e); throw e; }), 1200, setProfileSync),
+    createProfileSync<MyRow>((row) => saveMyRow(row).catch((e) => { warn('Could not save profile', e); throw e; }), 1200, setProfileSync),
   );
   const refreshId = useCallback(async () => {
     if (!sessionUserId) {
@@ -193,6 +208,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshId();
   }, [refreshId]);
+  useEffect(() => {
+    setAiAllowed(data.aiShare === true);
+  }, [data.aiShare]);
+  // Save the Terms acceptance to the account once there is one (the server stamps its own time).
+  const consentRec = data.consent;
+  useEffect(() => {
+    if (!needsConsentSync(consentRec, sessionUserId)) return;
+    recordConsentRemote(consentRec!.termsVersion, consentRec!.privacyVersion)
+      .then(() => setData((d) => (d.consent ? { ...d, consent: { ...d.consent, syncedFor: sessionUserId } } : d)))
+      .catch((e) => warn('Could not save consent', e));
+  }, [consentRec, sessionUserId]);
   useEffect(() => {
     if (!sessionUserId) return;
     fetchHiddenEventIds().then(setRemoteHiddenEvents).catch(() => {});
@@ -272,7 +298,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       rememberPeople(people);
       setRemote({ requests, messages });
     } catch (e) {
-      console.warn('Could not load requests', e);
+      warn('Could not load requests', e);
     }
   }, []);
 
@@ -314,7 +340,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (action === 'upload' && photoUri ? photoUploadBodies(photoUri).then((b) => uploadMyPhoto(sessionUserId, b.full, b.thumb)) : deleteMyPhoto(sessionUserId))
       .then(() => alive && setData((d) => ({ ...d, photoSynced: { userId: sessionUserId, uri: photoUri } })))
       // Retried on the next change or launch; the photo stays on this phone meanwhile.
-      .catch((e) => console.warn('Could not sync profile photo', e));
+      .catch((e) => warn('Could not sync profile photo', e));
     return () => {
       alive = false;
     };
@@ -331,14 +357,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (p) setData((d) => ({ ...d, nearbyAlerts: p.enabled, nearbyRadiusMi: p.radiusMi, nearbyCooldownH: p.cooldownH }));
         setNearbyReady(sessionUserId);
       })
-      .catch((e) => console.warn('Could not load nearby alert settings', e));
+      .catch((e) => warn('Could not load nearby alert settings', e));
     return () => {
       alive = false;
     };
   }, [sessionUserId, hydrated]);
   useEffect(() => {
     if (!sessionUserId || nearbyReady !== sessionUserId) return;
-    saveNearbyAlertPrefs({ enabled: data.nearbyAlerts, radiusMi: data.nearbyRadiusMi, cooldownH: data.nearbyCooldownH }).catch((e) => console.warn('Could not save nearby alert settings', e));
+    saveNearbyAlertPrefs({ enabled: data.nearbyAlerts, radiusMi: data.nearbyRadiusMi, cooldownH: data.nearbyCooldownH }).catch((e) => warn('Could not save nearby alert settings', e));
   }, [sessionUserId, nearbyReady, data.nearbyAlerts, data.nearbyRadiusMi, data.nearbyCooldownH]);
 
   // ---- Experience sync: pull once after sign-in (remote wins when it has entries), then push changes ----
@@ -356,7 +382,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (list.length) setData((d) => ({ ...d, prefs: { ...d.prefs, experience: list } }));
         setExpReady(sessionUserId);
       })
-      .catch((e) => console.warn('Could not load experience', e));
+      .catch((e) => warn('Could not load experience', e));
     return () => {
       alive = false;
     };
@@ -364,7 +390,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!sessionUserId || expReady !== sessionUserId) return;
     const t = setTimeout(() => {
-      syncMyExperiences(sessionUserId, data.prefs.experience).catch((e) => console.warn('Could not save experience', e));
+      syncMyExperiences(sessionUserId, data.prefs.experience).catch((e) => warn('Could not save experience', e));
     }, 800);
     return () => clearTimeout(t);
   }, [sessionUserId, expReady, data.prefs.experience]);
@@ -562,7 +588,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toggleCircle: (id) => setData((d) => { const j = d.joinedCircles ?? []; return { ...d, joinedCircles: j.includes(id) ? j.filter((x) => x !== id) : [...j, id] }; }),
       toggleSavedEvent: (id) => setData((d) => ({ ...d, savedEvents: d.savedEvents.includes(id) ? d.savedEvents.filter((x) => x !== id) : [...d.savedEvents, id] })),
       block: (personId) => {
-        if (isRemoteId(personId)) blockRemote(personId).then(loadRemote).catch((e) => console.warn('Could not block', e));
+        if (isRemoteId(personId)) blockRemote(personId).then(loadRemote).catch((e) => warn('Could not block', e));
         setData((d) => ({
           ...d,
           blocked: d.blocked.includes(personId) ? d.blocked : [...d.blocked, personId],
@@ -570,28 +596,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }));
       },
       unblock: (personId) => {
-        if (isRemoteId(personId) && session) unblockRemote(session.userId, personId).catch((e) => console.warn('Could not unblock', e));
+        if (isRemoteId(personId) && session) unblockRemote(session.userId, personId).catch((e) => warn('Could not unblock', e));
         setData((d) => ({ ...d, blocked: d.blocked.filter((x) => x !== personId) }));
       },
       report: (personId, reason) => {
-        if (isRemoteId(personId)) reportRemote(personId, reason).catch((e) => console.warn('Could not report', e));
+        if (isRemoteId(personId)) reportRemote(personId, reason).catch((e) => warn('Could not report', e));
       },
       mute: (personId) => {
-        if (isRemoteId(personId)) muteRemote(personId).catch((e) => console.warn('Could not mute', e));
+        if (isRemoteId(personId)) muteRemote(personId).catch((e) => warn('Could not mute', e));
         setData((d) => ({ ...d, muted: d.muted.includes(personId) ? d.muted : [...d.muted, personId] }));
       },
       unmute: (personId) => {
-        if (isRemoteId(personId) && session) unmuteRemote(session.userId, personId).catch((e) => console.warn('Could not unmute', e));
+        if (isRemoteId(personId) && session) unmuteRemote(session.userId, personId).catch((e) => warn('Could not unmute', e));
         setData((d) => ({ ...d, muted: d.muted.filter((x) => x !== personId) }));
       },
       eventHidden: (e) => data.hiddenEvents.includes(e.id) || data.mutedHosts.includes(e.host) || remoteHiddenEvents.includes(e.id),
       hideEvent: (id) => setData((d) => ({ ...d, hiddenEvents: d.hiddenEvents.includes(id) ? d.hiddenEvents : [...d.hiddenEvents, id] })),
       reportEvent: (id, reason) => {
-        if (session) reportEventRemote(id, reason).catch((e) => console.warn('Could not report event', e));
+        if (session) reportEventRemote(id, reason).catch((e) => warn('Could not report event', e));
         setData((d) => ({ ...d, hiddenEvents: d.hiddenEvents.includes(id) ? d.hiddenEvents : [...d.hiddenEvents, id] }));
       },
       muteHost: (host) => setData((d) => ({ ...d, mutedHosts: d.mutedHosts.includes(host) ? d.mutedHosts : [...d.mutedHosts, host] })),
       restoreEvents: () => setData((d) => ({ ...d, hiddenEvents: [], mutedHosts: [] })),
+      consent: data.consent ?? null,
+      acceptTerms: () => setData((d) => ({ ...d, consent: makeConsent() })),
+      aiShare: data.aiShare === true,
+      setAiShare: (v) => setData((d) => ({ ...d, aiShare: v })),
+      deleteAccount: async (password) => {
+        await deleteMyAccount(password);
+        await AsyncStorage.removeItem(KEY).catch(() => {});
+        await supabase?.auth.signOut({ scope: 'local' }).catch(() => {});
+        setRemote({ requests: [], messages: [] });
+        setData(fresh());
+      },
       reset: async () => {
         await AsyncStorage.removeItem(KEY).catch(() => {});
         await supabase?.auth.signOut();

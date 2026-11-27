@@ -6,6 +6,7 @@ import { Button, Note, Tag, type IconName } from '@/components/ui';
 import { stillCapturing, idErrorMessage } from '@/lib/idStatus';
 import { fetchIdAttempt, idServerMode, isProfileNotReadyError, startIdVerification } from '@/lib/idVerification';
 import { NOT_SAVED_MESSAGE } from '@/lib/profileSync';
+import { canStartIdCheck } from '@/lib/consent';
 import { useApp } from '@/state/AppState';
 import { C, R, S, T } from '@/theme';
 
@@ -223,8 +224,8 @@ export function IdVerifyPanel({ onDone, onSignIn, onEditProfile }: { onDone?: ()
           label={primary}
           icon={status === 'pending' ? 'refresh' : 'camera-outline'}
           loading={status === 'pending' ? busy === 'check' : busy === 'start' || settingUp}
-          disabled={!!busy || settingUp || (showIntro && !consent)}
-          accessibilityHint={showIntro && !consent ? 'Agree to the consent statement above first.' : 'Opens Stripe’s verification page in your browser.'}
+          disabled={!!busy || settingUp || (showIntro && !consent) || !canStartIdCheck(app.consent)}
+          accessibilityHint={!canStartIdCheck(app.consent) ? 'Confirm you are 18 or older when you sign in or create your account first.' : showIntro && !consent ? 'Agree to the consent statement above first.' : 'Opens Stripe’s verification page in your browser.'}
           onPress={() => run(status === 'pending' ? 'check' : 'start')}
         />
       )}

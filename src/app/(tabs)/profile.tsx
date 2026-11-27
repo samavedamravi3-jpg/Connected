@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useState } from 'react';
+import { LegalLinks } from '@/components/Legal';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Avatar, Button, Card, ChipGroup, KV, Note, Row, Section, Segmented, Tag } from '@/components/ui';
 import { ProfileCover } from '@/components/ProfileCover';
@@ -322,6 +323,8 @@ export default function ProfileTab() {
         <Note icon="lock-closed-outline">
           Location is used only while the app is open: to center your map and, if nearby alerts are on, to save your rough area (about 1 km) while the map is open. It’s never tracked in the background. Other people see an approximate area at most, never your position.
         </Note>
+        <Button label="Privacy & data" icon="shield-checkmark-outline" variant="secondary" onPress={() => router.push('/privacy')} />
+        <LegalLinks ids={['terms', 'privacy', 'refunds', 'cookies']} />
         {app.blocked.length ? (
           app.blocked.map((id) => (
             <Row key={id} style={{ justifyContent: 'space-between' }}>
