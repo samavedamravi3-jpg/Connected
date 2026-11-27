@@ -9,7 +9,9 @@
 // never logged or stored; we never request or store ID images, selfies, document numbers, names or dates of birth.
 //
 // Secrets (project owner sets them; never in the app): STRIPE_SECRET_KEY (sk_test_/rk_test_), STRIPE_WEBHOOK_SECRET.
-// Live mode stays off unless IDENTITY_LIVE_ENABLED=true is also set. See docs/id-verification.md.
+// Live mode stays off unless IDENTITY_LIVE_ENABLED=true is also set, and in live mode only the user whose id equals
+// IDENTITY_LIVE_PILOT_USER_ID can open a session (pilot restriction; remove it to open live checks to everyone).
+// See docs/id-verification.md.
 // Deploy:  supabase functions deploy identity --project-ref avfahjcgczcfyvcnhzyy   (gateway JWT check ON)
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { captureFor, createKey, isRealMember, providerMode, resumeAction, reusable, sessionParams, type Row } from '../_shared/identityCore.ts';
@@ -50,9 +52,12 @@ Deno.serve(async (req) => {
   const uid = me.user.id;
 
   const mode = providerMode({ secretKey: Deno.env.get('STRIPE_SECRET_KEY'), webhookSecret: Deno.env.get('STRIPE_WEBHOOK_SECRET'), liveEnabled: Deno.env.get('IDENTITY_LIVE_ENABLED') });
-  if (action === 'status') return json(200, { available: mode.available, test: mode.test });
+  // During the live pilot, only the configured adult tester can open a Stripe session.
+  const pilotUserId = Deno.env.get('IDENTITY_LIVE_PILOT_USER_ID');
+  const available = mode.available && (mode.test || uid === pilotUserId);
+  if (action === 'status') return json(200, { available, test: mode.test });
   if (action !== 'session') return json(400, { error: 'Unknown action.' });
-  if (!mode.available) return json(503, { error: 'unavailable' });
+  if (!available) return json(503, { error: 'unavailable' });
 
   const { data: prof } = await admin.from('profiles').select('id_verified').eq('id', uid).maybeSingle();
   if (!prof) return json(409, { error: 'Finish setting up your profile first, then try again.' });

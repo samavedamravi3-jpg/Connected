@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps 
 import GorhomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Alert, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, { Extrapolation, FadeIn, FadeInUp, FadeOut, FadeOutUp, interpolate, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import Animated, { Extrapolation, FadeIn, FadeInDown, FadeInUp, FadeOut, FadeOutUp, SlideInDown, SlideOutDown, ZoomIn, interpolate, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import MapView, { Circle, Marker, Polygon, Polyline, type MapStyleElement, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -28,9 +28,11 @@ import { canSeeDoor, doorActive, matchPoints, matchScore, matchStrength } from '
 import { notificationState, notifyRec, turnOnNearbyAlerts, useEventAlerts, useNearbyRecommendations, type NotifState } from '@/lib/nearbyAlerts';
 import { muteAlertsFor, pausedReason, sharedLabels, type NearbyRec } from '@/lib/nearbyPolicy';
 import { ASK_H, CONTROLS_H, railFit } from '@/lib/mapRail';
+import { radarTopics, type RadarTopic } from '@/lib/radar';
 import { useLiveLocation, type Fix } from '@/lib/useLiveLocation';
 import { useApp } from '@/state/AppState';
 import { C, F, R, S, T, alpha, shadow } from '@/theme';
+import { warn } from '@/lib/log';
 
 /**
  * Connected. map style: a calm, cool-neutral city with white streets, so purple network nodes and
@@ -110,7 +112,7 @@ export default function MapScreen() {
   const [keyH, setKeyH] = useState(0);
   const [live, setLive] = useState(true);
   const [following, setFollowing] = useState(false);
-  const [showLines, setShowLines] = useState(true);
+  const [showLines, setShowLines] = useState(false);
   const [areaName, setAreaName] = useState('Charlotte');
   const [searchCenter, setSearchCenter] = useState<LatLng>(CHARLOTTE_CENTER);
   const [mapCenter, setMapCenter] = useState<LatLng>(CHARLOTTE_CENTER);
@@ -132,6 +134,9 @@ export default function MapScreen() {
   const [allEvents, setAllEvents] = useState<CommunityEvent[]>([]);
   const [refreshTick, setRefreshTick] = useState(0);
   const [hideShareCard, setHideShareCard] = useState(false);
+  // Conversation Radar: topics people nearby are open to talking about.
+  const [radarOn, setRadarOn] = useState(false);
+  const [radarTopic, setRadarTopic] = useState<RadarTopic | null>(null);
 
   useEffect(() => {
     followingRef.current = following;
@@ -243,6 +248,7 @@ export default function MapScreen() {
       .sort((a, b) => Number(!!prefs.field && b.field === prefs.field) - Number(!!prefs.field && a.field === prefs.field) || matchScore(b, prefs) - matchScore(a, prefs) || a.distanceMi - b.distanceMi);
   }, [pool, filters, blocked, prefs, origin, realOnly]);
   const realCount = people.filter((p) => !p.isDemo).length;
+  const topics = useMemo(() => (radarOn ? radarTopics(people) : []), [radarOn, people]);
 
   // Nearby recommendations ("You should connect"): real members the server says you share something with, within
   // YOUR alert radius of YOUR saved coarse area, only while this map is open with live location on. The map's search
@@ -326,15 +332,13 @@ export default function MapScreen() {
   const notNow = (r: NearbyRec) => (r.demo ? setDemoRec(null) : recs.dismiss());
   const muteCard = (r: NearbyRec) => {
     recs.dismiss();
-    if (app.session) muteAlertsFor(AsyncStorage, app.session.userId, r.id).catch((e) => console.warn('Could not mute alerts', e));
+    if (app.session) muteAlertsFor(AsyncStorage, app.session.userId, r.id).catch((e) => warn('Could not mute alerts', e));
   };
   const shareCard =
     !hideShareCard && app.backendEnabled
       ? !app.session
         ? 'signin'
-        : prefs.shareMode === 'public' || !prefs.discoverable
-          ? 'hidden'
-          : null
+        : null
       : null;
   const selected = people.find((p) => p.id === selectedId);
   const doorVisible = useCallback((p: NearbyPerson) => !!p.door && doorActive(p.door) && canSeeDoor(p.door, p, prefs, profile), [prefs, profile]);
@@ -358,6 +362,28 @@ export default function MapScreen() {
     if (selected && !t.some((p) => p.id === selected.id)) t.push(selected);
     return t;
   }, [people, selected, lonePeople]);
+
+  // Visibility: one persistent, honest status on the map. "Visible in <area>" or "Hidden", and pause from here.
+  const visible = !!app.session && prefs.discoverable && prefs.shareMode === 'area';
+  const visibleArea = shortPlace(loc.place ?? (app.here && !app.here.isGps ? app.here.label : '') ?? '') || 'your area';
+  const visibilityMenu = () => {
+    if (!app.session) {
+      return Alert.alert('You’re hidden', 'Guests never appear on the map. Sign in to choose whether people nearby can see your rough area.', [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Sign in', onPress: () => router.push('/auth') },
+      ]);
+    }
+    if (visible) {
+      return Alert.alert(`Visible in ${visibleArea}`, 'People nearby see your rough area (about 1 km), never your exact location.', [
+        { text: 'Keep visible', style: 'cancel' },
+        { text: 'Pause visibility', style: 'destructive', onPress: () => app.setPrefs({ discoverable: false }) },
+      ]);
+    }
+    Alert.alert('You’re hidden', 'Nobody nearby can see you right now. You can still browse and send requests.', [
+      { text: 'Stay hidden', style: 'cancel' },
+      { text: `Show me in ${visibleArea}`, onPress: () => app.setPrefs({ discoverable: true, shareMode: 'area' }) },
+    ]);
+  };
 
   // Custom markers re-render while they change, then stop tracking for smooth panning.
   const pinsKey = `${people.map((p) => p.id + p.strength + p.coord.latitude + p.coord.longitude).join(',')}|${selectedId ?? ''}|${showHotspots}|${hotspotId ?? ''}|${peopleClusters.clusters.map((c) => (c.kind === 'item' ? c.item.id : `c${c.id}:${c.count}`)).join(',')}|${eventClusters.clusters.map((c) => (c.kind === 'item' ? c.item.id : `c${c.id}:${c.count}`)).join(',')}`;
@@ -577,6 +603,9 @@ export default function MapScreen() {
               );
             })
           : null}
+        {selected ? (
+          <Circle center={selected.coord} radius={260} strokeColor={ACCENT(0.55)} fillColor={ACCENT(0.12)} strokeWidth={1.5} zIndex={2} />
+        ) : null}
         {showLines
           ? lineTargets.map((p) => {
               const on = p.id === selectedId;
@@ -592,6 +621,23 @@ export default function MapScreen() {
               );
             })
           : null}
+        {topics.map((t, i) => (
+          <Marker
+            key={`radar-${t.id}`}
+            coordinate={t.at}
+            anchor={{ x: 0.5, y: 0.5 }}
+            tracksViewChanges={trackPins}
+            zIndex={20}
+            onPress={() => setRadarTopic(t)}
+            accessibilityLabel={`${t.label}, ${t.people.length} people open to talking about it`}
+          >
+            <Animated.View entering={ZoomIn.delay(i * 70).duration(260)} collapsable={false} style={styles.topic}>
+              <Ionicons name={t.icon} size={13} color={C.white} />
+              <Text style={styles.topicText} numberOfLines={1} maxFontSizeMultiplier={1.2}>{t.label}</Text>
+              <Text style={styles.topicCount} maxFontSizeMultiplier={1.2}>{t.people.length}</Text>
+            </Animated.View>
+          </Marker>
+        ))}
         {loc.fix && loc.fix.accuracyM && loc.fix.accuracyM < 250 ? (
           <Circle center={loc.fix.coord} radius={loc.fix.accuracyM} strokeColor={ACCENT(0.2)} fillColor={ACCENT(0.08)} strokeWidth={1} zIndex={3} />
         ) : null}
@@ -671,6 +717,17 @@ export default function MapScreen() {
             onContentSizeChange={(w) => { chipDims.current.c = w; updateChipEdge(); if (!chipStart.current && w > 0) { chipStart.current = true; chipRef.current?.scrollTo({ x: 0, animated: false }); } }}
             onScroll={(e) => { chipDims.current.x = e.nativeEvent.contentOffset.x; updateChipEdge(); }}
           >
+            <Pressable
+              onPress={visibilityMenu}
+              accessibilityRole="button"
+              accessibilityLabel={visible ? `Visible in ${visibleArea}. Change visibility` : 'Hidden. Change visibility'}
+              hitSlop={4}
+              style={({ pressed }) => [styles.visPill, visible && styles.visPillOn, pressed && { opacity: 0.85 }]}
+            >
+              <View style={[styles.visDot, { backgroundColor: visible ? C.ok : C.ink3 }]} />
+              <Text style={[styles.visText, visible && { color: C.ok }]} numberOfLines={1}>{visible ? `Visible in ${visibleArea}` : 'Hidden'}</Text>
+            </Pressable>
+            <Chip label="Radar" icon="radio-outline" selected={radarOn} onPress={() => { setRadarOn((v) => !v); setRadarTopic(null); }} />
             {prefs.field ? (
               <Chip
                 label="My field"
@@ -956,6 +1013,42 @@ export default function MapScreen() {
         </GorhomSheet>
       ) : null}
 
+      <Modal visible={!!radarTopic} transparent animationType="none" onRequestClose={() => setRadarTopic(null)} statusBarTranslucent>
+        <Animated.View entering={FadeIn.duration(150)} style={styles.radarScrim}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setRadarTopic(null)} accessibilityLabel="Close topic" />
+        </Animated.View>
+        {radarTopic ? (
+          <Animated.View entering={SlideInDown.duration(260)} exiting={SlideOutDown.duration(180)} style={[styles.radarSheet, { paddingBottom: insets.bottom + S.lg }]}>
+            <View style={styles.radarHandle} />
+            <View style={styles.radarHead}>
+              <View style={styles.radarIcon}><Ionicons name={radarTopic.icon} size={20} color={C.accent} /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={T.h2}>{radarTopic.label}</Text>
+                <Text style={T.small}>{radarTopic.people.length} {radarTopic.people.length === 1 ? 'person' : 'people'} nearby open to talking about this</Text>
+              </View>
+            </View>
+            <ScrollView style={{ maxHeight: 360 }}>
+              {radarTopic.people.map((p, i) => (
+                <Animated.View key={p.id} entering={FadeInDown.delay(i * 50).duration(240)}>
+                  <Pressable
+                    onPress={() => { setRadarTopic(null); openProfile(p); }}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [styles.radarRow, pressed && { opacity: 0.6 }]}
+                  >
+                    <Avatar name={p.name} uri={p.photoThumb ?? p.photo} size={44} />
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.radarName} numberOfLines={1}>{p.name}</Text>
+                      <Text style={T.small} numberOfLines={1}>{p.role} · {approxDistance(p.distanceMi)}{p.isDemo ? ' · Demo' : ''}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={C.ink3} />
+                  </Pressable>
+                </Animated.View>
+              ))}
+            </ScrollView>
+          </Animated.View>
+        ) : null}
+      </Modal>
+
       <LayersSheet
         visible={showLayers}
         onClose={() => setShowLayers(false)}
@@ -966,6 +1059,7 @@ export default function MapScreen() {
         legend={showHotspots ? (['high', 'medium', 'emerging'] as const).map((l) => ({ id: l, label: HOTSPOT_LEVELS[l].label, fill: HOTSPOT_LEVELS[l].fill, color: HOTSPOT_LEVELS[l].color })) : undefined}
         toggles={[
           { id: 'hot', label: 'Hotspots', hint: 'Neighborhood hubs, shown as soft areas. Not people.', icon: 'flame-outline', value: showHotspots, onChange: (v) => { setShowHotspots(v); setHotspotId(null); } },
+          { id: 'radar', label: 'Conversation Radar', hint: 'Topics people nearby are open to talking about', icon: 'radio-outline', value: radarOn, onChange: (v) => { setRadarOn(v); setRadarTopic(null); } },
           { id: 'lines', label: 'Connection lines', hint: 'Lines to your best matches', icon: 'git-network-outline', value: showLines, onChange: setShowLines },
           { id: 'events', label: 'Events', hint: 'In-person events nearby', icon: 'calendar-outline', value: showEvents, onChange: setShowEvents },
           { id: 'alerts', label: 'Nearby alerts', hint: `Same-field recommendations within about ${app.nearbyRadiusMi} mi`, icon: 'notifications-outline', value: app.nearbyAlerts, onChange: () => { setShowLayers(false); void toggleAlerts(); } },
@@ -1034,6 +1128,20 @@ const styles = StyleSheet.create({
   askBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
   rail: { position: 'absolute', right: S.md, bottom: 0, alignItems: 'center', gap: S.sm },
   fade: { position: 'absolute', top: 0, bottom: 0, width: 32 },
+  topic: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingLeft: 9, paddingRight: 4, paddingVertical: 4, borderRadius: 999, backgroundColor: C.accent, maxWidth: 210, ...shadow },
+  topicText: { color: C.white, fontSize: 12, fontWeight: '600', flexShrink: 1 },
+  topicCount: { color: C.accent, backgroundColor: C.white, fontSize: 11, fontWeight: '700', minWidth: 18, textAlign: 'center', borderRadius: 9, overflow: 'hidden', paddingHorizontal: 4, paddingVertical: 1 },
+  radarScrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(27,26,33,0.3)' },
+  radarSheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: C.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: S.lg, paddingTop: S.sm, gap: S.md },
+  radarHandle: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: C.line2 },
+  radarHead: { flexDirection: 'row', alignItems: 'center', gap: S.md },
+  radarIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
+  radarRow: { flexDirection: 'row', alignItems: 'center', gap: S.md, paddingVertical: S.sm },
+  radarName: { fontSize: 16, fontWeight: '600', color: C.ink },
+  visPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, minHeight: 36, borderRadius: R.pill, borderWidth: 1, borderColor: C.line2, backgroundColor: C.surface, maxWidth: 220 },
+  visPillOn: { borderColor: alpha(C.ok, 0.45), backgroundColor: C.okSoft },
+  visDot: { width: 8, height: 8, borderRadius: 4 },
+  visText: { fontSize: 14, fontWeight: '600', color: C.ink2, flexShrink: 1 },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.surface, paddingHorizontal: S.md, minHeight: 40, borderRadius: R.pill, borderWidth: 1, borderColor: C.line },
   pillAccent: { color: C.accent, fontWeight: '600', fontSize: 14, flexShrink: 1 },
   pillText: { fontSize: 13, fontWeight: '600', color: C.ink },

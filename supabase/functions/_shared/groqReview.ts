@@ -5,7 +5,9 @@
 import { AI_SYSTEM, aiUserMessage, parseVerdicts, type AiField, type Verdict } from './moderationAi.ts';
 
 export const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-export const GROQ_DEFAULT_MODEL = 'llama-3.3-70b-versatile';
+// llama-3.3-70b-versatile was shut down for free/developer tiers on 2026-08-16 (Groq answered 404); this is Groq's
+// recommended replacement. It reasons before answering, so the output cap is larger and the effort low.
+export const GROQ_DEFAULT_MODEL = 'openai/gpt-oss-120b';
 export const GROQ_TIMEOUT_MS = 8_000;
 
 export type Env = (name: string) => string | undefined;
@@ -26,7 +28,9 @@ export async function groqReview(fields: Partial<Record<AiField, string>>, env: 
       body: JSON.stringify({
         model: env('GROQ_MODERATION_MODEL')?.trim() || GROQ_DEFAULT_MODEL,
         temperature: 0,
-        max_tokens: 300,
+        max_completion_tokens: 1024, // includes the model's reasoning
+        reasoning_effort: 'low',
+        include_reasoning: false, // only the JSON answer in message.content
         response_format: { type: 'json_object' },
         messages: [{ role: 'system', content: AI_SYSTEM }, { role: 'user', content: aiUserMessage(fields) }],
       }),

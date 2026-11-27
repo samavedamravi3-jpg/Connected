@@ -70,7 +70,10 @@ test('request: Groq endpoint, bearer key in the header only, no redirects, a tim
   assert.ok(!String(init.body).includes(KEY), 'the key is not in the body');
   assert.equal(body.model, GROQ_DEFAULT_MODEL);
   assert.equal(body.temperature, 0);
-  assert.equal(body.max_tokens, 300);
+  assert.equal(body.max_completion_tokens, 1024);
+  assert.equal(body.reasoning_effort, 'low');
+  assert.equal(body.include_reasoning, false);
+  assert.equal(GROQ_DEFAULT_MODEL, 'openai/gpt-oss-120b');
   assert.deepEqual(body.response_format, { type: 'json_object' });
   assert.equal(body.messages[0].role, 'system');
   assert.match(body.messages[0].content, /Connected/);

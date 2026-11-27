@@ -3,6 +3,7 @@
  * Nothing is saved here. The caller shows the drafts for review first. If the proxy isn't configured or
  * fails, the result says so and the caller falls back to manual entry.
  */
+import { assistantUrl } from './assistantUrl';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import type { Experience } from '@/data/types';
@@ -16,7 +17,7 @@ export type ResumeResult =
   | { status: 'cancelled' }
   | { status: 'unavailable'; message: string };
 
-const proxyBase = () => process.env.EXPO_PUBLIC_ASSISTANT_URL?.replace(/\/assistant\/?$/, '').replace(/\/$/, '');
+const proxyBase = () => assistantUrl()?.replace(/\/assistant\/?$/, '').replace(/\/$/, '');
 
 /** True when the Claude proxy is configured, so the import button can explain the fallback up front. */
 export const resumeImportConfigured = () => !!proxyBase();

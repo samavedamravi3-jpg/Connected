@@ -9,6 +9,7 @@ import { fetchLiveEvents, getLiveEvent } from '@/lib/liveEvents';
 import { buildDemoEvents, buildDemoPeople } from './demo';
 import { CHALLENGES, FIELDS, FOODS } from './options';
 import type { CommunityEvent, LatLng, NearbyPerson, Person } from './types';
+import { warn } from '@/lib/log';
 
 export type EventsResult = { events: CommunityEvent[]; liveCount: number; errors: string[]; fetchedAt: number };
 export type SearchHit = { person: Person; score: number; matched: string[] };
@@ -77,7 +78,7 @@ async function remote<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
   try {
     return await fn();
   } catch (e) {
-    console.warn('Backend request failed', e);
+    warn('Backend request failed', e);
     return fallback;
   }
 }

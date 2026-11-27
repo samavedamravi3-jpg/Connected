@@ -10,6 +10,7 @@
  *   - Chat, connection notes, experience: rules are authoritative; the AI check below is a best-effort extra in the app.
  * Nothing here is evasion-proof.
  */
+import { assistantUrl } from './assistantUrl';
 import { checkText, PROFILE_TEXT, profileRuleErrors, type FieldError, type FieldKind, type Reason, type RuleResult } from '../../supabase/functions/_shared/moderationRules';
 import type { Experience } from '@/data/types';
 
@@ -101,7 +102,7 @@ export type { Reason };
  * or timeout refuses the text (the user can retry).
  */
 export async function aiModerate(text: string): Promise<ModerationResult & { skipped?: boolean }> {
-  const base = process.env.EXPO_PUBLIC_ASSISTANT_URL;
+  const base = assistantUrl();
   if (!base) return { ok: true, skipped: true };
   if (!text.trim()) return { ok: true };
   const ctrl = new AbortController();

@@ -1,25 +1,34 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import type { ComponentProps } from 'react';
+import { useState } from 'react';
 import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EventImage } from '@/components/EventImage';
-import { Button, Tag } from '@/components/ui';
+import { Button } from '@/components/ui';
 import { EVENT_STYLE } from '@/data/eventVisuals';
-import { CHARLOTTE_CENTER, fieldLabel } from '@/data/options';
+import { CHARLOTTE_CENTER } from '@/data/options';
 import { dataSource } from '@/data/source';
 import { approxDistance, distanceMi } from '@/lib/geo';
 import { dayLabel, fmtTime } from '@/lib/time';
 import { useApp } from '@/state/AppState';
-import { C, R, S, T, alpha } from '@/theme';
+import { C, F, R, S, T, alpha } from '@/theme';
 
-type IconName = ComponentProps<typeof Ionicons>['name'];
+/** The first sentence or two of the listing, as a short "why go". Nothing is written for the organizer. */
+function lead(text: string): { lead: string; rest: string } {
+  const clean = text.trim();
+  const m = clean.match(/^(.{40,260}?[.!?])(\s|$)/s);
+  if (!m) return { lead: clean.slice(0, 260), rest: clean.length > 260 ? clean : '' };
+  const rest = clean.slice(m[1].length).trim();
+  return { lead: m[1], rest };
+}
 
 export default function EventScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const app = useApp();
   const insets = useSafeAreaInsets();
+  const [expanded, setExpanded] = useState(false);
   const e = dataSource.getEvent(id);
   if (!e) return <Text style={[T.body, { padding: S.lg }]}>Event not found.</Text>;
 
@@ -28,11 +37,12 @@ export default function EventScreen() {
   const multiDay = dayLabel(e.start) !== dayLabel(e.end);
   const origin = app.here?.coord ?? CHARLOTTE_CENTER;
   const from = app.here?.isGps ? 'from you' : `from ${app.here?.label ?? 'Uptown'}`;
-  const free = e.cost.toLowerCase().startsWith('free');
+  const price = e.cost.toLowerCase().startsWith('free') ? 'Free' : e.cost;
   const ll = `${e.coord.latitude},${e.coord.longitude}`;
   const directions = Platform.OS === 'ios'
     ? `http://maps.apple.com/?daddr=${ll}&q=${encodeURIComponent(e.venue)}`
     : `https://www.google.com/maps/dir/?api=1&destination=${ll}`;
+  const { lead: why, rest } = lead(e.description);
 
   const more = () =>
     Alert.alert(e.title, undefined, [
@@ -51,117 +61,153 @@ export default function EventScreen() {
       { text: 'Cancel', style: 'cancel' },
     ]);
 
-  const tiles: { icon: IconName; label: string; value: string; sub?: string }[] = [
-    { icon: 'calendar-outline', label: 'Date', value: multiDay ? `${dayLabel(e.start)} – ${dayLabel(e.end)}` : dayLabel(e.start), sub: new Date(e.start).toLocaleDateString([], { month: 'long', day: 'numeric' }) },
-    { icon: 'time-outline', label: 'Time', value: fmtTime(e.start), sub: multiDay ? 'Multi-day' : `until ${fmtTime(e.end)}` },
+  const info: { k: string; v: string; sub?: string }[] = [
+    { k: 'When', v: multiDay ? `${dayLabel(e.start)} – ${dayLabel(e.end)}` : `${dayLabel(e.start)}, ${new Date(e.start).toLocaleDateString([], { month: 'long', day: 'numeric' })}`, sub: multiDay ? `Starts ${fmtTime(e.start)}` : `${fmtTime(e.start)} – ${fmtTime(e.end)}` },
     e.online
-      ? { icon: 'globe-outline', label: 'Where', value: 'Online', sub: 'Join from anywhere' }
-      : { icon: 'location-outline', label: 'Where', value: e.areaName, sub: `${approxDistance(distanceMi(origin, e.coord)).replace('about ', '')} ${from}` },
-    { icon: 'pricetag-outline', label: 'Cost', value: e.cost, sub: e.url ? 'RSVP on the listing' : free ? 'No ticket needed' : 'Pay at the door' },
+      ? { k: 'Where', v: 'Online', sub: 'Link on the listing' }
+      : { k: 'Where', v: e.venue || e.areaName, sub: `${e.areaName} · ${approxDistance(distanceMi(origin, e.coord)).replace('about ', '')} ${from}` },
+    { k: 'Price', v: price },
   ];
 
   return (
-    <ScrollView style={{ backgroundColor: C.bg }} contentContainerStyle={{ paddingBottom: insets.bottom + S.xxl }}>
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
       <Stack.Screen options={{ headerShown: false }} />
-      {/* Photo (or a plain category panel) with the controls on a scrim; the title sits below on a solid background. */}
-      <View style={[styles.hero, { height: insets.top + 220 }]}>
-        {/* The credit sits bottom-right; the scrim and buttons sit on top. Photos come only from the listing's own API. */}
-        <EventImage e={e} style={StyleSheet.absoluteFill} iconSize={56} padTop={insets.top} credit={e.source ? `Photo: ${e.source} listing` : undefined} />
-        <LinearGradient colors={[alpha(C.ink, 0.5), alpha(C.ink, 0)]} style={[styles.topScrim, { height: insets.top + 90 }]} pointerEvents="none" />
-        <View style={[styles.heroBar, { top: insets.top + S.sm }]}>
-          <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back" style={styles.heroBtn} hitSlop={4}>
-            <Ionicons name="chevron-back" size={22} color={C.ink} />
-          </Pressable>
-          <View style={{ flexDirection: 'row', gap: S.sm }}>
-            <Pressable onPress={more} accessibilityRole="button" accessibilityLabel="Report, hide or mute this event" style={styles.heroBtn} hitSlop={4}>
-              <Ionicons name="ellipsis-horizontal" size={20} color={C.ink} />
+      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 110 }}>
+        {/* 1. Large cover */}
+        <View style={{ height: insets.top + 280 }}>
+          <EventImage e={e} style={StyleSheet.absoluteFill} padTop={insets.top} credit={e.source ? `Photo: ${e.source} listing` : undefined} />
+          <LinearGradient colors={[alpha(C.ink, 0.45), alpha(C.ink, 0)]} style={[styles.topScrim, { height: insets.top + 90 }]} pointerEvents="none" />
+          <View style={[styles.heroBar, { top: insets.top + S.sm }]}>
+            <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back" style={styles.heroBtn} hitSlop={4}>
+              <Ionicons name="chevron-back" size={22} color={C.ink} />
             </Pressable>
-            <Pressable onPress={() => app.toggleSavedEvent(e.id)} accessibilityRole="button" accessibilityLabel={saved ? 'Remove from saved' : 'Save event'} style={styles.heroBtn} hitSlop={4}>
-              <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={20} color={saved ? C.accent : C.ink} />
-            </Pressable>
+            <View style={{ flexDirection: 'row', gap: S.sm }}>
+              <Pressable onPress={more} accessibilityRole="button" accessibilityLabel="Report, hide or mute this event" style={styles.heroBtn} hitSlop={4}>
+                <Ionicons name="ellipsis-horizontal" size={20} color={C.ink} />
+              </Pressable>
+              <Pressable onPress={() => app.toggleSavedEvent(e.id)} accessibilityRole="button" accessibilityLabel={saved ? 'Remove from saved' : 'Save event'} style={styles.heroBtn} hitSlop={4}>
+                <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={20} color={saved ? C.accent : C.ink} />
+              </Pressable>
+            </View>
           </View>
         </View>
-      </View>
 
-      <View style={styles.head}>
-        <View style={styles.tagRow}>
-          <Tag label={`${st.label}${e.field ? ` · ${fieldLabel(e.field)}` : ''}`} icon={st.icon} />
-          {e.online ? <Tag label="Online" icon="globe-outline" tone="blue" /> : <Tag label="In person" icon="location-outline" />}
-          {e.source ? <Tag label={`Live · ${e.source}`} tone="ok" /> : <Tag label="Demo" icon="flask-outline" />}
-        </View>
-        <Text style={T.title} accessibilityRole="header">{e.title}</Text>
-        <Text style={styles.heroMeta}>{dayLabel(e.start)} · {fmtTime(e.start)} · {e.online ? 'Online' : e.areaName}</Text>
-      </View>
+        <View style={styles.body}>
+          {/* 2. Title and organizer */}
+          <View style={{ gap: 6 }}>
+            <Text style={[styles.kind, { color: st.solid }]}>{st.label.toUpperCase()}{e.isDemo ? ' · DEMO EVENT' : e.source ? ` · LISTED ON ${e.source.toUpperCase()}` : ''}</Text>
+            <Text style={styles.title} accessibilityRole="header">{e.title}</Text>
+            <Text style={styles.by}>by {e.host}</Text>
+          </View>
 
-      <View style={styles.body}>
-        <View style={styles.grid}>
-          {tiles.map((t) => (
-            <View key={t.label} style={styles.tile}>
-              <View style={[styles.tileIcon, { backgroundColor: st.soft }]}>
-                <Ionicons name={t.icon} size={18} color={st.solid} />
+          {/* 3. Compact information block */}
+          <View style={styles.info}>
+            {info.map((row, i) => (
+              <View key={row.k} style={[styles.infoRow, i > 0 && styles.infoDivider]}>
+                <Text style={styles.infoKey}>{row.k}</Text>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.infoVal}>{row.v}</Text>
+                  {row.sub ? <Text style={T.small}>{row.sub}</Text> : null}
+                </View>
               </View>
-              <Text style={styles.tileLabel}>{t.label}</Text>
-              <Text style={styles.tileValue} numberOfLines={2}>{t.value}</Text>
-              {t.sub ? <Text style={styles.tileSub} numberOfLines={2}>{t.sub}</Text> : null}
-            </View>
-          ))}
-        </View>
-
-        <View style={{ gap: S.sm }}>
-          <Text style={T.h2} accessibilityRole="header">About</Text>
-          <Text style={styles.desc}>{e.description}</Text>
-        </View>
-
-        <View style={styles.hostRow}>
-          <View style={[styles.hostIcon, { backgroundColor: st.soft }]}><Ionicons name="megaphone-outline" size={18} color={st.solid} /></View>
-          <View style={{ flex: 1 }}>
-            <Text style={T.small}>Hosted by</Text>
-            <Text style={styles.hostName}>{e.host}</Text>
+            ))}
           </View>
-        </View>
 
-        {!e.online ? (
-          <Pressable onPress={() => Linking.openURL(directions)} accessibilityRole="link" accessibilityLabel={`Get directions to ${e.venue}`} style={({ pressed }) => [styles.venue, pressed && { backgroundColor: C.bg2 }]}>
-            <Ionicons name="navigate-outline" size={22} color={C.accent} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.hostName} numberOfLines={2}>{e.venue}</Text>
-              <Text style={T.small}>Get directions</Text>
+          {/* 4. Why go: the organizer's own opening lines */}
+          {why ? (
+            <View style={{ gap: S.sm }}>
+              <Text style={T.h2} accessibilityRole="header">Why go</Text>
+              <Text style={styles.desc}>{why}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={C.ink3} />
-          </Pressable>
-        ) : null}
+          ) : null}
 
-        <View style={{ gap: S.sm }}>
-          {e.url ? <Button label={`Open on ${e.source ?? 'the web'}`} icon="open-outline" onPress={() => Linking.openURL(e.url!)} /> : null}
-          <Button label={saved ? 'Saved to my plans' : 'Save to my plans'} icon={saved ? 'bookmark' : 'bookmark-outline'} variant={saved || e.url ? 'secondary' : 'primary'} onPress={() => app.toggleSavedEvent(e.id)} />
-          <Button label="Find people in this field nearby" variant="secondary" icon="people-outline" onPress={() => router.navigate('/')} />
+          {/* 5. Host */}
+          <View style={styles.hostRow}>
+            <View style={[styles.hostMark, { backgroundColor: st.soft }]}>
+              <Text style={[styles.hostInitials, { color: st.solid }]}>{e.host.split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('')}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={T.small}>Hosted by</Text>
+              <Text style={styles.infoVal}>{e.host}</Text>
+            </View>
+          </View>
+
+          {/* 6. Venue map preview */}
+          {!e.online ? (
+            <Pressable onPress={() => Linking.openURL(directions)} accessibilityRole="link" accessibilityLabel={`Get directions to ${e.venue}`}>
+              <View style={styles.mapWrap} pointerEvents="none">
+                <MapView
+                  style={StyleSheet.absoluteFill}
+                  liteMode
+                  scrollEnabled={false}
+                  zoomEnabled={false}
+                  rotateEnabled={false}
+                  pitchEnabled={false}
+                  toolbarEnabled={false}
+                  initialRegion={{ ...e.coord, latitudeDelta: 0.012, longitudeDelta: 0.012 }}
+                >
+                  <Marker coordinate={e.coord} />
+                </MapView>
+              </View>
+              <View style={styles.mapCaption}>
+                <Text style={styles.infoVal} numberOfLines={1}>{e.venue || e.areaName}</Text>
+                <Text style={styles.link}>Directions</Text>
+              </View>
+            </Pressable>
+          ) : null}
+
+          {/* 7. Full description, expandable */}
+          {rest ? (
+            <View style={{ gap: S.sm }}>
+              <Pressable onPress={() => setExpanded((v) => !v)} accessibilityRole="button" accessibilityState={{ expanded }} style={styles.expandHead}>
+                <Text style={T.h3}>Full description</Text>
+                <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={C.ink3} />
+              </Pressable>
+              {expanded ? <Text style={styles.desc}>{rest}</Text> : null}
+            </View>
+          ) : null}
+
+          <Pressable onPress={() => router.navigate('/')} accessibilityRole="link">
+            <Text style={styles.link}>Find people in this field nearby</Text>
+          </Pressable>
+          <Text style={T.small}>
+            {e.source ? `Listed on ${e.source}. Details can change, so check the listing before you go.` : 'This is a demo event for exploring the app.'} Saving is private.
+          </Text>
         </View>
-        <Text style={[T.small, { textAlign: 'center' }]}>
-          {e.source ? `Real event listed on ${e.source}. Details can change, so check the listing before you go.` : 'Demo event.'} Saving is private.
-        </Text>
+      </ScrollView>
+
+      {/* 8. One persistent action that says exactly what it does. */}
+      <View style={[styles.bar, { paddingBottom: insets.bottom + S.sm }]}>
+        {e.url ? (
+          <Button label={`Register on ${e.source ?? 'the listing'}`} icon="open-outline" onPress={() => Linking.openURL(e.url!)} style={{ flex: 1 }} />
+        ) : (
+          <Button label={saved ? 'Saved to my plans' : 'Save to my plans'} icon={saved ? 'bookmark' : 'bookmark-outline'} variant={saved ? 'secondary' : 'primary'} onPress={() => app.toggleSavedEvent(e.id)} style={{ flex: 1 }} />
+        )}
       </View>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  hero: { overflow: 'hidden' },
   topScrim: { position: 'absolute', left: 0, right: 0, top: 0 },
   heroBar: { position: 'absolute', left: S.lg, right: S.lg, flexDirection: 'row', justifyContent: 'space-between' },
   heroBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center' },
-  head: { paddingHorizontal: S.lg, paddingTop: S.lg, gap: S.sm },
-  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  heroMeta: { fontSize: 15, lineHeight: 22, color: C.ink2 },
-  body: { padding: S.lg, gap: S.xl },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: S.sm },
-  tile: { width: '48.5%', padding: S.md, borderRadius: R.lg, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface, gap: 2 },
-  tileIcon: { width: 32, height: 32, borderRadius: R.md - 2, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  tileLabel: { fontSize: 12, lineHeight: 16, color: C.ink3, fontWeight: '500' },
-  tileValue: { fontSize: 16, lineHeight: 21, fontWeight: '600', color: C.ink },
-  tileSub: { fontSize: 13, lineHeight: 18, color: C.ink3 },
+  body: { padding: S.lg, paddingTop: S.xl, gap: S.xl },
+  kind: { fontSize: 11, lineHeight: 14, fontWeight: '700', letterSpacing: 1 },
+  title: { fontFamily: F.display, fontSize: 30, lineHeight: 35, color: C.ink, letterSpacing: -0.5 },
+  by: { fontSize: 15, lineHeight: 20, color: C.ink2 },
+  info: { borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: C.line2 },
+  infoRow: { flexDirection: 'row', gap: S.md, paddingVertical: S.md },
+  infoDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line },
+  infoKey: { width: 56, fontSize: 13, lineHeight: 20, color: C.ink3, fontWeight: '600' },
+  infoVal: { fontSize: 16, lineHeight: 21, fontWeight: '600', color: C.ink },
   desc: { fontSize: 16, lineHeight: 24, color: C.ink2 },
   hostRow: { flexDirection: 'row', alignItems: 'center', gap: S.md },
-  hostIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  hostName: { fontSize: 15, fontWeight: '600', color: C.ink },
-  venue: { flexDirection: 'row', alignItems: 'center', gap: S.md, padding: S.md, minHeight: 56, borderRadius: R.lg, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface },
+  hostMark: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  hostInitials: { fontFamily: F.display, fontSize: 16 },
+  mapWrap: { height: 150, borderRadius: R.lg, overflow: 'hidden', backgroundColor: C.bg2 },
+  mapCaption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: S.md, paddingTop: S.sm },
+  link: { fontSize: 15, fontWeight: '600', color: C.accent },
+  expandHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
+  bar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', paddingHorizontal: S.lg, paddingTop: S.sm, backgroundColor: C.bg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line2 },
 });

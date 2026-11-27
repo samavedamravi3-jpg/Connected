@@ -1,8 +1,10 @@
 import { router } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useState } from 'react';
+import { LegalLinks } from '@/components/Legal';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Avatar, Button, Card, ChipGroup, KV, Note, Row, Section, Segmented, Tag } from '@/components/ui';
+import { ProfileCover } from '@/components/ProfileCover';
 import { ResumeExperienceCard } from '@/components/ResumeExperienceCard';
 import { IdBadge, VerifiedBadge } from '@/components/VerifiedBadge';
 import { AVAILABILITY, MEET_MODES, audienceLabel, challengeLabel, dietLabel, fieldLabel, foodLabel, goalLabel, statusLabel, traitLabel, venueById } from '@/data/options';
@@ -11,7 +13,7 @@ import { notificationState, turnOnNearbyAlerts, type NotifState } from '@/lib/ne
 import { COOLDOWN_OPTIONS_H, LOCATION_ROUNDING, POLICY_DEFAULTS, RADIUS_OPTIONS_MI } from '@/lib/nearbyPolicy';
 import type { AvailabilityId } from '@/data/types';
 import { doorState, fullName } from '@/lib/match';
-import { pickProfilePhoto, removeProfilePhoto } from '@/lib/photo';
+import { pickCoverPhoto, pickProfilePhoto, removeProfilePhoto } from '@/lib/photo';
 import { fmtWindow } from '@/lib/time';
 import { useApp } from '@/state/AppState';
 import { C, F, S, T } from '@/theme';
@@ -54,19 +56,41 @@ export default function ProfileTab() {
         ])
       : changePhoto();
 
+  const changeCover = async () => {
+    const res = await pickCoverPhoto(profile.coverUri);
+    if (!res) return;
+    if ('error' in res) return Alert.alert('Can’t open photos', res.error);
+    app.setProfile({ coverUri: res.uri });
+  };
+  const coverMenu = () =>
+    profile.coverUri
+      ? Alert.alert('Cover photo', 'Shown behind your portrait. It stays on this phone for now.', [
+          { text: 'Choose a new photo', onPress: changeCover },
+          { text: 'Remove cover', style: 'destructive', onPress: () => { removeProfilePhoto(profile.coverUri); app.setProfile({ coverUri: null }); } },
+          { text: 'Cancel', style: 'cancel' },
+        ])
+      : changeCover();
+
   const toggleAvail = (id: AvailabilityId) =>
     app.setPrefs({ availability: prefs.availability.includes(id) ? prefs.availability.filter((x) => x !== id) : [...prefs.availability, id] });
 
   return (
     <ScrollView style={{ backgroundColor: C.bg }} contentContainerStyle={{ padding: S.lg, gap: S.xl, paddingBottom: S.xxl }}>
       <View style={styles.header}>
+        {/* Your cover photo behind your portrait, the same way other people see a profile. */}
+        <ProfileCover uri={profile.coverUri} name={fullName(profile) || 'You'} height={140} style={styles.cover}>
+          <Pressable onPress={coverMenu} accessibilityRole="button" accessibilityLabel={profile.coverUri ? 'Change cover photo' : 'Add a cover photo'} style={styles.coverBtn} hitSlop={6}>
+            <Ionicons name="image-outline" size={16} color={C.ink} />
+            <Text style={styles.coverBtnText}>{profile.coverUri ? 'Edit cover' : 'Add cover'}</Text>
+          </Pressable>
+        </ProfileCover>
         <View style={styles.idRow}>
           <Pressable onPress={photoMenu} accessibilityRole="button" accessibilityLabel={profile.photoUri ? 'Change profile photo' : 'Add a profile photo'} style={styles.avatarWrap}>
-            <Avatar name={fullName(profile) || '?'} uri={profile.photoUri} size={76} />
+            <Avatar name={fullName(profile) || '?'} uri={profile.photoUri} size={96} />
             <View style={styles.camBadge}><Ionicons name={profile.photoUri ? 'pencil-outline' : 'camera-outline'} size={14} color={C.white} /></View>
           </Pressable>
-          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <View style={{ alignItems: 'center', gap: 2 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>
               <Text style={styles.name} accessibilityRole="header">{fullName(profile) || 'Your profile'}</Text>
               {app.verification.verified ? <VerifiedBadge size={18} kind={app.verification.kind} /> : null}
               {app.idStatus === 'verified' ? <IdBadge size={18} /> : null}
@@ -299,6 +323,8 @@ export default function ProfileTab() {
         <Note icon="lock-closed-outline">
           Location is used only while the app is open: to center your map and, if nearby alerts are on, to save your rough area (about 1 km) while the map is open. It’s never tracked in the background. Other people see an approximate area at most, never your position.
         </Note>
+        <Button label="Privacy & data" icon="shield-checkmark-outline" variant="secondary" onPress={() => router.push('/privacy')} />
+        <LegalLinks ids={['terms', 'privacy', 'refunds', 'cookies']} />
         {app.blocked.length ? (
           app.blocked.map((id) => (
             <Row key={id} style={{ justifyContent: 'space-between' }}>
@@ -339,9 +365,12 @@ export default function ProfileTab() {
 
 const styles = StyleSheet.create({
   header: { gap: S.md },
-  idRow: { flexDirection: 'row', alignItems: 'center', gap: S.lg },
-  avatarWrap: { borderRadius: 40 },
-  name: { ...T.title, flexShrink: 1 },
+  cover: { marginHorizontal: -S.lg, marginTop: -S.lg, justifyContent: 'flex-end', alignItems: 'flex-end', padding: S.md },
+  coverBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, paddingHorizontal: 12, borderRadius: 999, backgroundColor: C.surface },
+  coverBtnText: { fontSize: 13, fontWeight: '600', color: C.ink },
+  idRow: { alignItems: 'center', gap: S.sm, marginTop: -64 },
+  avatarWrap: { borderRadius: 52, padding: 4, backgroundColor: C.bg },
+  name: { ...T.title, flexShrink: 1, textAlign: 'center' },
   visibleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   visibleDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.ok },
   visibleText: { fontSize: 13, fontWeight: '600', color: C.ink3 },
@@ -351,7 +380,7 @@ const styles = StyleSheet.create({
   statDivider: { borderLeftWidth: 1, borderLeftColor: C.line },
   statNum: { fontFamily: F.display, fontSize: 22, lineHeight: 28, color: C.ink, fontVariant: ['tabular-nums'] },
   statLabel: { fontSize: 13, color: C.ink3 },
-  camBadge: { position: 'absolute', right: -2, bottom: -2, width: 28, height: 28, borderRadius: 14, backgroundColor: C.accent, borderWidth: 2, borderColor: C.bg, alignItems: 'center', justifyContent: 'center' },
+  camBadge: { position: 'absolute', right: 2, bottom: 2, width: 28, height: 28, borderRadius: 14, backgroundColor: C.accent, borderWidth: 2, borderColor: C.bg, alignItems: 'center', justifyContent: 'center' },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: S.md, minHeight: 44 },
   divider: { height: 1, backgroundColor: C.line, marginVertical: S.xs },
 });

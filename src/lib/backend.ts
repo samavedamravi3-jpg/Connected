@@ -14,6 +14,7 @@ import { DRAFT_REASONS, type DraftReason } from './profileSync';
 import { fieldLabelShort } from './match';
 import { assertClean, ContentRejectedError, dbError, experienceProblem, PROFILE_TEXT, profileRuleErrors, type FieldError } from './moderation';
 import { supabase } from './supabase';
+import { warn } from './log';
 
 export type ProfileRow = {
   id: string;
@@ -336,7 +337,7 @@ async function withPhotos(people: Person[]): Promise<Person[]> {
       for (const item of data ?? []) if (item.path) signedPhotos.set(item.path, toSigned(item, now));
     }
   } catch (e) {
-    console.warn('Could not load profile photos', e);
+    warn('Could not load profile photos', e);
   }
   return people.map((p) => ({ ...p, ...photoFields(p.id, signedPhotos) }));
 }
@@ -444,3 +445,34 @@ export function subscribeToMine(userId: string, onChange: () => void): () => voi
 
 /** True for ids that belong to real (backend) people rather than built-in demo profiles. */
 export const isRemoteId = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+// ---------------------------------------------------------------------------
+// Consent and account deletion
+// ---------------------------------------------------------------------------
+
+/** Saves which Terms/Privacy version this account accepted, and when (the server stamps the time). */
+export async function recordConsentRemote(termsVersion: string, privacyVersion: string): Promise<void> {
+  const { error } = await db().rpc('record_consent', { p_terms: termsVersion, p_privacy: privacyVersion, p_adult: true });
+  if (error) throw error;
+}
+
+export type DeleteResult = { ok: true; stripe: 'redaction_requested' | 'none' };
+
+/**
+ * Deletes the signed-in account on the server. The server checks the password again (re-authentication) and the typed
+ * confirmation, asks Stripe to redact the ID check, removes photos, then deletes the account and every row tied to it.
+ */
+export async function deleteMyAccount(password: string): Promise<DeleteResult> {
+  const { data, error } = await db().functions.invoke('delete-account', { body: { password, confirm: 'DELETE' } });
+  if (error) {
+    let code = 'failed';
+    try {
+      const body = await (error as { context?: Response }).context?.json();
+      if (body && typeof body.error === 'string') code = body.error;
+    } catch {
+      /* keep the generic code */
+    }
+    throw new Error(code);
+  }
+  return data as DeleteResult;
+}

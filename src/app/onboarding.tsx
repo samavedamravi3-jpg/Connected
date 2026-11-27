@@ -5,6 +5,7 @@ import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleShee
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line } from 'react-native-svg';
 import { AuthForm } from '@/components/AuthForm';
+import { LegalLinks } from '@/components/Legal';
 import { Grid, Label, OptionCard, StepTitle, Tile } from '@/components/OnboardingParts';
 import { IdVerifyPanel } from '@/components/IdVerifyPanel';
 import { ExperienceStep } from '@/components/ExperienceFlow';
@@ -518,6 +519,7 @@ function Welcome({ onStart, onSample, onSignIn }: { onStart: () => void; onSampl
           {onSignIn ? <Button label="I already have an account" variant="secondary" onPress={onSignIn} /> : null}
           <Button label="Look around with a sample profile" variant="quiet" onPress={onSample} />
           <Text style={[T.small, { textAlign: 'center' }]}>Demo people are marked as demo profiles.</Text>
+          <LegalLinks ids={['terms', 'privacy', 'refunds', 'cookies']} style={{ justifyContent: 'center' }} />
         </View>
       </ScrollView>
     </View>

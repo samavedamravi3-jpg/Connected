@@ -1,39 +1,63 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { useState, type ComponentProps } from 'react';
+import Animated, { FadeIn, FadeInDown, FadeOut, LinearTransition, ZoomIn, useReducedMotion } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ActionSheetIOS, Alert, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SwipeRow } from '@/components/SwipeRow';
 import { MemberLock } from '@/components/MemberLock';
-import { Avatar, Button, Card, Note, Row, Segmented, Tag } from '@/components/ui';
-import { fieldLabel, statusLabel } from '@/data/options';
+import { TextTabs } from '@/components/TextTabs';
+import { Avatar } from '@/components/ui';
 import { dataSource } from '@/data/source';
-import type { ConnectionRequest, RequestStatus } from '@/data/types';
+import type { ConnectionRequest, IncomingRequest } from '@/data/types';
 import { conversations, type Conversation } from '@/lib/conversations';
 import { firstName } from '@/lib/match';
 import { dayLabel, fmtTime } from '@/lib/time';
 import { useApp } from '@/state/AppState';
-import { C, F, R, S, T } from '@/theme';
+import { C, F, S, T } from '@/theme';
 
-const STATUS_TAG: Record<RequestStatus, { label: string; tone: 'warn' | 'ok' | 'neutral' }> = {
-  requested: { label: 'Requested', tone: 'warn' },
-  accepted: { label: 'Accepted', tone: 'ok' },
-  declined: { label: 'Declined', tone: 'neutral' },
-  cancelled: { label: 'Cancelled', tone: 'neutral' },
-};
+type Tab = 'chats' | 'requests' | 'sent';
+type IconName = ComponentProps<typeof Ionicons>['name'];
 
 const failed = (what: string) => (e: unknown) => Alert.alert(`Couldn’t ${what}`, e instanceof Error ? e.message : 'Check your connection and try again.');
+const when = (t: number) => (dayLabel(t) === 'Today' ? fmtTime(t) : dayLabel(t));
+
+/** A short menu: native action sheet on iOS, an alert elsewhere. */
+function menu(title: string, items: { label: string; destructive?: boolean; onPress: () => void }[]) {
+  if (Platform.OS === 'ios') {
+    ActionSheetIOS.showActionSheetWithOptions(
+      { title, options: [...items.map((i) => i.label), 'Cancel'], cancelButtonIndex: items.length, destructiveButtonIndex: items.findIndex((i) => i.destructive) },
+      (k) => items[k]?.onPress(),
+    );
+  } else {
+    Alert.alert(title, undefined, [...items.map((i) => ({ text: i.label, style: i.destructive ? ('destructive' as const) : undefined, onPress: i.onPress })), { text: 'Cancel', style: 'cancel' }]);
+  }
+}
 
 export default function Inbox() {
   const app = useApp();
+  const insets = useSafeAreaInsets();
+  const reduced = useReducedMotion();
   const [refreshing, setRefreshing] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [q, setQ] = useState('');
+  const hit = (name: string) => !q.trim() || name.toLowerCase().includes(q.trim().toLowerCase());
+  const nameOf = (id: string) => dataSource.getPerson(id)?.name ?? 'Connected member';
+  const enter = (i: number) => (reduced ? undefined : FadeInDown.delay(Math.min(i, 8) * 50).duration(300));
+  const layout = reduced ? undefined : LinearTransition.duration(220);
   const byNewest = (a: ConnectionRequest, b: ConnectionRequest) => b.updatedAt - a.updatedAt;
   const sent = app.requests.filter((r) => !r.incoming).sort(byNewest);
-  const received = app.requests.filter((r) => r.incoming && r.status !== 'cancelled').sort(byNewest);
-  const newCount = (app.showDemo ? app.incoming.filter((i) => i.state === 'new').length : 0) + received.filter((r) => r.status === 'requested').length;
-  const chats = conversations({ ...app, nameOf: (id) => dataSource.getPerson(id)?.name ?? 'Connected member' });
-  const unreadCount = chats.filter((c) => c.unread).length;
+  const received = app.requests.filter((r) => r.incoming && r.status === 'requested').sort(byNewest);
+  const demoIncoming = app.showDemo ? app.incoming.filter((i) => i.state === 'new') : [];
+  const newCount = received.length + demoIncoming.length;
+  const allChats = conversations({ ...app, nameOf });
+  const chats = allChats.filter((c) => hit(c.name));
+  // "Your turn": the last message in the chat came from them.
+  const yourTurn = (id: string) => app.messages[id]?.at(-1)?.from === 'them';
+  const unreadCount = allChats.filter((c) => c.unread).length;
 
-  const [tab, setTab] = useState<'sent' | 'received' | 'chats'>(newCount > 0 ? 'received' : unreadCount > 0 ? 'chats' : 'sent'); // land where the badge points
-  // Opening a chat moves the Inbox to Chats, so Back lands on the conversation list.
+  const [tab, setTab] = useState<Tab>(newCount > 0 ? 'requests' : unreadCount > 0 || chats.length ? 'chats' : 'sent');
   const openChat = (id: string) => {
     setTab('chats');
     router.push({ pathname: '/chat/[id]', params: { id } });
@@ -46,191 +70,295 @@ export default function Inbox() {
 
   return (
     <ScrollView
-      style={{ backgroundColor: C.bg }}
-      contentContainerStyle={{ padding: S.lg, gap: S.md, paddingBottom: S.xxl }}
+      style={{ backgroundColor: C.surface }}
+      contentContainerStyle={{ paddingBottom: S.xxl, paddingTop: insets.top }}
+      keyboardShouldPersistTaps="handled"
       refreshControl={app.session ? <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={C.accent} /> : undefined}
     >
-      <Segmented
-        label="Inbox section"
-        options={[
-          { id: 'sent', label: `Sent${sent.length ? ` (${sent.length})` : ''}` },
-          { id: 'received', label: `Received${newCount ? ` (${newCount})` : ''}` },
-          { id: 'chats', label: `Chats${unreadCount ? ` (${unreadCount})` : ''}` },
-        ]}
-        value={tab}
-        onChange={setTab}
-      />
-      <MemberLock what="requests and chats" />
+      <View style={styles.head}>
+        <Text style={styles.title} accessibilityRole="header">Inbox</Text>
+        {unreadCount ? <Animated.View entering={ZoomIn} style={styles.badge}><Text style={styles.badgeText}>{unreadCount}</Text></Animated.View> : null}
+        <View style={{ flex: 1 }} />
+        <Pressable onPress={() => { setSearching((v) => !v); setQ(''); }} accessibilityRole="button" accessibilityLabel={searching ? 'Close search' : 'Search inbox'} hitSlop={8} style={({ pressed }) => [styles.headBtn, pressed && { transform: [{ scale: 0.92 }] }]}>
+          <Ionicons name={searching ? 'close' : 'search'} size={20} color={C.ink} />
+        </Pressable>
+      </View>
+      {searching ? (
+        <Animated.View entering={reduced ? undefined : FadeIn.duration(180)} exiting={reduced ? undefined : FadeOut.duration(120)} style={styles.search}>
+          <Ionicons name="search" size={16} color={C.ink3} />
+          <TextInput value={q} onChangeText={setQ} placeholder="Search by name" placeholderTextColor={C.ink3} autoFocus style={styles.searchInput} accessibilityLabel="Search by name" />
+        </Animated.View>
+      ) : null}
+      <View style={styles.tabs}>
+        <TextTabs
+          tabs={[
+            { id: 'chats', label: 'Chats', count: allChats.length },
+            { id: 'requests', label: 'Requests', count: newCount },
+            { id: 'sent', label: 'Sent', count: sent.length },
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
+      </View>
+      <MemberLock what="requests and chats" style={{ marginHorizontal: S.lg, marginBottom: S.md }} />
 
       {tab === 'chats' ? (
         chats.length ? (
-          chats.map((c) => <ChatRow key={c.id} c={c} onPress={() => openChat(c.id)} />)
+          <>
+            {/* Your connections as faces, then the conversations. */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.faces}>
+              {chats.map((c) => {
+                const p = c.personId ? dataSource.getPerson(c.personId) : undefined;
+                return (
+                  <Pressable key={c.id} onPress={() => openChat(c.id)} accessibilityRole="button" accessibilityLabel={`Open chat with ${c.name}`} style={styles.face}>
+                    <Animated.View entering={ZoomIn.duration(260)}>
+                      <Avatar name={c.name} uri={p?.photo} size={60} ring={c.unread} />
+                    </Animated.View>
+                    <Text style={styles.faceName} numberOfLines={1}>{firstName(c.name)}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            {chats.map((c, i) => (
+              <Animated.View key={c.id} entering={enter(i)} layout={layout}>
+                <SwipeRow right={c.personId ? { label: 'Profile', icon: 'person-outline', color: C.ink2, onPress: () => router.push({ pathname: '/person/[id]', params: { id: c.personId! } }) } : undefined}>
+                  <ChatRow c={c} turn={yourTurn(c.id)} onPress={() => openChat(c.id)} />
+                </SwipeRow>
+              </Animated.View>
+            ))}
+            {q && !chats.length ? <Text style={styles.noHits}>No chats match “{q}”.</Text> : null}
+            <Text style={styles.hint}>Swipe left on a chat for their profile. Tap Assist in any chat for reply ideas.</Text>
+          </>
         ) : (
-          <View style={styles.empty}>
-            <Ionicons name="chatbubbles-outline" size={28} color={C.ink3} />
-            <Text style={T.h3}>No chats yet</Text>
-            <Text style={[T.muted, { textAlign: 'center' }]}>A chat opens once someone accepts your request, or you accept theirs.</Text>
-            {newCount ? <Button label="Review requests" onPress={() => setTab('received')} /> : <Button label="Go to the map" onPress={() => router.navigate('/')} />}
-          </View>
+          <Empty icon="chatbubbles-outline" title="No chats yet" line="Chats open once a request is accepted." link={newCount ? 'See requests' : 'Find people on the map'} onLink={() => (newCount ? setTab('requests') : router.navigate('/'))} />
         )
-      ) : tab === 'sent' ? (
-        sent.length ? (
-          sent.map((r) => <RequestRow key={r.id} r={r} onMessage={() => openChat(r.id)} />)
+      ) : tab === 'requests' ? (
+        newCount ? (
+          <>
+            {received.filter((r) => hit(nameOf(r.personId))).map((r, k) => (
+              <Animated.View key={r.id} entering={enter(k)} exiting={reduced ? undefined : FadeOut.duration(180)} layout={layout}>
+                <SwipeRow
+                  left={{ label: 'Accept', icon: 'checkmark', color: C.accent, onPress: () => void app.respondRemote(r.id, 'accepted').catch(failed('accept')) }}
+                  right={{ label: 'Decline', icon: 'close', color: C.ink3, onPress: () => void app.respondRemote(r.id, 'declined').catch(failed('decline')) }}
+                >
+                  <IncomingRow r={r} />
+                </SwipeRow>
+              </Animated.View>
+            ))}
+            {demoIncoming.filter((i) => hit(i.name)).map((i, k) => (
+              <Animated.View key={i.id} entering={enter(received.length + k)} exiting={reduced ? undefined : FadeOut.duration(180)} layout={layout}>
+                <SwipeRow
+                  left={{ label: 'Accept', icon: 'checkmark', color: C.accent, onPress: () => app.respondIncoming(i.id, 'accepted') }}
+                  right={{ label: 'Decline', icon: 'close', color: C.ink3, onPress: () => app.respondIncoming(i.id, 'declined') }}
+                >
+                  <DemoIncomingRow i={i} />
+                </SwipeRow>
+              </Animated.View>
+            ))}
+            <Text style={styles.hint}>Swipe right to accept, left to decline.</Text>
+          </>
         ) : (
-          <View style={styles.empty}>
-            <Ionicons name="paper-plane-outline" size={28} color={C.ink3} />
-            <Text style={T.h3}>No requests yet</Text>
-            <Text style={[T.muted, { textAlign: 'center' }]}>Open someone on the map and we’ll help you write a first message.</Text>
-            <Button label="Go to the map" onPress={() => router.navigate('/')} />
-          </View>
+          <Empty
+            icon="mail-open-outline"
+            title="No new requests"
+            line={app.session ? 'Stay visible on the map so people can find you.' : 'Sign in to get requests from real people.'}
+            link={app.session ? 'Check my visibility' : 'Go to Profile'}
+            onLink={() => router.navigate('/profile')}
+          />
         )
+      ) : sent.length ? (
+        sent.filter((r) => hit(nameOf(r.personId))).map((r, i) => (
+          <Animated.View key={r.id} entering={enter(i)} layout={layout}>
+            <SwipeRow right={r.status === 'requested' ? { label: 'Cancel', icon: 'close-circle-outline', color: C.bad, onPress: () => void app.cancelRequest(r.id).catch(failed('cancel')) } : undefined}>
+              <SentRow r={r} onMessage={() => openChat(r.id)} />
+            </SwipeRow>
+          </Animated.View>
+        ))
       ) : (
-        <>
-          {received.map((r) => <RequestRow key={r.id} r={r} onMessage={() => openChat(r.id)} />)}
-          {!received.length && !(app.showDemo && app.incoming.length) ? (
-            <View style={styles.empty}>
-              <Ionicons name="mail-open-outline" size={28} color={C.ink3} />
-              <Text style={T.h3}>No requests yet</Text>
-              <Text style={[T.muted, { textAlign: 'center' }]}>
-                {app.session ? 'Keep “Show me in nearby discovery” on in Profile so people can find you.' : 'Create an account to receive requests from real people, or turn on demo people to try it.'}
-              </Text>
-              <Button label={app.session ? 'Review my profile' : 'Go to Profile'} onPress={() => router.navigate('/profile')} />
-            </View>
-          ) : null}
-          {app.showDemo ? (
-            <>
-              <Note icon="flask-outline">These are sample requests so you can try the other side. They’re from demo profiles, not real people.</Note>
-              {app.incoming.map((i) => (
-                <Card key={i.id}>
-                  <Row style={{ flexWrap: 'nowrap' }}>
-                    <Avatar name={i.name} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.name}>{i.name}</Text>
-                      <Text style={T.small}>{i.role} · {statusLabel(i.status)} · {fieldLabel(i.field)}</Text>
-                    </View>
-                    {i.state === 'new' ? <Tag label="New" tone="warn" /> : <Tag label={i.state === 'accepted' ? 'Accepted' : 'Declined'} tone={i.state === 'accepted' ? 'ok' : 'neutral'} />}
-                  </Row>
-                  <Text style={[T.body, { fontSize: 15 }]}>{i.message}</Text>
-                  {i.state === 'new' ? (
-                    <Row>
-                      <Button label="Accept" small onPress={() => app.respondIncoming(i.id, 'accepted')} />
-                      <Button label="Decline" small variant="secondary" onPress={() => app.respondIncoming(i.id, 'declined')} />
-                    </Row>
-                  ) : i.state === 'accepted' ? (
-                    <>
-                      <Text style={T.small}>{firstName(i.name)} can now message you. Suggest a public place to meet.</Text>
-                      <Row>
-                        <Button label="Message" icon="chatbubble-outline" small onPress={() => openChat(i.id)} />
-                        <Button label="Undo" variant="quiet" small onPress={() => app.respondIncoming(i.id, 'new')} />
-                      </Row>
-                    </>
-                  ) : (
-                    <Row>
-                      <Text style={[T.small, { flex: 1 }]}>{firstName(i.name)} gets a short, polite note with no reason given.</Text>
-                      <Button label="Undo" variant="quiet" small onPress={() => app.respondIncoming(i.id, 'new')} />
-                    </Row>
-                  )}
-                </Card>
-              ))}
-            </>
-          ) : null}
-        </>
+        <Empty icon="paper-plane-outline" title="Nothing sent yet" line="Open someone on the map to say hello." link="Go to the map" onLink={() => router.navigate('/')} />
       )}
     </ScrollView>
   );
 }
 
-/** One chat: an accepted request in either direction. */
-function ChatRow({ c, onPress }: { c: Conversation; onPress: () => void }) {
-  const p = c.personId ? dataSource.getPerson(c.personId) : undefined;
-  const preview = c.preview.replace(/\s+/g, ' ');
-  const when = c.at ? (dayLabel(c.at) === 'Today' ? fmtTime(c.at) : dayLabel(c.at)) : '';
+function Empty({ icon, title, line, link, onLink }: { icon: IconName; title: string; line: string; link: string; onLink: () => void }) {
   return (
-    <View style={styles.item}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${c.name}${c.demo ? ', demo profile, simulated chat' : ''}${c.unread ? ', unread' : ''}. ${preview}${when ? `. ${when}` : ''}`}
-        accessibilityHint="Opens the chat"
-        onPress={onPress}
-        style={({ pressed }) => [styles.itemMain, pressed && { backgroundColor: C.bg2 }]}
-      >
-        <Avatar name={c.name} uri={p?.photo} />
-        <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-          <Row style={{ flexWrap: 'nowrap' }}>
-            <Text style={styles.name} numberOfLines={1}>{c.name}</Text>
-            {c.demo ? <Tag label="Demo" icon="flask-outline" /> : null}
-            <Text style={styles.when}>{when}</Text>
-          </Row>
-          <Row style={{ flexWrap: 'nowrap', alignItems: 'flex-start' }}>
-            <Text style={[T.small, { flex: 1 }, c.unread && styles.unreadText]} numberOfLines={2}>{preview}</Text>
-            {c.unread ? <View style={styles.unreadDot} /> : null}
-          </Row>
-        </View>
+    <View style={styles.empty}>
+      <View style={styles.emptyIcon}><Ionicons name={icon} size={30} color={C.accent} /></View>
+      <Text style={T.h3}>{title}</Text>
+      <Text style={[T.small, { textAlign: 'center' }]}>{line}</Text>
+      <Pressable onPress={onLink} accessibilityRole="link" hitSlop={8}>
+        <Text style={styles.link}>{link}</Text>
       </Pressable>
     </View>
   );
 }
 
-/** One request (sent or received, demo or real). */
-function RequestRow({ r, onMessage }: { r: ConnectionRequest; onMessage: () => void }) {
+/** One conversation, like any messaging app: face, name, time, last line, unread dot. */
+function ChatRow({ c, onPress, turn }: { c: Conversation; onPress: () => void; turn?: boolean }) {
+  const p = c.personId ? dataSource.getPerson(c.personId) : undefined;
+  const preview = c.preview.replace(/\s+/g, ' ');
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${c.name}${c.demo ? ', demo' : ''}${c.unread ? ', unread' : ''}. ${preview}`}
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, pressed && { backgroundColor: C.bg2 }]}
+    >
+      <Avatar name={c.name} uri={p?.photo} size={52} />
+      <View style={styles.rowBody}>
+        <View style={styles.rowTop}>
+          <Text style={[styles.name, c.unread && { fontWeight: '700' }]} numberOfLines={1}>{c.name}</Text>
+          {turn && !c.unread ? <Text style={styles.turn}>Your turn</Text> : null}
+          {c.at ? <Text style={[styles.time, c.unread && { color: C.accent, fontWeight: '600' }]}>{when(c.at)}</Text> : null}
+        </View>
+        <View style={styles.rowTop}>
+          <Text style={[styles.preview, c.unread && { color: C.ink, fontWeight: '600' }]} numberOfLines={1}>{c.demo ? 'Demo · ' : ''}{preview}</Text>
+          {c.unread ? <View style={styles.dot} /> : null}
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+/** Round accept / decline marks instead of text buttons. */
+function Marks({ onAccept, onDecline, name }: { onAccept: () => void; onDecline: () => void; name: string }) {
+  return (
+    <View style={styles.marks}>
+      <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); onDecline(); }} accessibilityRole="button" accessibilityLabel={`Decline ${name}`} hitSlop={6} style={({ pressed }) => [styles.mark, styles.markNo, pressed && { opacity: 0.7 }]}>
+        <Ionicons name="close" size={22} color={C.ink2} />
+      </Pressable>
+      <Pressable onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}); onAccept(); }} accessibilityRole="button" accessibilityLabel={`Accept ${name}`} hitSlop={6} style={({ pressed }) => [styles.mark, styles.markYes, pressed && { opacity: 0.85 }]}>
+        <Ionicons name="checkmark" size={22} color={C.white} />
+      </Pressable>
+    </View>
+  );
+}
+
+function IncomingRow({ r }: { r: ConnectionRequest }) {
   const app = useApp();
   const p = dataSource.getPerson(r.personId);
   const name = p?.name ?? 'Connected member';
-  const s = STATUS_TAG[r.status];
-  const last = app.messages[r.id]?.at(-1)?.text ?? r.message;
-  const pendingForMe = r.incoming && r.status === 'requested';
-
-  const tag = pendingForMe ? 'New' : s.label;
-
-  // Actions sit beside (not inside) the row's button so screen readers can reach them.
   return (
-    <View style={styles.item}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${name}, ${tag}. ${last.replace(/\s+/g, ' ')}`}
-        accessibilityHint={r.status === 'accepted' ? 'Opens the chat' : 'Opens their profile'}
-        onPress={() => (r.status === 'accepted' ? onMessage() : router.push({ pathname: '/person/[id]', params: { id: r.personId } }))}
-        style={({ pressed }) => [styles.itemMain, pressed && { backgroundColor: C.bg2 }]}
-      >
-        <Avatar name={name} uri={p?.photo} />
-        <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-          <Row style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
-            <Text style={styles.name} numberOfLines={1}>{name}</Text>
-            <Tag label={tag} tone={pendingForMe ? 'warn' : s.tone} />
-          </Row>
-          <Text style={T.small} numberOfLines={2}>{last.replace(/\s+/g, ' ')}</Text>
-          <Text style={[T.small, { fontSize: 12, lineHeight: 16 }]}>
-            {dayLabel(r.updatedAt)}, {fmtTime(r.updatedAt)}{r.remote ? '' : ' · demo'}
-          </Text>
+    <View style={styles.row}>
+      <Pressable onPress={() => router.push({ pathname: '/person/[id]', params: { id: r.personId } })} accessibilityRole="button" accessibilityLabel={`${name}'s profile`} style={styles.rowLead}>
+        <Avatar name={name} uri={p?.photo} size={52} />
+        <View style={styles.rowBody}>
+          <Text style={styles.name} numberOfLines={1}>{name}</Text>
+          {p?.role ? <Text style={styles.sub} numberOfLines={1}>{p.role}{p.org ? ` · ${p.org}` : ''}</Text> : null}
+          <Text style={styles.preview} numberOfLines={1}>“{r.message.replace(/\s+/g, ' ')}”</Text>
         </View>
       </Pressable>
-      {r.status === 'accepted' && !app.blocked.includes(r.personId) ? (
-        <Row style={styles.actions}>
-          <Button label="Message" icon="chatbubble-outline" small onPress={onMessage} />
-        </Row>
-      ) : pendingForMe ? (
-        <Row style={styles.actions}>
-          <Button label="Accept" small onPress={() => app.respondRemote(r.id, 'accepted').catch(failed('accept'))} />
-          <Button label="Decline" small variant="secondary" onPress={() => app.respondRemote(r.id, 'declined').catch(failed('decline'))} />
-        </Row>
-      ) : r.status === 'requested' ? (
-        <Row style={styles.actions}>
-          <Button label="Cancel" variant="secondary" small onPress={() => app.cancelRequest(r.id).catch(failed('cancel'))} />
-          {r.remote ? null : <Button label="Demo: accept" variant="quiet" small onPress={() => app.simulateReply(r.id, 'accepted')} />}
-        </Row>
-      ) : null}
+      <Marks
+        name={firstName(name)}
+        onAccept={() => app.respondRemote(r.id, 'accepted').catch(failed('accept'))}
+        onDecline={() => app.respondRemote(r.id, 'declined').catch(failed('decline'))}
+      />
     </View>
+  );
+}
+
+function DemoIncomingRow({ i }: { i: IncomingRequest }) {
+  const app = useApp();
+  return (
+    <View style={styles.row}>
+      <View style={styles.rowLead}>
+        <Avatar name={i.name} size={52} />
+        <View style={styles.rowBody}>
+          <Text style={styles.name} numberOfLines={1}>{i.name}</Text>
+          <Text style={styles.sub} numberOfLines={1}>{i.role} · Demo</Text>
+          <Text style={styles.preview} numberOfLines={1}>“{i.message.replace(/\s+/g, ' ')}”</Text>
+        </View>
+      </View>
+      <Marks name={firstName(i.name)} onAccept={() => app.respondIncoming(i.id, 'accepted')} onDecline={() => app.respondIncoming(i.id, 'declined')} />
+    </View>
+  );
+}
+
+const STATUS: Record<ConnectionRequest['status'], { label: string; color: string }> = {
+  requested: { label: 'Waiting', color: C.warn },
+  accepted: { label: 'Accepted', color: C.ok },
+  declined: { label: 'Declined', color: C.ink3 },
+  cancelled: { label: 'Cancelled', color: C.ink3 },
+};
+
+/** A request you sent. Tap to open; hold for options (cancel). */
+function SentRow({ r, onMessage }: { r: ConnectionRequest; onMessage: () => void }) {
+  const app = useApp();
+  const p = dataSource.getPerson(r.personId);
+  const name = p?.name ?? 'Connected member';
+  const st = STATUS[r.status];
+  const options = () =>
+    r.status === 'requested'
+      ? menu(name, [
+          { label: 'View profile', onPress: () => router.push({ pathname: '/person/[id]', params: { id: r.personId } }) },
+          ...(r.remote ? [] : [{ label: 'Demo: they accept', onPress: () => app.simulateReply(r.id, 'accepted') }]),
+          { label: 'Cancel request', destructive: true, onPress: () => void app.cancelRequest(r.id).catch(failed('cancel')) },
+        ])
+      : undefined;
+  return (
+    <Pressable
+      onPress={() => (r.status === 'accepted' ? onMessage() : router.push({ pathname: '/person/[id]', params: { id: r.personId } }))}
+      onLongPress={options}
+      accessibilityRole="button"
+      accessibilityLabel={`${name}, ${st.label}`}
+      accessibilityHint={r.status === 'requested' ? 'Hold for options, like cancelling' : undefined}
+      style={({ pressed }) => [styles.row, pressed && { backgroundColor: C.bg2 }]}
+    >
+      <Avatar name={name} uri={p?.photo} size={52} />
+      <View style={styles.rowBody}>
+        <View style={styles.rowTop}>
+          <Text style={styles.name} numberOfLines={1}>{name}</Text>
+          <Text style={styles.time}>{when(r.updatedAt)}</Text>
+        </View>
+        <View style={styles.status}>
+          <View style={[styles.statusDot, { backgroundColor: st.color }]} />
+          <Text style={[styles.sub, { color: st.color, fontWeight: '600' }]}>{st.label}{r.remote ? '' : ' · demo'}</Text>
+        </View>
+      </View>
+      {r.status === 'requested' ? (
+        <Pressable onPress={options} accessibilityRole="button" accessibilityLabel={`Options for ${name}`} hitSlop={8} style={styles.more}>
+          <Ionicons name="ellipsis-horizontal" size={18} color={C.ink3} />
+        </Pressable>
+      ) : r.status === 'accepted' ? (
+        <Ionicons name="chatbubble-outline" size={20} color={C.accent} />
+      ) : null}
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  item: { paddingVertical: S.sm, borderBottomWidth: 1, borderBottomColor: C.line, gap: S.xs },
-  itemMain: { flexDirection: 'row', gap: S.md, paddingVertical: S.xs, paddingHorizontal: S.xs, borderRadius: R.sm, alignItems: 'flex-start' },
-  // Lines the buttons up with the text column: avatar (44) + gap + row padding.
-  actions: { marginLeft: 44 + S.md + S.xs },
-  name: { fontFamily: F.displaySemi, fontSize: 17, lineHeight: 22, color: C.ink, flexShrink: 1 },
-  empty: { alignItems: 'center', gap: S.md, paddingVertical: S.xxl, paddingHorizontal: S.lg },
-  when: { marginLeft: 'auto', fontSize: 12, lineHeight: 16, color: C.ink3, fontVariant: ['tabular-nums'] },
-  unreadText: { color: C.ink, fontWeight: '600' },
-  unreadDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.accent, marginTop: 4 },
+  tabs: { paddingHorizontal: S.lg, paddingTop: S.sm, paddingBottom: S.xs },
+  faces: { gap: S.lg, paddingHorizontal: S.lg, paddingVertical: S.md },
+  face: { alignItems: 'center', gap: 6, width: 64 },
+  faceName: { fontSize: 12, fontWeight: '600', color: C.ink2 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: S.md, paddingHorizontal: S.lg, paddingVertical: S.md, backgroundColor: C.surface },
+  head: { flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingHorizontal: S.lg, paddingTop: S.md },
+  title: { fontFamily: F.display, fontSize: 32, lineHeight: 38, color: C.ink, letterSpacing: -0.6 },
+  badge: { minWidth: 24, height: 24, borderRadius: 12, paddingHorizontal: 6, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
+  badgeText: { color: C.white, fontSize: 13, fontWeight: '700' },
+  headBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.bg2, alignItems: 'center', justifyContent: 'center' },
+  search: { flexDirection: 'row', alignItems: 'center', gap: S.sm, marginHorizontal: S.lg, marginTop: S.sm, paddingHorizontal: S.md, minHeight: 42, borderRadius: 12, backgroundColor: C.bg2 },
+  searchInput: { flex: 1, fontSize: 16, color: C.ink, paddingVertical: 8 },
+  turn: { fontSize: 11, fontWeight: '700', color: C.accent, letterSpacing: 0.3 },
+  noHits: { fontSize: 14, color: C.ink3, textAlign: 'center', paddingVertical: S.xl },
+  hint: { fontSize: 12, color: C.ink3, textAlign: 'center', paddingTop: S.lg, paddingHorizontal: S.xl },
+  rowLead: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: S.md },
+  rowBody: { flex: 1, minWidth: 0, gap: 2 },
+  rowTop: { flexDirection: 'row', alignItems: 'center', gap: S.sm },
+  name: { flex: 1, fontFamily: F.displaySemi, fontSize: 16, lineHeight: 21, color: C.ink },
+  sub: { fontSize: 13, lineHeight: 18, color: C.ink3 },
+  preview: { flex: 1, fontSize: 14, lineHeight: 19, color: C.ink3 },
+  time: { fontSize: 12, color: C.ink3, fontVariant: ['tabular-nums'] },
+  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.accent },
+  marks: { flexDirection: 'row', gap: S.sm },
+  mark: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  markNo: { backgroundColor: C.bg2 },
+  markYes: { backgroundColor: C.accent },
+  status: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  more: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  empty: { alignItems: 'center', gap: S.sm, paddingVertical: S.xxl * 1.5, paddingHorizontal: S.xl },
+  emptyIcon: { width: 72, height: 72, borderRadius: 36, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center', marginBottom: S.sm },
+  link: { fontSize: 15, fontWeight: '600', color: C.accent, marginTop: S.xs },
 });

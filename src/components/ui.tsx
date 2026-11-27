@@ -26,6 +26,26 @@ export function Button({ label, onPress, variant = 'primary', icon, disabled, lo
   // Disabled goes neutral grey in every variant; loading keeps the variant's color and shows a spinner.
   const dim = disabled && !loading;
   const fg = dim ? C.ink3 : v.text.color;
+  // Small secondary/quiet buttons are text links: no box, no icon.
+  if (small && (variant === 'secondary' || variant === 'quiet' || variant === 'danger')) {
+    const color = dim ? C.ink3 : variant === 'danger' ? C.bad : C.accent;
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityHint={accessibilityHint}
+        accessibilityState={{ disabled: !!off, busy: !!loading }}
+        disabled={off}
+        onPress={onPress}
+        hitSlop={8}
+        style={({ pressed }) => [styles.link, pressed && { opacity: 0.6 }, style]}
+      >
+        {loading ? <ActivityIndicator size="small" color={color} /> : null}
+        <Text style={[styles.linkText, { color }]}>{label}</Text>
+      </Pressable>
+    );
+  }
+  const showIcon = !!icon && !small;
   return (
     <Pressable
       accessibilityRole="button"
@@ -34,9 +54,9 @@ export function Button({ label, onPress, variant = 'primary', icon, disabled, lo
       accessibilityState={{ disabled: !!off, busy: !!loading }}
       disabled={off}
       onPress={onPress}
-      style={({ pressed }) => [styles.btn, small && styles.btnSmall, v.box, pressed && v.pressed, dim && v.off, style]}
+      style={({ pressed }) => [styles.btn, small && styles.btnSmall, v.box, pressed && v.pressed, pressed && styles.dip, dim && v.off, style]}
     >
-      {loading ? <ActivityIndicator size="small" color={fg} /> : icon ? <Ionicons name={icon} size={small ? 16 : 18} color={fg} /> : null}
+      {loading ? <ActivityIndicator size="small" color={fg} /> : showIcon ? <Ionicons name={icon!} size={18} color={fg} /> : null}
       <Text style={[styles.btnText, small && { fontSize: 14 }, v.text, dim && { color: fg }]}>{label}</Text>
     </Pressable>
   );
@@ -45,7 +65,7 @@ export function Button({ label, onPress, variant = 'primary', icon, disabled, lo
 const btn = {
   primary: StyleSheet.create({ box: { backgroundColor: C.accent }, pressed: { backgroundColor: C.accentPressed }, off: { backgroundColor: C.bg2 }, text: { color: C.white } }),
   blue: StyleSheet.create({ box: { backgroundColor: C.blue }, pressed: { opacity: 0.85 }, off: { backgroundColor: C.bg2 }, text: { color: C.white } }),
-  secondary: StyleSheet.create({ box: { backgroundColor: C.surface, borderWidth: 1, borderColor: C.line2 }, pressed: { backgroundColor: C.bg2 }, off: { borderColor: C.line }, text: { color: C.ink } }),
+  secondary: StyleSheet.create({ box: { backgroundColor: C.bg2 }, pressed: { backgroundColor: C.line }, off: {}, text: { color: C.ink } }),
   quiet: StyleSheet.create({ box: { backgroundColor: 'transparent', paddingHorizontal: S.sm }, pressed: { backgroundColor: C.bg2 }, off: {}, text: { color: C.ink2 } }),
   danger: StyleSheet.create({ box: { backgroundColor: 'transparent', paddingHorizontal: S.sm }, pressed: { backgroundColor: C.badSoft }, off: {}, text: { color: C.bad } }),
 };
@@ -58,9 +78,9 @@ export function Chip({ label, selected, onPress, icon }: { label: string; select
       accessibilityLabel={label}
       onPress={onPress}
       hitSlop={4}
-      style={({ pressed }) => [styles.chip, selected && styles.chipOn, pressed && (selected ? styles.chipOnPressed : { backgroundColor: C.bg2 })]}
+      style={({ pressed }) => [styles.chip, selected && styles.chipOn, pressed && (selected ? styles.chipOnPressed : { backgroundColor: C.line }), pressed && styles.dip]}
     >
-      {selected ? <Ionicons name="checkmark" size={16} color={C.white} /> : icon ? <Ionicons name={icon} size={16} color={C.ink2} /> : null}
+      {icon && !selected ? <Ionicons name={icon} size={15} color={C.ink2} /> : null}
       <Text style={[styles.chipText, selected && styles.chipTextOn]}>{label}</Text>
     </Pressable>
   );
@@ -87,9 +107,9 @@ export function Segmented<T extends string | number>({ options, value, onChange,
             accessibilityRole="radio"
             accessibilityState={{ selected: on }}
             onPress={() => onChange(o.id)}
-            style={({ pressed }) => [styles.segBtn, i > 0 && styles.segDivider, pressed && !on && { backgroundColor: C.bg2 }, on && styles.segOn]}
+            style={({ pressed }) => [styles.segBtn, pressed && !on && { opacity: 0.6 }, on && styles.segOn]}
           >
-            <Text style={[styles.segText, on && { color: C.white, fontWeight: '600' }]}>{o.label}</Text>
+            <Text style={[styles.segText, on && { color: C.ink, fontWeight: '600' }]} numberOfLines={1}>{o.label}</Text>
           </Pressable>
         );
       })}
@@ -209,23 +229,26 @@ const styles = StyleSheet.create({
   btnSmall: { minHeight: 44, paddingHorizontal: S.md },
   btnText: { fontSize: 16, fontWeight: '600' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: S.sm },
-  chip: { minHeight: 40, paddingHorizontal: 14, borderRadius: R.md, borderWidth: 1, borderColor: C.line2, backgroundColor: C.surface, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  chipOn: { backgroundColor: C.accent, borderColor: C.accent },
-  chipOnPressed: { backgroundColor: C.accentPressed, borderColor: C.accentPressed },
-  chipText: { fontSize: 15, color: C.ink },
+  chip: { minHeight: 36, paddingHorizontal: 14, borderRadius: R.pill, backgroundColor: C.bg2, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  chipOn: { backgroundColor: C.ink },
+  chipOnPressed: { backgroundColor: C.ink2 },
+  chipText: { fontSize: 14, color: C.ink2, fontWeight: '500' },
   chipTextOn: { color: C.white, fontWeight: '600' },
-  seg: { flexDirection: 'row', borderWidth: 1, borderColor: C.line2, borderRadius: R.md, overflow: 'hidden' },
-  segBtn: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: S.sm, backgroundColor: C.surface },
-  segDivider: { borderLeftWidth: 1, borderLeftColor: C.line2 },
-  segOn: { backgroundColor: C.accent },
-  segText: { fontSize: 15, color: C.ink2 },
+  seg: { flexDirection: 'row', backgroundColor: C.bg2, borderRadius: R.md, padding: 3 },
+  segBtn: { flex: 1, minHeight: 38, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, borderRadius: R.md - 2 },
+  segOn: { backgroundColor: C.surface, shadowColor: C.ink, shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  segText: { fontSize: 14, color: C.ink2 },
   choice: { flexDirection: 'row', gap: S.md, alignItems: 'center', padding: S.lg, borderRadius: R.md, borderWidth: 1, borderColor: C.line2, backgroundColor: C.surface },
   choiceOn: { borderColor: C.accent, backgroundColor: C.accentSoft },
   mark: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: C.ink3, alignItems: 'center', justifyContent: 'center' },
   markDot: { width: 11, height: 11, borderRadius: 6, backgroundColor: C.accent },
   tag: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: R.sm, alignSelf: 'flex-start' },
   sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: S.md },
-  card: { backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: R.lg, padding: S.lg, gap: S.md },
+  // Flat: content separated by space and a hairline, not boxed.
+  card: { gap: S.md, paddingVertical: S.sm },
+  dip: { transform: [{ scale: 0.97 }] },
+  link: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' },
+  linkText: { fontSize: 15, fontWeight: '600' },
   note: { flexDirection: 'row', gap: S.sm, padding: S.md, borderRadius: R.md },
   iconBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: C.surface },
 });
