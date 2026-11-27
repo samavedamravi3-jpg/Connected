@@ -194,6 +194,7 @@ create trigger profiles_before_write
 create or replace function public.requests_before_update()
 returns trigger
 language plpgsql
+set search_path = '' -- pinned live by migration 20261126223554
 as $$
 begin
   if new.from_user <> old.from_user or new.to_user <> old.to_user or new.message <> old.message or new.created_at <> old.created_at then
