@@ -7,10 +7,10 @@
  */
 export const LEGAL = {
   product: 'Connected',
-  /** Who runs the service. Confirm the exact legal names (Kartik's full name is missing) or replace with a company. */
-  operator: 'Shritan Samavedam and Kartik, individuals (no company has been formed yet)',
+  /** Who runs the service. Confirm the exact legal names or replace with a company once one is formed. */
+  operator: 'Shritan Samavedam and Kartik Shinde, individuals (no company has been formed yet)',
   /** One mailbox for support, privacy and deletion requests. Must be a mailbox a founder actually reads. */
-  contactEmail: null as string | null,
+  contactEmail: 'connectedks@gmail.com' as string | null,
   /** The age gate. Stripe Identity does not verify minors; US launch only. */
   minAge: 18,
   region: 'the United States',
@@ -29,6 +29,6 @@ export function releaseBlockers(): string[] {
   const out: string[] = [];
   if (!LEGAL.contactEmail) out.push('LEGAL.contactEmail is empty: add a support/privacy mailbox.');
   if (!LEGAL.governingLaw) out.push('LEGAL.governingLaw is empty: a lawyer should confirm governing law and venue.');
-  if (/\bKartik, individuals\b/.test(LEGAL.operator)) out.push("LEGAL.operator needs Kartik's full legal name (or a company name).");
+  if (!/Kartik Shinde/.test(LEGAL.operator)) out.push('LEGAL.operator is missing Kartik Shinde.');
   return out;
 }

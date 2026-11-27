@@ -9,7 +9,8 @@ import { LEGAL, releaseBlockers } from '../src/legal/config';
 import { CREDITS, DOCS, DOC_ORDER, type Block, type LegalDoc } from '../src/legal/documents';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const block = (b: Block) => (Array.isArray(b) ? `<ul>${b.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>` : `<p>${esc(b)}</p>`);
+const mail = (h: string) => (LEGAL.contactEmail ? h.split(esc(LEGAL.contactEmail)).join(`<a href="mailto:${esc(LEGAL.contactEmail)}">${esc(LEGAL.contactEmail)}</a>`) : h);
+const block = (b: Block) => (Array.isArray(b) ? `<ul>${b.map((i) => `<li>${mail(esc(i))}</li>`).join('')}</ul>` : `<p>${mail(esc(b))}</p>`);
 
 const CSS = `:root{color-scheme:light dark}body{font:17px/1.6 system-ui,-apple-system,Segoe UI,sans-serif;max-width:44rem;margin:0 auto;padding:1.25rem;color:#1b1a21;background:#f5f4f8}
 a{color:#5b35c9}nav a{margin-right:1rem;display:inline-block;padding:.5rem 0}h1{font-size:1.9rem;line-height:1.2}h2{font-size:1.3rem;margin-top:2rem}small,.meta{color:#47454f}
@@ -22,7 +23,7 @@ function page(d: LegalDoc): string {
 <title>${esc(d.title)} · ${LEGAL.product}</title><meta name="description" content="${esc(d.summary)}"><meta name="robots" content="noindex">
 <style>${CSS}</style></head><body><a class="skip" href="#main">Skip to content</a>
 <nav aria-label="Policies">${nav}</nav><main id="main"><h1>${esc(d.title)}</h1>
-<p class="meta">Version ${d.version} · in effect from ${LEGAL.effective} · ${esc(LEGAL.operator)}</p><p>${esc(d.summary)}</p>
+<p class="meta">Version ${d.version} · in effect from ${LEGAL.effective} · ${esc(LEGAL.operator)}</p><p>${esc(d.summary)}</p>${LEGAL.contactEmail ? `<p>Contact: <a href="mailto:${esc(LEGAL.contactEmail)}">${esc(LEGAL.contactEmail)}</a></p>` : ''}
 ${d.sections.map((s) => `<section aria-labelledby="${s.id}"><h2 id="${s.id}">${esc(s.heading)}</h2>${s.body.map(block).join('')}</section>`).join('')}
 </main><footer><hr><h2>Credits</h2>${CREDITS.map((c) => `<p><small>${esc(c)}</small></p>`).join('')}</footer></body></html>`;
 }

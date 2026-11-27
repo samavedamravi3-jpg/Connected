@@ -60,7 +60,9 @@ test('the cookie policy matches reality: no tracking SDKs are installed', () => 
 });
 
 test('no personal home address or personal email is published', () => {
-  assert.doesNotMatch(all, /gmail\.com|yahoo\.com|\bapt\b|\bstreet\b/i);
+  assert.doesNotMatch(all.replaceAll(LEGAL.contactEmail ?? '', ''), /gmail\.com|yahoo\.com|\bapt\b|\bstreet\b/i);
+  assert.equal(LEGAL.contactEmail, 'connectedks@gmail.com');
+  assert.match(LEGAL.operator, /Shritan Samavedam and Kartik Shinde/);
 });
 
 test('the age line matches the age gate', () => {

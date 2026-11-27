@@ -1,9 +1,8 @@
 import { router, Stack } from 'expo-router';
 import { Alert, Linking, ScrollView, Switch, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LegalLinks } from '@/components/Legal';
+import { ContactLink, LegalLinks } from '@/components/Legal';
 import { Button, Card, Note, Section } from '@/components/ui';
-import { CONTACT_LINE } from '@/legal/config';
 import { useApp } from '@/state/AppState';
 import { C, S, T } from '@/theme';
 
@@ -38,7 +37,8 @@ export default function PrivacyData() {
         </Section>
 
         <Section title="Your account">
-          <Text style={T.muted}>For a copy of your data or any other request, email {CONTACT_LINE}.</Text>
+          <Text style={T.muted}>For a copy of your data or any other request, email us:</Text>
+          <ContactLink />
           {app.session ? (
             <Button label="Delete my account" icon="trash-outline" variant="danger" onPress={() => router.push('/delete-account')} />
           ) : (

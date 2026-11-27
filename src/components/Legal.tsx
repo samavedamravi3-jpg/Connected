@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
-import { Pressable, Text, View } from 'react-native';
+import { Linking, Pressable, Text, View } from 'react-native';
+import { LEGAL } from '@/legal/config';
 import type { DocId, LegalDoc } from '@/legal/documents';
 import { C, S, T } from '@/theme';
 
@@ -31,6 +32,10 @@ export function LegalBody({ doc }: { doc: LegalDoc }) {
           )}
         </View>
       ))}
+      <View style={{ gap: S.xs }}>
+        <Text style={T.label}>Contact</Text>
+        <ContactLink />
+      </View>
     </View>
   );
 }
@@ -48,5 +53,16 @@ export function LegalLinks({ ids = ['terms', 'privacy'], style }: { ids?: DocId[
         </Pressable>
       ))}
     </View>
+  );
+}
+
+/** Tappable support/privacy address (opens the mail app). Renders nothing until an address is configured. */
+export function ContactLink() {
+  if (!LEGAL.contactEmail) return null;
+  const mail = LEGAL.contactEmail;
+  return (
+    <Pressable onPress={() => Linking.openURL(`mailto:${mail}`)} accessibilityRole="link" accessibilityLabel={`Email ${mail}`} style={{ minHeight: 44, justifyContent: 'center' }}>
+      <Text style={[T.body, { color: C.accent, fontWeight: '600', textDecorationLine: 'underline' }]}>{mail}</Text>
+    </Pressable>
   );
 }

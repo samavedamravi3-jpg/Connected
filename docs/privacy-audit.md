@@ -32,8 +32,8 @@ No analytics, advertising SDK, advertising ID, push token or background location
 - Until the migration is applied, consent saves fail quietly (logged) and retry on the next launch; until the function is deployed, "Delete my account" shows the generic failure message.
 
 ## Founder / legal decisions
-1. **Support/privacy email** (`LEGAL.contactEmail`): none provided; do not use a personal address. Release blocker (`npm run legal:check`).
-2. **Operator identity:** Kartik's full legal name, or form a company.
+1. ~~Support/privacy email~~ set to connectedks@gmail.com (a shared Gmail mailbox: confirm both founders can read it).
+2. ~~Operator~~ set to Shritan Samavedam and Kartik Shinde, individuals; update if a company is formed.
 3. **Governing law and venue**, limitation-of-liability wording, and state privacy-law rights handling (CCPA etc.).
 4. **Retention:** confirm audit-log purge period (none today), backup window, and keep-or-erase of the last saved area when sharing is turned off (currently kept until deletion).
 5. **Minors:** the gate is a self-declaration. Decide whether that is enough for a US-only launch; Stripe does not verify minors. No parental-consent flow exists.
